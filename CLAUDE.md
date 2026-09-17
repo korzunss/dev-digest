@@ -32,6 +32,16 @@ that package's `CLAUDE.md`, which loads automatically when you work in its folde
   what makes it mock-testable; breaking it breaks the whole test strategy.
 - **Migrations are never applied on boot.** Run `cd server && pnpm db:migrate`.
 
+## Session protocol
+
+- **Before working in a package**, read its `INSIGHTS.md` plus the root one, and
+  state the two or three entries that bear on the task. They are accumulated
+  session knowledge — treat them as high-confidence guidance unless the code says
+  otherwise.
+- **When wrapping up a task** that involved a problem, a decision, or a discovery,
+  run the `engineering-insights` skill to append what was learned. Skip it only
+  for trivial edits.
+
 ## Do not touch
 
 - `*/src/vendor/**` — vendored code, changed upstream, not edited by hand.
@@ -47,4 +57,4 @@ that package's `CLAUDE.md`, which loads automatically when you work in its folde
 - Test strategy, unit/integration split, CI path filters → `TESTING.md`
 - Built-in agent prompts → `docs/README.md`
 - Cross-package feature specs → `specs/README.md`
-- Hard-won gotchas across the repo → `INSIGHTS.md`
+- Hard-won gotchas: cross-package → `INSIGHTS.md`, package-local → `<pkg>/INSIGHTS.md`
