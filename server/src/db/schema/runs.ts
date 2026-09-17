@@ -1,4 +1,5 @@
 import {
+  index,
   pgTable,
   uuid,
   text,
@@ -42,7 +43,12 @@ export const agentRuns = pgTable('agent_runs', {
   score: integer('score'),
   /** Findings that tripped the agent's gate (severity ≥ ciFailOn). */
   blockers: integer('blockers'),
-});
+}, (t) => ({
+  // Every read of this table is "the runs of these PRs": the PR timeline, the
+  // in-flight check, and the PR list's cost rollup. Postgres does not index a
+  // FK column on its own, so without this each of those scans the whole table.
+  prIdx: index('agent_runs_pr_idx').on(t.prId),
+}));
 
 /** Whole trace of one run as a SINGLE jsonb document. */
 export const runTraces = pgTable('run_traces', {

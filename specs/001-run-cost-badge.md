@@ -169,6 +169,12 @@ Deliberately NOT an SQL `SUM()`: the worst-wins source rule needs the same pass,
 the helper is pure and unit-testable without Docker, and the page's PR count is
 small — the same reasoning that put the score rollup in JS.
 
+The query needs `agent_runs (pr_id)` to be indexed, and it was not: Postgres
+indexes the column a foreign key POINTS AT, never the column holding it, so both
+this rollup and the PR timeline were scanning the whole table. Migration `0011`
+adds `agent_runs_pr_idx`, and `reviews_pr_idx` for the identical pre-existing
+problem in the score rollup one query above.
+
 ### Client
 
 **One formatter, three call sites.** `client/src/lib/format-cost.ts`:

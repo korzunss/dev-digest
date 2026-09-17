@@ -1,5 +1,14 @@
 import { sql } from 'drizzle-orm';
-import { pgTable, uuid, text, integer, jsonb, timestamp, doublePrecision } from 'drizzle-orm/pg-core';
+import {
+  index,
+  pgTable,
+  uuid,
+  text,
+  integer,
+  jsonb,
+  timestamp,
+  doublePrecision,
+} from 'drizzle-orm/pg-core';
 import { now } from './_shared';
 import { workspaces } from './core';
 import { pullRequests } from './pulls';
@@ -23,7 +32,11 @@ export const reviews = pgTable('reviews', {
   score: integer('score'),
   model: text('model'),
   createdAt: now(),
-});
+}, (t) => ({
+  // Same reason as agent_runs_pr_idx: the PR list and the PR detail both read
+  // reviews by pr_id, and a FK column carries no index of its own.
+  prIdx: index('reviews_pr_idx').on(t.prId),
+}));
 
 export const findings = pgTable('findings', {
   id: uuid('id').primaryKey().defaultRandom(),
