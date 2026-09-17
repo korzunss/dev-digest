@@ -1,5 +1,6 @@
 import type { z } from 'zod';
 import type {
+  CostSource,
   LLMProvider,
   ModelInfo,
   CompletionRequest,
@@ -53,6 +54,16 @@ export interface MockLLMOptions {
   structuredBySchema?: Record<string, unknown>;
   completionText?: string;
   embedding?: number[];
+  /**
+   * Cost + provenance returned per call (spec 001). Defaults to a reported
+   * $0.001 so existing tests keep their numbers; pass `cost: null` to simulate
+   * a model the price book doesn't know, or a per-call array to exercise the
+   * worst-wins aggregation across map-reduce chunks.
+   */
+  cost?: number | null;
+  costSource?: CostSource | null;
+  /** Per-call overrides, consumed in order; falls back to `cost`/`costSource`. */
+  costPerCall?: { cost: number | null; source: CostSource | null }[];
 }
 
 export class MockLLMProvider implements LLMProvider {
@@ -86,6 +97,17 @@ export class MockLLMProvider implements LLMProvider {
     };
   }
 
+  /** Next cost + provenance for a call, honouring `costPerCall` ordering. */
+  private nextCost(): { cost: number | null; source: CostSource | null } {
+    const perCall = this.opts.costPerCall?.[this.structuredCalls++];
+    if (perCall) return perCall;
+    return {
+      cost: this.opts.cost === undefined ? 0.001 : this.opts.cost,
+      source: this.opts.costSource === undefined ? 'api' : this.opts.costSource,
+    };
+  }
+  private structuredCalls = 0;
+
   async completeStructured<T>(req: StructuredRequest<T>): Promise<StructuredResult<T>> {
     this.calls.push({ method: 'completeStructured', req });
     const fixture = this.opts.structuredBySchema?.[req.schemaName] ?? this.opts.structured ?? {};
@@ -93,12 +115,14 @@ export class MockLLMProvider implements LLMProvider {
     if (!parsed.success) {
       throw new Error(`MockLLMProvider fixture failed schema: ${parsed.error.message}`);
     }
+    const { cost, source } = this.nextCost();
     return {
       data: parsed.data,
       model: req.model,
       tokensIn: 100,
       tokensOut: 50,
-      costUsd: 0.001,
+      costUsd: cost,
+      ...(source ? { costSource: source } : {}),
       raw: JSON.stringify(fixture),
       attempts: 1,
     };

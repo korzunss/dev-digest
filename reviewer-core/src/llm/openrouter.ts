@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
 import type {
+  CostSource,
   LLMProvider,
   ModelInfo,
   CompletionRequest,
@@ -99,12 +100,22 @@ export class OpenRouterProvider implements LLMProvider {
 
       const parsed = parseWithRepair(req.schema, lastRaw);
       if (parsed.ok) {
+        // Cost attribution, and — just as important — its PROVENANCE. This is
+        // the only place that knows whether OpenRouter reported a real price or
+        // we fell back to the injected price book; downstream can't re-derive
+        // it, so it travels with the number.
+        const estimated =
+          costFromApi == null ? (this.estimateCost?.(req.model, tokensIn, tokensOut) ?? null) : null;
+        const costUsd = costFromApi ?? estimated;
         return {
           data: parsed.data,
           model: req.model,
           tokensIn,
           tokensOut,
-          costUsd: costFromApi ?? this.estimateCost?.(req.model, tokensIn, tokensOut) ?? null,
+          costUsd,
+          ...(costUsd == null
+            ? {}
+            : { costSource: (costFromApi != null ? 'api' : 'estimate') as CostSource }),
           raw: lastRaw,
           attempts: attempt,
         };

@@ -38,8 +38,6 @@ Observable checks. What must be true for this to be done.
 
 ## Index
 
-_No cross-package specs yet._
-
 | Spec | Status | Packages |
 |------|--------|----------|
-| — | — | — |
+| [001 — Run cost badge](001-run-cost-badge.md) | done | reviewer-core, server, client |

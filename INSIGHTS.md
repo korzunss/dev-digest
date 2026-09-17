@@ -48,7 +48,25 @@ _Nothing yet._
 
 ## What Doesn't Work
 
-_Nothing yet._
+### 2026-09-17 — the two vendored `shared` copies are not actually in sync
+
+**Symptom:** on a clean checkout, `diff -r server/src/vendor/shared
+client/src/vendor/shared` returns a long diff. The client copy has no
+`'openrouter'` in the provider enums (`eval-ci.ts`, `productionize.ts`,
+`knowledge.ts`), no `AgentManifest`, no `sessionId` on `StructuredRequest`, and
+several adapter methods missing.
+**Cause:** the copies drifted over past features. `CLAUDE.md`'s "keep them in
+sync" reads like a statement of fact, but it is an instruction about *your own*
+change — it was never true of the files as a whole.
+**Rule:** mirror the specific edit into the client copy by hand (or a targeted
+script that replaces exact strings). Never `cp`/`cp -r` the server's `shared`
+over the client's: that drags in server-only contracts and provider ids the
+client deliberately doesn't have, turning a one-field change into an unreviewed
+bulk rewrite. Verify with a `diff` scoped to the fields you touched, never with
+whole-file equality — that check is red today and will stay red.
+**Evidence:** `diff -r server/src/vendor/shared client/src/vendor/shared` ·
+`client/src/vendor/shared/adapters.ts` → `LLMProvider.id` is
+`'openai' | 'anthropic'` where the server's is `… | 'openrouter'`
 
 ## Codebase Patterns
 
@@ -69,7 +87,22 @@ _Nothing yet._
 
 ## Recurring Errors & Fixes
 
-_Nothing yet._
+### 2026-09-17 — `TS2719: Two different types with this name exist` after adding a contract field
+
+**Symptom:** adding a required field to a Zod contract in `shared` makes
+`pnpm typecheck` fail in a *test* file with `TS2719: Type '{…}' is not assignable
+to type '{…}'. Two different types with this name exist, but they are unrelated.`
+The message points at a fixture factory and suggests a duplicated type or a
+broken path alias — both wrong.
+**Cause:** the factory is `function run(o: Partial<T>): T { return { ...defaults,
+...o } }`. The new key exists only in the `Partial`, so the spread types it
+`X | undefined` while the return type demands `X | null`. The follow-up line is
+the real one: `Types of property 'cost_usd' are incompatible … 'undefined' is not
+assignable to type 'number | null'`.
+**Rule:** when TS2719 names a fixture factory right after a contract change, add
+the new key to the factory's defaults literal. Don't go looking for a second copy
+of the type or a tsconfig `paths` problem.
+**Evidence:** `client/src/app/repos/[repoId]/pulls/[number]/_components/RunHistory/RunHistory.test.tsx:16`
 
 ## Session Notes
 

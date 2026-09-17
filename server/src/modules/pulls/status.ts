@@ -1,4 +1,4 @@
-import type { PrStatus } from '@devdigest/shared';
+import type { CostSource, PrStatus } from '@devdigest/shared';
 
 /**
  * PR-list rollup helpers (pure — no DB / `this`, so they unit-test cleanly).
@@ -28,6 +28,36 @@ export function rollupSeverities(rows: { severity: string }[]): SeverityCounts {
     else if (r.severity === 'SUGGESTION') c.suggestion += 1;
   }
   return c;
+}
+
+/** What one PR's COST column shows: the sum, and how trustworthy it is. */
+export interface CostRollup {
+  cost_usd: number | null;
+  cost_source: CostSource | null;
+}
+
+/**
+ * Total cost of a PR's agent runs (spec 001) — the list's COST column.
+ *
+ * Two rules carry the whole design:
+ *  - a run with no known price contributes NOTHING, and when no run has one the
+ *    answer is `null` (rendered "—"), never `0` — `0` is a free model, not
+ *    ignorance;
+ *  - provenance is WORST-WINS: one estimated run makes the whole sum an
+ *    estimate, so a `~` never gets dropped by aggregation.
+ */
+export function rollupCost(
+  rows: { costUsd: number | null; costSource: string | null }[],
+): CostRollup {
+  let total: number | null = null;
+  let source: CostSource | null = null;
+  for (const r of rows) {
+    if (r.costUsd == null) continue;
+    total = (total ?? 0) + r.costUsd;
+    if (r.costSource === 'estimate') source = 'estimate';
+    else if (r.costSource === 'api' && source !== 'estimate') source = 'api';
+  }
+  return { cost_usd: total, cost_source: total == null ? null : source };
 }
 
 /**

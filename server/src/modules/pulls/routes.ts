@@ -7,7 +7,7 @@ import * as t from '../../db/schema.js';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
 import { AppError, NotFoundError } from '../../platform/errors.js';
-import { deriveReviewStatus } from './status.js';
+import { deriveReviewStatus, rollupCost, type CostRollup } from './status.js';
 
 /**
  * F1 — pulls module. PR import via Octokit (list + per-PR detail).
@@ -129,9 +129,33 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       }
     }
 
+    // Total run cost per PR for the list's COST column (spec 001). Same shape as
+    // the score rollup above — one IN-query, grouped in JS — because the
+    // worst-wins provenance rule needs the same pass an SQL SUM() couldn't do.
+    const costByPr = new Map<string, CostRollup>();
+    if (prIds.length > 0) {
+      const runRows = await container.db
+        .select({
+          prId: t.agentRuns.prId,
+          costUsd: t.agentRuns.costUsd,
+          costSource: t.agentRuns.costSource,
+        })
+        .from(t.agentRuns)
+        .where(inArray(t.agentRuns.prId, prIds));
+      const byPr = new Map<string, { costUsd: number | null; costSource: string | null }[]>();
+      for (const run of runRows) {
+        if (!run.prId) continue;
+        const list = byPr.get(run.prId) ?? [];
+        list.push({ costUsd: run.costUsd, costSource: run.costSource });
+        byPr.set(run.prId, list);
+      }
+      for (const [prId, runs] of byPr) costByPr.set(prId, rollupCost(runs));
+    }
+
     const now = Date.now();
     return rows.map((r) => {
       const review = latestReviewByPr.get(r.id);
+      const cost = costByPr.get(r.id);
       return {
         id: r.id,
         number: r.number,
@@ -153,6 +177,8 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
         opened_at: r.openedAt?.toISOString() ?? null,
         updated_at: r.updatedAt?.toISOString() ?? null,
         score: review ? review.score : null,
+        cost_usd: cost?.cost_usd ?? null,
+        cost_source: cost?.cost_source ?? null,
       };
     });
   });

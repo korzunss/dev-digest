@@ -1,4 +1,12 @@
-import { pgTable, uuid, text, integer, jsonb, timestamp } from 'drizzle-orm/pg-core';
+import {
+  pgTable,
+  uuid,
+  text,
+  integer,
+  jsonb,
+  timestamp,
+  doublePrecision,
+} from 'drizzle-orm/pg-core';
 import { workspaces } from './core';
 import { agents } from './agents';
 import { pullRequests } from './pulls';
@@ -18,6 +26,12 @@ export const agentRuns = pgTable('agent_runs', {
   durationMs: integer('duration_ms'),
   tokensIn: integer('tokens_in'),
   tokensOut: integer('tokens_out'),
+  /** Run cost in USD. Null = unknown (failed run / model the price book doesn't
+   *  know / run older than spec 001) — distinct from 0, which is a free model. */
+  costUsd: doublePrecision('cost_usd'),
+  /** 'api' = the provider reported the price, 'estimate' = we priced it from
+   *  tokens. Estimates render with a `~` prefix so the two never look alike. */
+  costSource: text('cost_source', { enum: ['api', 'estimate'] }),
   status: text('status'),
   /** Failure reason when status='failed' (LLM/API error, timeout, quota, …). */
   error: text('error'),

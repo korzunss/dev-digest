@@ -27,6 +27,7 @@ vi.mock("../../../../../../../lib/hooks/reviews", () => ({
 }));
 
 import RunTraceDrawer from "./RunTraceDrawer";
+import { TraceBody } from "./_components/TraceBody";
 
 afterEach(cleanup);
 
@@ -52,5 +53,29 @@ describe("A5 Run Trace drawer (smoke)", () => {
     fireEvent.click(screen.getByText("log"));
     // LiveLogStream renders its filter input
     expect(screen.getByPlaceholderText("Filter log…")).toBeInTheDocument();
+  });
+});
+
+describe("Run trace — COST tile (spec 001)", () => {
+  it("a trace written before cost existed still parses and reads COST —", () => {
+    // TRACE above carries no cost keys at all — exactly a pre-spec-001 document.
+    renderWithIntl(<TraceBody trace={TRACE} findings={[]} />);
+    expect(screen.getByText("COST")).toBeInTheDocument();
+    expect(screen.getByText("—")).toBeInTheDocument();
+  });
+
+  it("shows a reported price bare and an estimated one with ~", () => {
+    renderWithIntl(
+      <TraceBody trace={{ ...TRACE, stats: { ...TRACE.stats, cost_usd: 0.06, cost_source: "api" } }} findings={[]} />,
+    );
+    expect(screen.getByText("$0.06")).toBeInTheDocument();
+    cleanup();
+    renderWithIntl(
+      <TraceBody
+        trace={{ ...TRACE, stats: { ...TRACE.stats, cost_usd: 0.06, cost_source: "estimate" } }}
+        findings={[]}
+      />,
+    );
+    expect(screen.getByText("~$0.06")).toBeInTheDocument();
   });
 });

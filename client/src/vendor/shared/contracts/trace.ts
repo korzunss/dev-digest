@@ -9,6 +9,16 @@ import { z } from 'zod';
 export const RunEventKind = z.enum(['info', 'tool', 'result', 'error']);
 export type RunEventKind = z.infer<typeof RunEventKind>;
 
+/**
+ * Where a cost figure came from (spec 001).
+ *  - `api`      the provider REPORTED it (OpenRouter's `usage.cost`)
+ *  - `estimate` we priced it ourselves from token counts × the price book
+ * The UI renders an estimate with a `~` prefix, so a guess is never shown as a
+ * reported price. A run with no cost at all carries a null source, not this.
+ */
+export const CostSource = z.enum(['api', 'estimate']);
+export type CostSource = z.infer<typeof CostSource>;
+
 /** A single live-log line. `t` = elapsed timestamp string (e.g. "00.31"). */
 export const RunLogLine = z.object({
   t: z.string(),
@@ -63,6 +73,13 @@ export const RunStats = z.object({
   tokens_out: z.number().int(),
   findings: z.number().int(),
   grounding: z.string(),
+  /**
+   * Run cost in USD + where the figure came from. NULLISH, not nullable: every
+   * trace document written before spec 001 lacks these keys, and a required
+   * field would fail to parse those historical traces.
+   */
+  cost_usd: z.number().nullish(),
+  cost_source: CostSource.nullish(),
 });
 export type RunStats = z.infer<typeof RunStats>;
 
@@ -109,5 +126,10 @@ export const RunSummary = z.object({
   // findings that trip the agent's gate. Null on failed/cancelled runs.
   score: z.number().int().nullable(),
   blockers: z.number().int().nullable(),
+  // Run cost (spec 001). Null when unknown — a failed run, a model the price
+  // book doesn't know, or a run that predates cost persistence. Never 0 for
+  // "unknown": 0 means a genuinely free model.
+  cost_usd: z.number().nullable(),
+  cost_source: CostSource.nullable(),
 });
 export type RunSummary = z.infer<typeof RunSummary>;

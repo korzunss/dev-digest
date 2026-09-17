@@ -210,7 +210,7 @@ export class ReviewRunExecutor {
           if (this.container.runBus.isCancelled(runId)) throw new RunCancelledError();
         },
       });
-      const { tokensIn, tokensOut, grounding } = outcome;
+      const { tokensIn, tokensOut, costUsd, costSource, grounding } = outcome;
 
       const keptFindings = outcome.review.findings;
 
@@ -249,6 +249,11 @@ export class ReviewRunExecutor {
         grounding,
         score: outcome.review.score,
         blockers,
+        // Cost as the engine reported it — OpenRouter's own `usage.cost` when
+        // available, else the price book. Never recomputed here: the provider
+        // is the only layer that knows which of the two it was.
+        costUsd,
+        costSource,
         error: null,
       });
 
@@ -267,6 +272,8 @@ export class ReviewRunExecutor {
           tokens_out: tokensOut,
           findings: findingRows.length,
           grounding,
+          cost_usd: costUsd,
+          cost_source: costSource,
         },
         prompt_assembly: outcome.assembly,
         tool_calls: outcome.chunks.map((c) => ({
@@ -421,7 +428,17 @@ export class ReviewRunExecutor {
         pr: pull.number,
         source: 'local',
       },
-      stats: { duration_ms: durationMs, tokens_in: 0, tokens_out: 0, findings: 0, grounding },
+      // A failed/cancelled run spent tokens we can't count and money we can't
+      // measure — the engine threw before returning an outcome. Null, not 0.
+      stats: {
+        duration_ms: durationMs,
+        tokens_in: 0,
+        tokens_out: 0,
+        findings: 0,
+        grounding,
+        cost_usd: null,
+        cost_source: null,
+      },
       prompt_assembly: { system: agent.systemPrompt, skills: null, memory: null, specs: null, user: '' },
       tool_calls: [],
       raw_output: '',
