@@ -34,13 +34,14 @@ that package's `CLAUDE.md`, which loads automatically when you work in its folde
 
 ## Session protocol
 
-- **Before working in a package**, read its `INSIGHTS.md` plus the root one, and
-  state the two or three entries that bear on the task. They are accumulated
-  session knowledge — treat them as high-confidence guidance unless the code says
-  otherwise.
-- **When wrapping up a task** that involved a problem, a decision, or a discovery,
-  run the `engineering-insights` skill to append what was learned. Skip it only
-  for trivial edits.
+- **First step of any task**, before planning, searching or editing: read the
+  `INSIGHTS.md` of the package the request concerns, plus the root one, and name
+  the entries that bear on the task (or say none do). They are accumulated session
+  knowledge — treat them as high-confidence guidance unless the code says otherwise.
+- **When wrapping up**, run the `engineering-insights` skill: re-read that file,
+  and append only what is genuinely new and non-obvious. If the session produced
+  nothing that qualifies, or the lesson is already recorded there, write nothing
+  and say so — an empty wrap-up is the normal case, padding the file is the failure.
 
 ## Do not touch
 
