@@ -21,7 +21,8 @@ import { usePrReviews, useCancelRun, usePrActiveRuns, usePrRuns, useDeleteRun } 
 import { useActiveRepo, useRepoNotFound } from "../../../../../lib/repo-context";
 import { ApiError } from "../../../../../lib/api";
 import { githubPrUrl } from "../../../../../lib/github-urls";
-import type { FindingRecord } from "@devdigest/shared";
+import { parseSeverityParam } from "@/lib/severity";
+import type { FindingRecord, Severity } from "@devdigest/shared";
 
 export default function PRDetailPage() {
   const params = useParams<{ repoId: string; number: string }>();
@@ -59,12 +60,20 @@ export default function PRDetailPage() {
 
   const tab = search.get("tab") ?? "overview";
   const traceRunId = search.get("trace");
-  const setParam = (key: string, val: string | null) => {
+  // Severity filter (spec 002): `severity` is the level, `sevRun` optionally
+  // confines it to one run. The PR list deep-links into the first; a timeline
+  // chip sets both. An unrecognised level parses to null = no filter.
+  const severity = parseSeverityParam(search.get("severity"));
+  const sevRun = search.get("sevRun");
+  const setParams = (entries: Record<string, string | null>) => {
     const sp = new URLSearchParams(search.toString());
-    if (val == null) sp.delete(key);
-    else sp.set(key, val);
+    for (const [key, val] of Object.entries(entries)) {
+      if (val == null) sp.delete(key);
+      else sp.set(key, val);
+    }
     router.replace(`/repos/${repoId}/pulls/${number}${sp.toString() ? `?${sp.toString()}` : ""}`);
   };
+  const setParam = (key: string, val: string | null) => setParams({ [key]: val });
   const setTab = (t: string) => setParam("tab", t);
 
   // Reviews come newest-first; each is its own run (grouped into accordions).
@@ -147,6 +156,11 @@ export default function PRDetailPage() {
             prCommits={pr.commits}
             repoFullName={repoFullName}
             headSha={pr.head_sha}
+            severity={severity}
+            sevRun={sevRun}
+            onSelectSeverity={(sev: Severity | null, runId: string | null) =>
+              setParams({ severity: sev, sevRun: sev ? runId : null })
+            }
             cancelMutation={cancel}
             onOpenTrace={(id) => setParam("trace", id)}
             onDelete={(id) => {

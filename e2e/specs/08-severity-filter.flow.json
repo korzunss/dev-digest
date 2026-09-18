@@ -1,0 +1,17 @@
+{
+  "name": "Severity counter deep-links from the PR list into a filtered PR",
+  "description": "Spec 002. The seeded PR #482 carries one CRITICAL ('Hardcoded Stripe secret key in commit') and one WARNING ('N+1 query in user list endpoint'), so its FINDINGS column reads ⊙1 ⚠1. Clicking the CRITICAL chip must land on the PR's Agent runs tab already filtered (?severity=CRITICAL) with the active-filter chip showing, and clearing it must bring the WARNING finding back. The negative half — that the WARNING is absent WHILE the filter is on — is asserted in the FindingsPanel unit test rather than here, because these flows only use locators that wait for presence. Read-only seeded data (no model call). Same seeded-repo assumption as flows 02/04/05 — run via the hermetic stack.",
+  "steps": [
+    { "cmd": ["open", "{BASE}/"], "label": "load the app root" },
+    { "cmd": ["wait", "--url", "/pulls"], "label": "land on the PR list" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "PR list data settles" },
+    { "cmd": ["find", "role", "button", "click", "--name", "1 critical — show only these"], "label": "click the CRITICAL chip in the FINDINGS column" },
+    { "cmd": ["wait", "--url", "severity=CRITICAL"], "label": "deep-links into the PR filtered to CRITICAL" },
+    { "cmd": ["wait", "--url", "tab=findings"], "label": "…on the Agent runs tab" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "PR detail data settles" },
+    { "cmd": ["wait", "--text", "CRITICAL only"], "label": "the active-filter chip names the level" },
+    { "cmd": ["wait", "--text", "Hardcoded Stripe secret key in commit"], "label": "the CRITICAL finding is shown" },
+    { "cmd": ["find", "role", "button", "click", "--name", "Clear the severity filter"], "label": "clear the filter" },
+    { "cmd": ["wait", "--text", "N+1 query in user list endpoint"], "label": "the WARNING finding is back" }
+  ]
+}

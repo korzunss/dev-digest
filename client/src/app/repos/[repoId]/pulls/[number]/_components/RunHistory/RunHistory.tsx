@@ -3,7 +3,11 @@
 import React from "react";
 import { useTranslations } from "next-intl";
 import { Badge, Icon, CircularScore, type IconName } from "@devdigest/ui";
-import type { RunSummary, PrCommit } from "@devdigest/shared";
+import type { RunSummary, PrCommit, Severity, FindingRecord } from "@devdigest/shared";
+import { RunCostBadge } from "@/components/run-cost-badge";
+import { SeverityCounter } from "@/components/severity-counter";
+import { FindingsPreview } from "@/components/findings-preview";
+import { tallySeverities } from "@/lib/severity";
 
 /**
  * PR timeline — every agent run interleaved with the PR's commits, newest-first
@@ -87,12 +91,25 @@ function tsOf(s: string | null | undefined): number {
 export function RunHistory({
   runs,
   commits = [],
+  findingsByRun,
+  severity = null,
+  scopedRunId = null,
+  onSelectSeverity,
   onOpenTrace,
   onGoToReview,
   onDelete,
 }: {
   runs: RunSummary[];
   commits?: PrCommit[];
+  /** That run's findings, from the reviews already on the page (spec 002). The
+   *  chips are tallied from this same array the hover card lists, so the two can
+   *  never disagree. A run absent from the map has no review — a failed run, or
+   *  one whose review was deleted — and keeps the old count line. */
+  findingsByRun?: Map<string, FindingRecord[]>;
+  /** The level currently filtered, and the run it is scoped to (if any). */
+  severity?: Severity | null;
+  scopedRunId?: string | null;
+  onSelectSeverity?: (runId: string, severity: Severity) => void;
   /** Open the trace + log drawer for a run (the logs icon). */
   onOpenTrace: (runId: string) => void;
   /** Jump to this run's inline review accordion below (clicking the agent name). */
@@ -149,6 +166,8 @@ export function RunHistory({
         const r = item.run;
         const o = outcomeOf(r);
         const settled = r.status === "done";
+        const runFindings = findingsByRun?.get(r.run_id);
+        const counts = runFindings ? tallySeverities(runFindings) : undefined;
         return (
           <div key={`run:${r.run_id}`} style={rowStyle}>
             <Badge color={o.color} bg={o.bg} icon={o.icon}>
@@ -189,14 +208,42 @@ export function RunHistory({
                 </div>
               )}
               {settled && (
-                <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                  {t("runStatus.findings", { count: r.findings_count ?? 0 })}
-                  {(r.blockers ?? 0) > 0 ? t("runStatus.blockers", { count: r.blockers ?? 0 }) : ""}
+                <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--text-muted)" }}>
+                  {/* Chips replace "3 finding(s)" — the level is the useful part.
+                      No counts to derive (no review row) ⇒ the old line stands. */}
+                  {counts ? (
+                    <FindingsPreview scope="run" findings={runFindings}>
+                      <SeverityCounter
+                        variant="inline"
+                        counts={counts}
+                        active={scopedRunId === r.run_id ? severity : null}
+                        onSelect={
+                          onSelectSeverity ? (level) => onSelectSeverity(r.run_id, level) : undefined
+                        }
+                      />
+                    </FindingsPreview>
+                  ) : (
+                    <span>{t("runStatus.findings", { count: r.findings_count ?? 0 })}</span>
+                  )}
+                  {(r.blockers ?? 0) > 0 ? (
+                    <span>{t("runStatus.blockers", { count: r.blockers ?? 0 }).replace(/^ · /, "· ")}</span>
+                  ) : null}
                 </div>
               )}
             </div>
             <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2, fontSize: 11, color: "var(--text-muted)", flexShrink: 0 }}>
               {r.ran_at && <span>{new Date(r.ran_at).toLocaleTimeString()}</span>}
+              {/* What this run cost, under its time. Only for settled runs: a
+                  running one has no total yet, a failed one never will. */}
+              {settled && (
+                <RunCostBadge
+                  variant="inline"
+                  costUsd={r.cost_usd}
+                  costSource={r.cost_source}
+                  tokensIn={r.tokens_in}
+                  tokensOut={r.tokens_out}
+                />
+              )}
             </div>
             <button
               type="button"

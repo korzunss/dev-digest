@@ -5,6 +5,10 @@ import React from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Icon, Avatar, Badge, CircularScore } from "@devdigest/ui";
+import { RunCostBadge } from "@/components/run-cost-badge";
+import { SeverityCounter } from "@/components/severity-counter";
+import { FindingsPreview } from "@/components/findings-preview";
+import { usePrReviews } from "@/lib/hooks/reviews";
 import type { PrMeta } from "@/lib/types";
 import { SIZE_COLOR, STATUS_META } from "../../constants";
 import { relativeTime, sizeOf } from "../../helpers";
@@ -17,6 +21,17 @@ export function PRRow({ pr, repoId }: { pr: PrMeta; repoId: string }) {
   const st = STATUS_META[pr.status] ?? STATUS_META.needs_review!;
   const { size, lines } = sizeOf(pr);
   const reviewed = pr.score != null; // null score ⇒ PR has never been reviewed
+
+  // The list payload carries counts, not findings, so the hover card fetches
+  // them — but only once someone hovers, and only for that PR. It lands in the
+  // same query cache the PR detail page reads, so the navigation that usually
+  // follows a hover is warmed rather than slowed (spec 002).
+  const [previewing, setPreviewing] = React.useState(false);
+  const { data: reviews, isLoading: previewLoading } = usePrReviews(previewing ? pr.id : null);
+  const previewFindings = React.useMemo(
+    () => (reviews ?? []).flatMap((r) => r.findings),
+    [reviews],
+  );
   return (
     <div
       onMouseEnter={() => setH(true)}
@@ -53,10 +68,32 @@ export function PRRow({ pr, repoId }: { pr: PrMeta; repoId: string }) {
           <span style={s.muted}>—</span>
         )}
       </div>
+      <div style={s.findingsCell}>
+        {/* Clicking a level opens the PR already filtered to it — the counter
+            stops the event, so the row's own (unfiltered) navigation stays put. */}
+        <FindingsPreview
+          scope="pr"
+          findings={previewFindings}
+          loading={previewLoading}
+          onOpenChange={setPreviewing}
+        >
+          <SeverityCounter
+            counts={pr.findings}
+            onSelect={(severity) =>
+              router.push(
+                `/repos/${repoId}/pulls/${pr.number}?tab=findings&severity=${severity}`,
+              )
+            }
+          />
+        </FindingsPreview>
+      </div>
       <div>
         <Badge dot color={st.c} bg="transparent">
           {t(`list.status.${st.labelKey}`)}
         </Badge>
+      </div>
+      <div style={s.costCell}>
+        <RunCostBadge costUsd={pr.cost_usd} costSource={pr.cost_source} />
       </div>
       <div style={s.updatedCell}>{relativeTime(pr.updated_at)}</div>
     </div>

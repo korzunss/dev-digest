@@ -82,6 +82,8 @@ export class OpenAIProvider implements LLMProvider {
       tokensIn,
       tokensOut,
       costUsd: estimateCost(req.model, tokensIn, tokensOut),
+      // This API reports no cost, so the figure is always ours (spec 001).
+      costSource: 'estimate',
     };
   }
 
@@ -120,6 +122,7 @@ export class OpenAIProvider implements LLMProvider {
           tokensIn,
           tokensOut,
           costUsd: estimateCost(req.model, tokensIn, tokensOut),
+          costSource: 'estimate',
           raw: lastRaw,
           attempts: attempt,
         };

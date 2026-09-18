@@ -1,7 +1,7 @@
 import { and, desc, eq } from 'drizzle-orm';
 import type { Db } from '../../../db/client.js';
 import * as t from '../../../db/schema.js';
-import type { RunSummary, RunTrace } from '@devdigest/shared';
+import type { CostSource, RunSummary, RunTrace } from '@devdigest/shared';
 
 // ---- in-flight / history --------------------------------------------------
 
@@ -64,6 +64,8 @@ export async function listRunsForPull(
     ran_at: run.ranAt ? run.ranAt.toISOString() : null,
     score: run.score,
     blockers: run.blockers,
+    cost_usd: run.costUsd,
+    cost_source: run.costSource,
   }));
 }
 
@@ -152,6 +154,10 @@ export async function completeAgentRun(
     score?: number | null;
     /** Findings that tripped the agent's gate; 0 on failed/cancelled runs. */
     blockers?: number | null;
+    /** Run cost in USD; null when unknown (incl. every failed/cancelled run). */
+    costUsd?: number | null;
+    /** Provenance of `costUsd` — 'api' (reported) or 'estimate' (priced by us). */
+    costSource?: CostSource | null;
     /** Failure reason (status='failed') / cancellation note. Null clears it. */
     error?: string | null;
   },
@@ -167,6 +173,8 @@ export async function completeAgentRun(
       grounding: values.grounding,
       score: values.score ?? null,
       blockers: values.blockers ?? null,
+      costUsd: values.costUsd ?? null,
+      costSource: values.costSource ?? null,
       error: values.error ?? null,
     })
     .where(eq(t.agentRuns.id, runId));

@@ -11,6 +11,18 @@ import { z } from 'zod';
 export const Severity = z.enum(['CRITICAL', 'WARNING', 'SUGGESTION']);
 export type Severity = z.infer<typeof Severity>;
 
+/**
+ * Per-level finding tally for one PR or one run (spec 002) — what the FINDINGS
+ * column and the timeline chips count. A level at 0 renders no chip; the whole
+ * object being null (not all-zero) is what "never reviewed" looks like.
+ */
+export const SeverityCounts = z.object({
+  critical: z.number().int(),
+  warning: z.number().int(),
+  suggestion: z.number().int(),
+});
+export type SeverityCounts = z.infer<typeof SeverityCounts>;
+
 export const FindingCategory = z.enum(['bug', 'security', 'perf', 'style', 'test']);
 export type FindingCategory = z.infer<typeof FindingCategory>;
 

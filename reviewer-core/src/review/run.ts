@@ -1,4 +1,5 @@
 import type {
+  CostSource,
   Finding,
   LLMProvider,
   PromptAssembly,
@@ -108,6 +109,12 @@ export interface ReviewOutcome {
   tokensIn: number;
   tokensOut: number;
   costUsd: number | null;
+  /**
+   * Provenance of `costUsd`, aggregated WORST-WINS over the calls this run made:
+   * a map-reduce run is `api` only when every chunk reported a real price, and
+   * `estimate` as soon as one was priced from tokens. Null when there is no cost.
+   */
+  costSource: CostSource | null;
   /** Joined raw model outputs (for the run trace). */
   raw: string;
 }
@@ -157,6 +164,7 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
   let tokensIn = 0;
   let tokensOut = 0;
   let costUsd: number | null = 0;
+  let costSource: CostSource | undefined;
   const raws: string[] = [];
 
   for (const chunk of chunks) {
@@ -182,6 +190,9 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
     tokensIn += res.tokensIn;
     tokensOut += res.tokensOut;
     costUsd = costUsd == null || res.costUsd == null ? null : costUsd + res.costUsd;
+    // Worst-wins: one estimated chunk makes the whole run an estimate.
+    if (res.costSource === 'estimate') costSource = 'estimate';
+    else if (res.costSource === 'api' && costSource !== 'estimate') costSource = 'api';
     raws.push(res.raw);
     partials.push(res.data);
     emit('result', `${chunk.label}: ${res.data.findings.length} candidate finding(s)`);
@@ -214,6 +225,8 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
     tokensIn,
     tokensOut,
     costUsd,
+    // No cost ⇒ no provenance to report (a source without a number is noise).
+    costSource: costUsd == null ? null : (costSource ?? null),
     raw: raws.join('\n---\n'),
   };
 }

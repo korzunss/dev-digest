@@ -1,4 +1,13 @@
-import { pgTable, uuid, text, integer, jsonb, timestamp } from 'drizzle-orm/pg-core';
+import {
+  index,
+  pgTable,
+  uuid,
+  text,
+  integer,
+  jsonb,
+  timestamp,
+  doublePrecision,
+} from 'drizzle-orm/pg-core';
 import { workspaces } from './core';
 import { agents } from './agents';
 import { pullRequests } from './pulls';
@@ -18,6 +27,12 @@ export const agentRuns = pgTable('agent_runs', {
   durationMs: integer('duration_ms'),
   tokensIn: integer('tokens_in'),
   tokensOut: integer('tokens_out'),
+  /** Run cost in USD. Null = unknown (failed run / model the price book doesn't
+   *  know / run older than spec 001) — distinct from 0, which is a free model. */
+  costUsd: doublePrecision('cost_usd'),
+  /** 'api' = the provider reported the price, 'estimate' = we priced it from
+   *  tokens. Estimates render with a `~` prefix so the two never look alike. */
+  costSource: text('cost_source', { enum: ['api', 'estimate'] }),
   status: text('status'),
   /** Failure reason when status='failed' (LLM/API error, timeout, quota, …). */
   error: text('error'),
@@ -28,7 +43,12 @@ export const agentRuns = pgTable('agent_runs', {
   score: integer('score'),
   /** Findings that tripped the agent's gate (severity ≥ ciFailOn). */
   blockers: integer('blockers'),
-});
+}, (t) => ({
+  // Every read of this table is "the runs of these PRs": the PR timeline, the
+  // in-flight check, and the PR list's cost rollup. Postgres does not index a
+  // FK column on its own, so without this each of those scans the whole table.
+  prIdx: index('agent_runs_pr_idx').on(t.prId),
+}));
 
 /** Whole trace of one run as a SINGLE jsonb document. */
 export const runTraces = pgTable('run_traces', {

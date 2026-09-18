@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import { Provider } from './knowledge.js';
+import { SeverityCounts } from './findings.js';
+import { CostSource } from './trace.js';
 
 /**
  * Platform / scaffolding DTOs owned by F1:
@@ -170,6 +172,15 @@ export const PrMeta = z.object({
   updated_at: z.string().nullish(),
   // Latest-review score (list endpoint only; null/absent until reviewed).
   score: z.number().int().nullish(),
+  // Total cost of EVERY agent run of this PR (list endpoint only; spec 001).
+  // Null/absent when no run of this PR carries a known price — rendered "—",
+  // never "$0.00". `estimate` when any contributing run was estimated.
+  cost_usd: z.number().nullish(),
+  cost_source: CostSource.nullish(),
+  // Per-severity finding tally across EVERY review run of this PR, dismissed
+  // findings excluded (list endpoint only; spec 002). Null/absent = never
+  // reviewed → rendered "—"; all-zero = reviewed and clean → rendered "0".
+  findings: SeverityCounts.nullish(),
 });
 export type PrMeta = z.infer<typeof PrMeta>;
 

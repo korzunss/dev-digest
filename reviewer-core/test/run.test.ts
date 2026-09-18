@@ -136,3 +136,74 @@ describe('reviewPullRequest (engine)', () => {
     expect(seen.every((s) => s === 'sess-abc')).toBe(true);
   });
 });
+
+/**
+ * Cost provenance (spec 001). The engine must carry BOTH the number and where
+ * it came from: a price OpenRouter reported and one we guessed from tokens look
+ * identical downstream otherwise, and the UI has to mark the guess.
+ */
+describe('reviewPullRequest — cost provenance', () => {
+  const clean = { verdict: 'approve', summary: 'ok', score: 100, findings: [] };
+
+  // Two files + a big enough diff so 'map-reduce' really makes one call per file.
+  const TWO_FILE_DIFF = [
+    'diff --git a/src/a.ts b/src/a.ts',
+    '--- a/src/a.ts',
+    '+++ b/src/a.ts',
+    '@@ -1,2 +1,3 @@',
+    ' const a = 1;',
+    '+const b = 2;',
+    ' export { a };',
+    'diff --git a/src/b.ts b/src/b.ts',
+    '--- a/src/b.ts',
+    '+++ b/src/b.ts',
+    '@@ -1,2 +1,3 @@',
+    ' const c = 3;',
+    '+const d = 4;',
+    ' export { c };',
+  ].join('\n');
+
+  it('single-pass: reports the provider\'s own source', async () => {
+    const diff = await new MockGitClient().diff();
+    const reported = await reviewPullRequest({
+      systemPrompt: 's',
+      model: 'm',
+      diff,
+      llm: new MockLLMProvider('openai', { structured: clean, cost: 0.002, costSource: 'api' }),
+    });
+    expect(reported.costUsd).toBe(0.002);
+    expect(reported.costSource).toBe('api');
+  });
+
+  it('map-reduce: one estimated chunk makes the whole run an estimate (worst-wins)', async () => {
+    const diff = await new MockGitClient({ diff: TWO_FILE_DIFF }).diff();
+    const outcome = await reviewPullRequest({
+      systemPrompt: 's',
+      model: 'm',
+      diff,
+      strategy: 'map-reduce',
+      llm: new MockLLMProvider('openai', {
+        structured: clean,
+        costPerCall: [
+          { cost: 0.001, source: 'api' },
+          { cost: 0.002, source: 'estimate' },
+        ],
+      }),
+    });
+    expect(outcome.mode).toBe('map-reduce');
+    expect(outcome.costUsd).toBeCloseTo(0.003, 10);
+    expect(outcome.costSource).toBe('estimate');
+  });
+
+  it('no cost ⇒ no source (a provenance without a number is noise)', async () => {
+    const diff = await new MockGitClient().diff();
+    const outcome = await reviewPullRequest({
+      systemPrompt: 's',
+      model: 'unknown/model',
+      diff,
+      llm: new MockLLMProvider('openai', { structured: clean, cost: null, costSource: null }),
+    });
+    expect(outcome.costUsd).toBeNull();
+    expect(outcome.costSource).toBeNull();
+  });
+});

@@ -208,6 +208,12 @@ d('A2 reviews + agents (Testcontainers pg)', () => {
     expect(run!.status).toBe('done');
     expect(run!.findingsCount).toBe(1);
     expect(run!.grounding).toBe('1/2 passed');
+    // …including the run's cost + its provenance (spec 001), which must also
+    // reach the trace document the drawer reads.
+    expect(run!.costUsd).toBeGreaterThan(0);
+    expect(run!.costSource).toBe('api');
+    expect(trace.stats.cost_usd).toBe(run!.costUsd);
+    expect(trace.stats.cost_source).toBe('api');
 
     await app.close();
   });

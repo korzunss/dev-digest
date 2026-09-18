@@ -5,6 +5,7 @@ import type {
   IssueMeta,
   PrReviewComment,
 } from './contracts/platform.js';
+import type { CostSource } from './contracts/trace.js';
 
 /**
  * Adapter interfaces. ALL external calls go behind these interfaces.
@@ -46,6 +47,12 @@ export interface CompletionResult {
   tokensIn: number;
   tokensOut: number;
   costUsd: number | null;
+  /**
+   * Whether `costUsd` was REPORTED by the provider or priced by us from token
+   * counts (spec 001). Only the provider that produced the number knows, so it
+   * is set there and never re-derived downstream. Undefined ⇒ unknown.
+   */
+  costSource?: CostSource;
 }
 
 /**
@@ -75,6 +82,8 @@ export interface StructuredResult<T> {
   tokensIn: number;
   tokensOut: number;
   costUsd: number | null;
+  /** See CompletionResult.costSource. Undefined ⇒ unknown. */
+  costSource?: CostSource;
   raw: string;
   attempts: number;
 }

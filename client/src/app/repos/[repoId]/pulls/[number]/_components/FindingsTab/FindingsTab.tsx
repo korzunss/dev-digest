@@ -6,8 +6,16 @@ import { RunStatus } from "../RunStatus";
 import { RunHistory } from "../RunHistory/RunHistory";
 import { ReviewRunAccordion } from "../ReviewRunAccordion";
 import { s } from "./styles";
-import type { FindingRecord, ReviewRecord, RunSummary, PrCommit } from "@devdigest/shared";
+import type {
+  FindingRecord,
+  ReviewRecord,
+  RunSummary,
+  PrCommit,
+  Severity,
+} from "@devdigest/shared";
 import type { UseMutationResult } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
+import { SEVERITY_META } from "@/lib/severity";
 
 interface FindingsTabProps {
   prId: string | null;
@@ -21,6 +29,11 @@ interface FindingsTabProps {
   /** owner/repo + head sha — used to deep-link a finding's file:line to GitHub. */
   repoFullName?: string | null;
   headSha?: string | null;
+  /** Severity filter from `?severity=` — null means "show everything". */
+  severity: Severity | null;
+  /** `?sevRun=` — when set, the filter applies to that run alone. */
+  sevRun: string | null;
+  onSelectSeverity: (severity: Severity | null, runId: string | null) => void;
   onOpenTrace: (id: string) => void;
   onDelete: (id: string) => void;
   onRunDone: () => void;
@@ -37,10 +50,14 @@ export function FindingsTab({
   cancelMutation,
   repoFullName,
   headSha,
+  severity,
+  sevRun,
+  onSelectSeverity,
   onOpenTrace,
   onDelete,
   onRunDone,
 }: FindingsTabProps) {
+  const t = useTranslations("prReview");
   const handleCancelAll = useCallback(() => {
     liveRunIds.forEach((id) => cancelMutation.mutate(id));
   }, [liveRunIds, cancelMutation]);
@@ -70,6 +87,65 @@ export function FindingsTab({
   const handleGoToReview = useCallback((runId: string) => {
     setTarget((p) => ({ runId, n: (p?.n ?? 0) + 1 }));
   }, []);
+
+  // The timeline's chips and its hover card both come from the reviews already
+  // on this page (spec 002) — no endpoint, no stored column, and one array
+  // behind both so the number and the list cannot drift apart.
+  const findingsByRun = React.useMemo(() => {
+    const m = new Map<string, FindingRecord[]>();
+    for (const review of runs) {
+      if (review.run_id) m.set(review.run_id, review.findings);
+    }
+    return m;
+  }, [runs]);
+
+  // A `sevRun` naming a run this PR doesn't have (stale link, hand-edited URL)
+  // degrades to a page-wide filter rather than silently filtering nothing.
+  const scopedRunId =
+    sevRun && runs.some((r) => r.run_id === sevRun) ? sevRun : null;
+  const pageFilter = severity != null && scopedRunId == null;
+
+  /** Clicking the level already active on that same run clears the filter. */
+  const handleSelectSeverity = useCallback(
+    (runId: string, level: Severity) => {
+      if (severity === level && scopedRunId === runId) {
+        onSelectSeverity(null, null);
+        return;
+      }
+      onSelectSeverity(level, runId);
+      handleGoToReview(runId);
+    },
+    [severity, scopedRunId, onSelectSeverity, handleGoToReview],
+  );
+
+  // With a page-wide filter on, a run with nothing at that level is noise —
+  // hide it, but say how many went. A run-scoped filter hides nothing.
+  const matchingRuns = pageFilter
+    ? runs.filter((r) => r.findings.some((f) => f.severity === severity && !f.dismissed_at))
+    : runs;
+  const hiddenRuns = runs.length - matchingRuns.length;
+
+  const filterBar = severity && (
+    <div style={s.filterBar}>
+      <span style={s.filterChip(SEVERITY_META[severity].color)}>
+        {scopedRunId
+          ? t("severity.showingOnlyRun", { severity: t(`severity.${SEVERITY_META[severity].labelKey}`) })
+          : t("severity.showingOnly", { severity: t(`severity.${SEVERITY_META[severity].labelKey}`) })}
+        <button
+          type="button"
+          aria-label={t("severity.clearFilter")}
+          title={t("severity.clearFilter")}
+          onClick={() => onSelectSeverity(null, null)}
+          style={s.filterClear}
+        >
+          <Icon.X size={12} />
+        </button>
+      </span>
+      {hiddenRuns > 0 && (
+        <span style={s.filterHint}>{t("severity.hiddenRuns", { count: hiddenRuns })}</span>
+      )}
+    </div>
+  );
 
   return (
     <section>
@@ -131,6 +207,10 @@ export function FindingsTab({
           <RunHistory
             runs={prRuns ?? []}
             commits={prCommits}
+            findingsByRun={findingsByRun}
+            severity={severity}
+            scopedRunId={scopedRunId}
+            onSelectSeverity={handleSelectSeverity}
             onOpenTrace={handleOpenTrace}
             onGoToReview={handleGoToReview}
             onDelete={handleDelete}
@@ -144,6 +224,7 @@ export function FindingsTab({
       >
         Review runs
       </SectionLabel>
+      {filterBar}
       {runs.length === 0 ? (
         reviewRunning || liveRunIds.length > 0 ? null : (
           <EmptyState
@@ -152,14 +233,20 @@ export function FindingsTab({
             body="Run a review to generate findings. Use Run Review ▾ above (run all enabled agents or a specific one)."
           />
         )
+      ) : matchingRuns.length === 0 ? (
+        <EmptyState icon="Filter" title="No findings match" body="No run of this PR found anything at that level." />
       ) : (
         prId &&
-        runs.map((review, i) => (
+        matchingRuns.map((review, i) => (
           <ReviewRunAccordion
             key={review.id}
             review={review}
             prId={prId}
-            defaultOpen={i === 0}
+            // A filtered view should show its findings, not ask for another
+            // click: every surviving run opens. Unfiltered, only the newest.
+            defaultOpen={pageFilter || i === 0}
+            // Scoped to one run ⇒ the others render untouched.
+            severity={scopedRunId == null || scopedRunId === review.run_id ? severity : null}
             repoFullName={repoFullName}
             headSha={headSha}
             targetRunId={target?.runId ?? null}

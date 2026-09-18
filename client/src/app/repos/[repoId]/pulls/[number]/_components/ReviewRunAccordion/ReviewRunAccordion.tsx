@@ -7,7 +7,7 @@
 
 import React from "react";
 import { Icon, Badge } from "@devdigest/ui";
-import type { ReviewRecord, Verdict } from "@devdigest/shared";
+import type { ReviewRecord, Severity, Verdict } from "@devdigest/shared";
 import { FindingsPanel } from "../FindingsPanel";
 import { VerdictBanner } from "../VerdictBanner";
 import { useDeleteReview } from "../../../../../../../lib/hooks/reviews";
@@ -27,6 +27,7 @@ export function ReviewRunAccordion({
   review,
   prId,
   defaultOpen = false,
+  severity = null,
   repoFullName,
   headSha,
   targetRunId = null,
@@ -35,6 +36,8 @@ export function ReviewRunAccordion({
   review: ReviewRecord;
   prId: string;
   defaultOpen?: boolean;
+  /** Show only this level inside the run (spec 002); null = everything. */
+  severity?: Severity | null;
   repoFullName?: string | null;
   headSha?: string | null;
   /** When this matches review.run_id, the accordion opens and scrolls into view
@@ -150,6 +153,7 @@ export function ReviewRunAccordion({
           <FindingsPanel
             findings={findings}
             prId={prId}
+            severity={severity}
             repoFullName={repoFullName}
             headSha={headSha}
           />

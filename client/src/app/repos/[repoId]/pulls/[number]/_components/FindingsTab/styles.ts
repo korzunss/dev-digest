@@ -45,4 +45,37 @@ export const s = {
     display: "flex",
     gap: 8,
   } satisfies CSSProperties,
+  /* Active severity filter — one bar for the whole tab, not one per run. */
+  filterBar: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    margin: "2px 0 12px",
+  } satisfies CSSProperties,
+  filterChip: (color: string): CSSProperties => ({
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    padding: "3px 6px 3px 10px",
+    borderRadius: 999,
+    border: `1px solid ${color}`,
+    color,
+    fontSize: 12,
+    textTransform: "uppercase",
+    letterSpacing: "0.04em",
+  }),
+  filterClear: {
+    display: "inline-flex",
+    alignItems: "center",
+    padding: 2,
+    border: "none",
+    borderRadius: 999,
+    background: "transparent",
+    color: "inherit",
+    cursor: "pointer",
+  } satisfies CSSProperties,
+  filterHint: {
+    fontSize: 12,
+    color: "var(--text-muted)",
+  } satisfies CSSProperties,
 } as const;

@@ -1,13 +1,24 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
-import { and, desc, eq, inArray } from 'drizzle-orm';
-import type { PrMeta, PrDetail, GitHubClient, PrReviewComment } from '@devdigest/shared';
+import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
+import type {
+  PrMeta,
+  PrDetail,
+  GitHubClient,
+  PrReviewComment,
+  SeverityCounts,
+} from '@devdigest/shared';
 import { PrCommentInput } from '@devdigest/shared';
 import * as t from '../../db/schema.js';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
 import { AppError, NotFoundError } from '../../platform/errors.js';
-import { deriveReviewStatus } from './status.js';
+import {
+  deriveReviewStatus,
+  rollupCost,
+  rollupSeverities,
+  type CostRollup,
+} from './status.js';
 
 /**
  * F1 — pulls module. PR import via Octokit (list + per-PR detail).
@@ -113,8 +124,8 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
 
     // Latest-review SCORE per PR for the list's score ring. Computed on read
     // from reviews (no FK denorm); the list is small, so one IN-query + JS
-    // grouping is cheap. (The per-severity FINDINGS breakdown is intentionally
-    // not surfaced on the list — findings live on the PR detail page.)
+    // grouping is cheap. This map doubles as "has this PR ever been reviewed",
+    // which is what decides null vs all-zero in the FINDINGS rollup below.
     const prIds = rows.map((r) => r.id);
     const latestReviewByPr = new Map<string, { score: number | null }>();
     if (prIds.length > 0) {
@@ -129,9 +140,66 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       }
     }
 
+    // Total run cost per PR for the list's COST column (spec 001). Same shape as
+    // the score rollup above — one IN-query, grouped in JS — because the
+    // worst-wins provenance rule needs the same pass an SQL SUM() couldn't do.
+    const costByPr = new Map<string, CostRollup>();
+    if (prIds.length > 0) {
+      const runRows = await container.db
+        .select({
+          prId: t.agentRuns.prId,
+          costUsd: t.agentRuns.costUsd,
+          costSource: t.agentRuns.costSource,
+        })
+        .from(t.agentRuns)
+        .where(inArray(t.agentRuns.prId, prIds));
+      const byPr = new Map<string, { costUsd: number | null; costSource: string | null }[]>();
+      for (const run of runRows) {
+        if (!run.prId) continue;
+        const list = byPr.get(run.prId) ?? [];
+        list.push({ costUsd: run.costUsd, costSource: run.costSource });
+        byPr.set(run.prId, list);
+      }
+      for (const [prId, runs] of byPr) costByPr.set(prId, rollupCost(runs));
+    }
+
+    // Per-severity FINDINGS breakdown per PR for the list's FINDINGS column
+    // (spec 002). Counts EVERY review run of the PR, not just the latest, and
+    // skips dismissed findings so the column falls as the user triages — which
+    // is also why it can read lower than the sum of the PR timeline's rows.
+    // The join needs `findings_review_idx`; without it this scans every finding
+    // in the workspace on every list render.
+    const severityByPr = new Map<string, SeverityCounts>();
+    if (prIds.length > 0) {
+      const findingRows = await container.db
+        .select({ prId: t.reviews.prId, severity: t.findings.severity })
+        .from(t.findings)
+        .innerJoin(t.reviews, eq(t.findings.reviewId, t.reviews.id))
+        .where(
+          and(
+            inArray(t.reviews.prId, prIds),
+            eq(t.reviews.kind, 'review'),
+            isNull(t.findings.dismissedAt),
+          ),
+        );
+      const byPr = new Map<string, { severity: string }[]>();
+      for (const f of findingRows) {
+        const list = byPr.get(f.prId) ?? [];
+        list.push({ severity: f.severity });
+        byPr.set(f.prId, list);
+      }
+      // A reviewed PR with no surviving finding must still get all-zero (a
+      // rendered "0"), so seed from the reviews map rather than from the rows
+      // this query happened to return — `null` is reserved for "never reviewed".
+      for (const prId of latestReviewByPr.keys()) {
+        severityByPr.set(prId, rollupSeverities(byPr.get(prId) ?? []));
+      }
+    }
+
     const now = Date.now();
     return rows.map((r) => {
       const review = latestReviewByPr.get(r.id);
+      const cost = costByPr.get(r.id);
       return {
         id: r.id,
         number: r.number,
@@ -153,6 +221,9 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
         opened_at: r.openedAt?.toISOString() ?? null,
         updated_at: r.updatedAt?.toISOString() ?? null,
         score: review ? review.score : null,
+        cost_usd: cost?.cost_usd ?? null,
+        cost_source: cost?.cost_source ?? null,
+        findings: severityByPr.get(r.id) ?? null,
       };
     });
   });
