@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { Provider } from './knowledge.js';
+import { SeverityCounts } from './findings.js';
 import { CostSource } from './trace.js';
 
 /**
@@ -176,6 +177,10 @@ export const PrMeta = z.object({
   // never "$0.00". `estimate` when any contributing run was estimated.
   cost_usd: z.number().nullish(),
   cost_source: CostSource.nullish(),
+  // Per-severity finding tally across EVERY review run of this PR, dismissed
+  // findings excluded (list endpoint only; spec 002). Null/absent = never
+  // reviewed → rendered "—"; all-zero = reviewed and clean → rendered "0".
+  findings: SeverityCounts.nullish(),
 });
 export type PrMeta = z.infer<typeof PrMeta>;
 

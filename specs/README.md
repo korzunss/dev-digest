@@ -41,3 +41,4 @@ Observable checks. What must be true for this to be done.
 | Spec | Status | Packages |
 |------|--------|----------|
 | [001 — Run cost badge](001-run-cost-badge.md) | done | reviewer-core, server, client |
+| [002 — Severity findings counter](002-severity-findings-counter.md) | done | server, client |

@@ -4,12 +4,20 @@ import type { CSSProperties } from "react";
 export const s = {
   card: (focused: boolean, sevColor: string, muted: boolean): CSSProperties => ({
     borderRadius: 8,
-    // All-longhand (never mix `border` shorthand with `borderLeft` — React warns
-    // about updating shorthand + non-shorthand on the same rerender).
+    // PER-SIDE longhand, all four. `borderColor`/`borderWidth` are themselves
+    // shorthands for the four sides, so pairing either with `borderLeftColor`
+    // still trips React's "don't mix shorthand and non-shorthand" warning the
+    // moment the shorthand CHANGES on a mounted node — which is what focus
+    // moving between cards (j/k, or the severity filter reordering the list)
+    // does. Only the accent side differs; the other three carry the same value.
     borderStyle: "solid",
-    borderColor: focused ? sevColor : "var(--border)",
-    borderWidth: 1,
+    borderTopWidth: 1,
+    borderRightWidth: 1,
+    borderBottomWidth: 1,
     borderLeftWidth: 3,
+    borderTopColor: focused ? sevColor : "var(--border)",
+    borderRightColor: focused ? sevColor : "var(--border)",
+    borderBottomColor: focused ? sevColor : "var(--border)",
     borderLeftColor: sevColor,
     background: "var(--bg-elevated)",
     overflow: "hidden",

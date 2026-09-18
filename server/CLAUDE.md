@@ -45,6 +45,8 @@ src/prompts/          built-in agent system prompts
   `GITHUB_PAT` is a fallback.
 - **The DB schema already contains every table**, including ones no starter code
   writes to. An empty table is expected, not a bug.
+- **A FK column is not indexed.** Filtering on one (`WHERE child.parent_id = …`)
+  scans the table until you add an `index(...)` to the schema callback yourself.
 - The server boots fine with **zero** API keys — `loadConfig` marks every secret
   optional, and keys can arrive at runtime via Settings.
 

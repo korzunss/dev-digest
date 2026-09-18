@@ -56,7 +56,13 @@ export const findings = pgTable('findings', {
   trifectaComponents: jsonb('trifecta_components').$type<string[]>(),
   acceptedAt: timestamp('accepted_at', { withTimezone: true }),
   dismissedAt: timestamp('dismissed_at', { withTimezone: true }),
-});
+}, (t) => ({
+  // Findings are only ever read as "the findings of these reviews" — the PR
+  // detail, and now the list's severity rollup (spec 002). `review_id` is a FK,
+  // and a FK column carries no index of its own, so each of those scanned the
+  // whole table. Same fix as agent_runs_pr_idx / reviews_pr_idx.
+  reviewIdx: index('findings_review_idx').on(t.reviewId),
+}));
 
 export const prIntent = pgTable('pr_intent', {
   prId: uuid('pr_id')

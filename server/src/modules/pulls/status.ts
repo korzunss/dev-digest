@@ -1,4 +1,4 @@
-import type { CostSource, PrStatus } from '@devdigest/shared';
+import type { CostSource, PrStatus, SeverityCounts } from '@devdigest/shared';
 
 /**
  * PR-list rollup helpers (pure — no DB / `this`, so they unit-test cleanly).
@@ -13,13 +13,14 @@ import type { CostSource, PrStatus } from '@devdigest/shared';
 /** Open PRs whose current head was reviewed but untouched this long read "stale". */
 export const STALE_DAYS = 7;
 
-export interface SeverityCounts {
-  critical: number;
-  warning: number;
-  suggestion: number;
-}
-
-/** Tally finding severities (CRITICAL / WARNING / SUGGESTION) for one review. */
+/**
+ * Tally finding severities (CRITICAL / WARNING / SUGGESTION) for one PR.
+ *
+ * The shape is on the wire as `PrMeta.findings` (spec 002), so the type comes
+ * from `shared` rather than being declared here — one definition, not two.
+ * Callers decide null-vs-zero: an empty row set tallies to all-zero, and only
+ * the caller knows whether that means "reviewed and clean" or "never reviewed".
+ */
 export function rollupSeverities(rows: { severity: string }[]): SeverityCounts {
   const c: SeverityCounts = { critical: 0, warning: 0, suggestion: 0 };
   for (const r of rows) {
