@@ -24,7 +24,7 @@ The test: **if it would be obvious to anyone reading the code, don't write it.**
 | ✗ Noise | ✓ Entry |
 |---|---|
 | "Grounding can drop findings." | "Findings vanish between the model response and the stored review: `groundFindings()` drops any finding not citing a line present in the diff, and the score is recomputed from the survivors. Inspect `groundingSummary()` before suspecting the model or the transport. — `reviewer-core/src/grounding.ts`" |
-| "Be careful with the test setup." | "A DB-backed test without the `.it.test.ts` suffix is silently skipped by the CI split (`vitest run --exclude '**/*.it.test.ts'`), so it passes locally and never runs in CI. Any test touching Postgres must carry that suffix. — `server/CLAUDE.md`, `server/test/helpers/pg.ts`" |
+| "Be careful with the test setup." | "A DB-backed test without the `.it.test.ts` suffix is silently skipped by the CI split (`vitest run --exclude '**/*.it.test.ts'`), so it passes locally and never runs in CI. Any test touching Postgres must carry that suffix. — `server/AGENTS.md`, `server/test/helpers/pg.ts`" |
 | "Watch out for package managers." | "`npm install` in `client/` or `server/` rewrites a pnpm lockfile and breaks the next install. `client/` and `server/` are pnpm; `reviewer-core/` and `e2e/` are npm. Match the lockfile in the folder." |
 | "E2E tests are flaky." | "Flows 02/04/05 pass in CI and fail locally: they follow the home redirect to the *first* repo and assume the seeded demo repo is the only one. Run `./scripts/e2e.sh` (isolated, freshly seeded). Do **not** `docker compose down -v` — that deletes `devdigest_pgdata` and every imported repo." |
 
@@ -60,7 +60,7 @@ the mechanism, a named file or command, and a decision the reader can act on.
 - **Conflicts get resolved, not accumulated.** Two entries that contradict each
   other are worse than neither: append a third that states which one holds now.
 - **Promotion.** A rule everyone must follow becomes one line under `Gotchas` in
-  that package's `CLAUDE.md`; the full write-up stays here.
+  that package's `AGENTS.md`; the full write-up stays here.
 - **Size.** Past roughly 200 entries in one file, signal drops. Prune on a
   quarterly pass: drop what the code no longer permits, merge duplicates, and
   delete Session Notes whose lesson was already promoted.

@@ -3,7 +3,7 @@
 Append-only. Things that cost someone time in the server package. Repo-wide
 findings go in [`../INSIGHTS.md`](../INSIGHTS.md), which carries the entry format,
 the section guide and the promotion rule (a standing rule becomes one line under
-`Gotchas` in `server/CLAUDE.md`). The `engineering-insights` skill writes here.
+`Gotchas` in `server/AGENTS.md`). The `engineering-insights` skill writes here.
 
 ```md
 ### YYYY-MM-DD — short title

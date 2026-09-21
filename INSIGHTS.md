@@ -37,8 +37,8 @@ order. Entries go newest-first **within** their section.
 gets a new, dated correction naming what changed.
 
 **Promotion.** When an entry hardens into a standing rule, promote a **one-line**
-version into the `Gotchas` section of the relevant `CLAUDE.md` and leave the full
-write-up here. That keeps `CLAUDE.md` short without losing the reasoning.
+version into the `Gotchas` section of the relevant `AGENTS.md` and leave the full
+write-up here. That keeps `AGENTS.md` short without losing the reasoning.
 
 ---
 
