@@ -26,6 +26,11 @@ it holds **executable** agent-browser flows (`*.flow.json`) — the runner globs
 that directory. Prose belongs in `docs/`, not here. Files that don't end in
 `.flow.json` are ignored by the runner, so this file's sibling `README.md` is safe.
 
+**The `NN-` prefix is the run order.** `run.ts` reads the directory, keeps
+`*.flow.json`, and `.sort()`s by filename — and every flow shares one browser
+session, so order is behavior, not decoration. A flow added without a number
+sorts after the numbered ones; name new flows `09-…`, `10-…` to place them.
+
 ## Conventions (non-default)
 
 - **Deterministic locators only** — `--url`, `--text`, `find role|text|label`.

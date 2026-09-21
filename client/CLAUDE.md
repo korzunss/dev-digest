@@ -30,6 +30,13 @@ messages/<locale>/*.json     next-intl, one file per feature namespace
   `messages/en/<namespace>.json`. Don't hardcode copy in JSX.
 - **Import aliases:** `@/*` → `src/*`, plus `@devdigest/ui` and
   `@devdigest/shared`. Prefer these over deep relative paths.
+- **Two folder cases, on purpose.** Shared chrome in `src/components/` uses
+  `kebab-case/` directories (`app-shell/`, `run-cost-badge/`); colocated feature
+  components under `_components/` use `PascalCase/` (`AgentCard/`, `FilterBar/`).
+  Both are followed everywhere today — picking the wrong one breaks nothing at
+  build time, which is exactly why it drifts. Inside either: `<Name>.tsx` +
+  `<Name>.test.tsx` + an `index.ts` barrel, with `styles.ts` / `helpers.ts` /
+  `constants.ts` lowercase beside them.
 
 ## Gotchas
 
