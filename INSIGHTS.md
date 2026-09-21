@@ -83,7 +83,26 @@ that path; it's runtime data, and the next resync overwrites it.
 
 ## Tool & Library Notes
 
-_Nothing yet._
+### 2026-09-21 — `git stash pop` silently un-stages a symlink, and the working tree hides it
+
+**Symptom:** mid-way through staging the `CLAUDE.md` → `AGENTS.md` rename, a
+`git stash -u` / `git clone .` / `git stash pop` round-trip left `ls -la` showing
+a correct `CLAUDE.md -> AGENTS.md` symlink, while `git ls-files -s CLAUDE.md` had
+reverted from `120000 47dc3e3` to `100644 02ee35f` — the *old regular file*.
+`git status` reported ` T` (unstaged type change), and `git checkout-index -a
+--prefix=…` then wrote plausible-looking but stale regular files, so the
+verification step "passed" against the wrong content.
+**Cause:** `git stash pop` without `--index` restores everything as *unstaged*.
+For an ordinary content edit that is invisible; for a mode/type change
+(`100644` → `120000`) it means the index keeps HEAD's blob, and only the
+working tree carries the symlink.
+**Rule:** never use `git stash` to snapshot a tree mid-rename — clone from a
+`HEAD` that predates the work instead, or just commit first. After *any* stash
+round-trip in a change that stages symlinks or mode bits, verify with
+`git ls-files -s`, not with `ls -la` or a diff of file contents: the working
+tree looks right in exactly the case the index is wrong.
+**Evidence:** `git ls-files -s CLAUDE.md` · `git status --short` → ` T CLAUDE.md`
+· the five committed links in `019925b`
 
 ## Recurring Errors & Fixes
 
