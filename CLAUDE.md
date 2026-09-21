@@ -32,6 +32,21 @@ that package's `CLAUDE.md`, which loads automatically when you work in its folde
   what makes it mock-testable; breaking it breaks the whole test strategy.
 - **Migrations are never applied on boot.** Run `cd server && pnpm db:migrate`.
 
+## Naming
+
+- Files and folders are `kebab-case` (`price-book.ts`, `repo-intel/`,
+  `run-cost-badge/`). React component *files* are the exception — see
+  `client/CLAUDE.md`, which also covers the two folder cases the client uses.
+- **Tests carry their tier in the filename.** `<topic>.test.ts` = unit ·
+  `<topic>.it.test.ts` = integration (needs Postgres). The `.it` suffix is what
+  the CI split greps on — misname it and the test runs in the wrong job.
+- Server module = `src/modules/<kebab>/` with `routes.ts` · `service.ts` ·
+  `repository.ts` beside optional `helpers.ts` / `constants.ts`.
+- **DB names split by layer:** `camelCase` in TypeScript, `snake_case` in SQL —
+  `workspaceId: uuid('workspace_id')`. Indexes are `<table>_<scope>_idx`.
+- e2e flows are `specs/NN-name.flow.json`; the number is the run order, not decor
+  (`e2e/CLAUDE.md`).
+
 ## Session protocol
 
 - **First step of any task**, before planning, searching or editing: read the
@@ -51,6 +66,13 @@ that package's `CLAUDE.md`, which loads automatically when you work in its folde
   every search/grep**: it contains full copies of other repos (and of this one),
   so matches there are noise.
 - `**/.env` — local secrets.
+- **Lock files — never hand-edit.** They are generated and carry integrity
+  hashes. Change `package.json`, then reinstall with that package's own manager
+  (`client/`+`server/` → pnpm, `reviewer-core/`+`e2e/` → npm). Running the other
+  manager leaves a second, conflicting lock file next to the real one — nothing
+  in CI or `.gitignore` catches that.
+- `skills-lock.json` — generated; holds a sha256 `computedHash` per external
+  skill. Editing it by hand invalidates the hash.
 
 ## Read on demand
 
