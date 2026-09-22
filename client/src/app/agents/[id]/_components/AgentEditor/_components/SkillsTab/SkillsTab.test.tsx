@@ -4,12 +4,21 @@ import { NextIntlClientProvider } from "next-intl";
 import type { Agent, Skill } from "@devdigest/shared";
 import agentMessages from "../../../../../../../../messages/en/agents.json";
 import skillMessages from "../../../../../../../../messages/en/skills.json";
+import commonMessages from "../../../../../../../../messages/en/common.json";
 import { attachedIds, moveId, orderedRows, toggleAttachment } from "./helpers";
 
 const mutate = vi.fn();
 
+// Query state is driven per test — the tab has a loading and an error branch
+// besides the list. `refetch` is shared, or the retry button is unassertable.
+const refetch = vi.fn();
+const skillsState: { data: Skill[] | undefined; isLoading: boolean; isError: boolean } = {
+  data: undefined,
+  isLoading: false,
+  isError: false,
+};
 vi.mock("../../../../../../../lib/hooks/skills", () => ({
-  useSkills: () => ({ data: SKILLS, isLoading: false, isError: false, refetch: vi.fn() }),
+  useSkills: () => ({ ...skillsState, refetch }),
   useAgentSkills: () => ({
     data: [
       { agent_id: "ag1", skill_id: "sk2", order: 0 },
@@ -75,9 +84,16 @@ const AGENT: Agent = {
 afterEach(() => {
   cleanup();
   mutate.mockClear();
+  refetch.mockReset();
+  skillsState.data = SKILLS;
+  skillsState.isLoading = false;
+  skillsState.isError = false;
 });
 
 function renderTab() {
+  skillsState.data = SKILLS;
+  skillsState.isLoading = false;
+  skillsState.isError = false;
   return render(
     <NextIntlClientProvider
       locale="en"
@@ -155,5 +171,52 @@ describe("SkillsTab", () => {
   it("marks a globally disabled skill so its absence from the prompt is explicable", () => {
     renderTab();
     expect(screen.getByText("Disabled")).toBeInTheDocument();
+  });
+});
+
+describe("SkillsTab data states", () => {
+  function renderWith(state: Partial<typeof skillsState>) {
+    Object.assign(skillsState, { data: SKILLS, isLoading: false, isError: false }, state);
+    return render(
+      <NextIntlClientProvider
+        locale="en"
+        messages={{ agents: agentMessages, skills: skillMessages, common: commonMessages }}
+      >
+        <SkillsTab agent={AGENT} />
+      </NextIntlClientProvider>,
+    );
+  }
+
+  it("shows a placeholder while the library loads", () => {
+    const { container } = renderWith({ isLoading: true, data: undefined });
+    expect(container.querySelectorAll(".skeleton").length).toBeGreaterThan(0);
+    // Loading must not read as an agent with nothing to attach.
+    expect(screen.queryByText(skillMessages.page.empty.title)).not.toBeInTheDocument();
+  });
+
+  it("reports a failed load and retries from the button", () => {
+    renderWith({ isError: true, data: undefined });
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+    expect(screen.getByText(skillMessages.page.loadError)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("Retry"));
+    expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("invites you to create one when the workspace has no skills", () => {
+    renderWith({ data: [] });
+    expect(screen.getByText(skillMessages.page.empty.title)).toBeInTheDocument();
+  });
+
+  it("does not claim the workspace is empty when a filter matched nothing", () => {
+    // The same two nothings as everywhere else: a search that found no skill
+    // is not an absence of skills, and only the second is worth acting on.
+    renderWith({});
+    fireEvent.change(screen.getByPlaceholderText(agentMessages.skills.filterPlaceholder), {
+      target: { value: "nothing-matches-this" },
+    });
+
+    expect(screen.getByText(commonMessages.states.empty)).toBeInTheDocument();
+    expect(screen.queryByText(skillMessages.page.empty.title)).not.toBeInTheDocument();
   });
 });

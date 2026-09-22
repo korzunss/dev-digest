@@ -18,6 +18,7 @@ import { s } from "./styles";
 export function SkillsTab({ agent }: { agent: Agent }) {
   const t = useTranslations("agents");
   const ts = useTranslations("skills");
+  const tc = useTranslations("common");
   const { data: skills, isLoading, isError, refetch } = useSkills();
   const { data: links } = useAgentSkills(agent.id);
   const setSkills = useSetAgentSkills();
@@ -68,7 +69,12 @@ export function SkillsTab({ agent }: { agent: Agent }) {
       <div style={s.hint}>{t("skills.orderHint")}</div>
 
       {rows.length === 0 ? (
-        <div style={s.empty}>{ts("page.empty.title")}</div>
+        // Two different nothings. A filter that matched no skill is not a
+        // workspace without any, and only the second should read as an
+        // invitation to create one.
+        <div style={s.empty}>
+          {(skills ?? []).length === 0 ? ts("page.empty.title") : tc("states.empty")}
+        </div>
       ) : (
         <div style={s.list}>
           {rows.map((skill) => {
