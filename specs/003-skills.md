@@ -110,6 +110,20 @@ A foreign skill is foreign instructions inside your agent's prompt. The only
 thing between the two is someone reading the text before flipping the switch —
 which is exactly why the preview step is mandatory rather than convenient.
 
+Note what this does NOT excuse. The body is trusted because a person vetted it;
+the **name** is not an instruction at all, and it is rendered in a structural
+position (`### Skill: {name}`). It is flattened to a single line before it goes
+in, so a name carrying newlines cannot forge a section boundary in the user
+message. The rule generalises: content the feature exists to deliver goes in
+verbatim, metadata around it is normalised to the shape the prompt assumes.
+
+Two structural facts hold regardless of any of this, and are worth stating
+because a reader may assume otherwise: a skill's **description never reaches a
+model at all** — it is the library's interface, not the agent's — and skills and
+documents are assembled into the **user** message. The system message is the
+agent's own prompt plus the injection guard, and nothing a skill or a document
+carries can reach it.
+
 ### Import: two phases, no temporary state
 
 ```

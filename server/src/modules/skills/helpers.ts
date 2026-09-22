@@ -65,6 +65,24 @@ export function isBodyChange(existing: Pick<SkillRow, 'body'>, patch: { body?: s
   return patch.body !== undefined && patch.body !== existing.body;
 }
 
+/**
+ * One skill's block as it appears in the assembled prompt.
+ *
+ * The BODY goes in verbatim: it is the instruction the skill exists to deliver,
+ * and the gate on it is human vetting (an imported skill lands disabled), not
+ * escaping — wrapping it as untrusted would tell the model to ignore it.
+ *
+ * The NAME is different. It is metadata rendered in a STRUCTURAL position, so
+ * it is flattened to one line first: a name carrying newlines could otherwise
+ * forge a section boundary inside the user message — a second `## …` heading,
+ * or something shaped like a delimiter — and change what the model believes
+ * the message is made of. Costs nothing, and keeps the block's shape a
+ * property of the code rather than of whatever someone typed in a name field.
+ */
+export function renderSkillBlock(name: string, body: string): string {
+  return `### Skill: ${name.replace(/\s+/g, ' ').trim()}\n\n${body}`;
+}
+
 // ---- Import parsing -------------------------------------------------------
 
 /** What a markdown skill file yields before it becomes a row. */

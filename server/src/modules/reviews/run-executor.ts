@@ -12,6 +12,7 @@ import { loadDiff } from './diff-loader.js';
 // The path guard is a pure function owned by the context module; importing it
 // keeps ONE definition of "which files may be read out of a clone".
 import { resolveDocPath } from '../context/helpers.js';
+import { renderSkillBlock } from '../skills/helpers.js';
 import { MAX_DOC_BYTES } from '../context/constants.js';
 
 /** Thrown by a run when the user cancels it mid-flight (between map files). */
@@ -409,7 +410,7 @@ export class ReviewRunExecutor {
       blocks: enabled.map((l, i) => ({
         skillId: l.skill.id,
         order: i,
-        body: `### Skill: ${l.skill.name}\n\n${l.skill.body}`,
+        body: renderSkillBlock(l.skill.name, l.skill.body),
       })),
     };
   }
