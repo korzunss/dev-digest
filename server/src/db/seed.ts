@@ -6,7 +6,10 @@ import {
   GENERAL_REVIEWER_PROMPT,
   SECURITY_REVIEWER_PROMPT,
   PERFORMANCE_REVIEWER_PROMPT,
+  TEST_QUALITY_REVIEWER_PROMPT,
+  API_CONTRACT_REVIEWER_PROMPT,
 } from './seed-prompts.js';
+import { SEED_SKILLS, SEED_AGENT_SKILLS } from './seed-skills.js';
 
 /** Default provider/model for the built-in reviewer agents. */
 const DEFAULT_PROVIDER = 'openrouter' as const;
@@ -211,6 +214,28 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
       version: 1,
       createdBy: userId,
     },
+    {
+      workspaceId,
+      name: 'Test Quality Reviewer',
+      description: 'Checks the tests: uncovered branches, missing corner cases, over-mocking, flakes.',
+      provider: DEFAULT_PROVIDER,
+      model: DEFAULT_MODEL,
+      systemPrompt: TEST_QUALITY_REVIEWER_PROMPT,
+      enabled: true,
+      version: 1,
+      createdBy: userId,
+    },
+    {
+      workspaceId,
+      name: 'API Contract Reviewer',
+      description: 'Catches breaking changes to routes, shared schemas, and exported signatures.',
+      provider: DEFAULT_PROVIDER,
+      model: DEFAULT_MODEL,
+      systemPrompt: API_CONTRACT_REVIEWER_PROMPT,
+      enabled: true,
+      version: 1,
+      createdBy: userId,
+    },
   ];
   for (const a of seedAgents) {
     const [existing] = await db
@@ -218,6 +243,65 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
       .from(t.agents)
       .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.name, a.name)));
     if (!existing) await db.insert(t.agents).values(a);
+  }
+
+  // ---- demo skills + their agent attachments ----
+  // Idempotent by (workspace, name), like the agents above: re-seeding an
+  // existing workspace must not duplicate a skill or reshuffle an attachment
+  // someone changed in the UI.
+  for (const sk of SEED_SKILLS) {
+    const [existing] = await db
+      .select()
+      .from(t.skills)
+      .where(and(eq(t.skills.workspaceId, workspaceId), eq(t.skills.name, sk.name)));
+    if (existing) continue;
+    const [row] = await db
+      .insert(t.skills)
+      .values({
+        workspaceId,
+        name: sk.name,
+        description: sk.description,
+        type: sk.type,
+        // Written here, so no vetting gate — an IMPORTED skill is the one that
+        // lands disabled.
+        source: 'manual',
+        body: sk.body,
+        enabled: true,
+        version: 1,
+      })
+      .returning();
+    await db.insert(t.skillVersions).values({
+      skillId: row!.id,
+      version: 1,
+      body: sk.body,
+    });
+  }
+
+  const skillIdByName = new Map(
+    (
+      await db
+        .select({ id: t.skills.id, name: t.skills.name })
+        .from(t.skills)
+        .where(eq(t.skills.workspaceId, workspaceId))
+    ).map((r) => [r.name, r.id]),
+  );
+
+  for (const [agentName, skillNames] of Object.entries(SEED_AGENT_SKILLS)) {
+    const [agent] = await db
+      .select()
+      .from(t.agents)
+      .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.name, agentName)));
+    if (!agent) continue;
+    const [alreadyLinked] = await db
+      .select({ agentId: t.agentSkills.agentId })
+      .from(t.agentSkills)
+      .where(eq(t.agentSkills.agentId, agent.id));
+    if (alreadyLinked) continue;
+
+    const values = skillNames
+      .map((name, i) => ({ agentId: agent.id, skillId: skillIdByName.get(name), order: i }))
+      .filter((v): v is { agentId: string; skillId: string; order: number } => !!v.skillId);
+    if (values.length > 0) await db.insert(t.agentSkills).values(values);
   }
 
   return { workspaceId, userId };

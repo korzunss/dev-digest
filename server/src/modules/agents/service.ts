@@ -9,6 +9,7 @@ import type {
   ReviewStrategy,
 } from '@devdigest/shared';
 import { AgentsRepository } from './repository.js';
+import { ValidationError } from '../../platform/errors.js';
 import { toAgentDto, toAgentVersionDto } from './helpers.js';
 
 /**
@@ -57,7 +58,9 @@ export class AgentsService {
 
   async list(workspaceId: string): Promise<Agent[]> {
     const rows = await this.repo.list(workspaceId);
-    return rows.map(toAgentDto);
+    // One extra query for the page, not one per card.
+    const counts = await this.repo.skillCounts(rows.map((r) => r.id));
+    return rows.map((row) => ({ ...toAgentDto(row), skill_count: counts.get(row.id) ?? 0 }));
   }
 
   async get(workspaceId: string, id: string): Promise<Agent | undefined> {
@@ -152,6 +155,7 @@ export class AgentsService {
   ): Promise<AgentSkillLink[] | undefined> {
     const agent = await this.repo.getById(workspaceId, agentId);
     if (!agent) return undefined;
+    await this.assertSkillsInWorkspace(workspaceId, skillIds);
     await this.repo.setSkills(agentId, skillIds);
     return this.skillLinks(agentId);
   }
@@ -165,10 +169,29 @@ export class AgentsService {
   ): Promise<AgentSkillLink[] | undefined> {
     const agent = await this.repo.getById(workspaceId, agentId);
     if (!agent) return undefined;
+    await this.assertSkillsInWorkspace(workspaceId, [skillId]);
     const existing = await this.repo.linkedSkills(agentId);
     const resolvedOrder = order ?? existing.length;
     await this.repo.linkSkill(agentId, skillId, resolvedOrder);
     return this.skillLinks(agentId);
+  }
+
+  /**
+   * Reject skill ids that don't belong to this workspace.
+   *
+   * Checking the AGENT is not enough: `agent_skills` has a foreign key to
+   * `skills` but no notion of a tenant, so without this a caller could attach
+   * another workspace's skill — and its body would then be read into this
+   * workspace's prompts. Unknown ids are rejected by the same check (a 422
+   * beats the foreign-key 500 they used to produce).
+   */
+  private async assertSkillsInWorkspace(workspaceId: string, skillIds: string[]): Promise<void> {
+    if (skillIds.length === 0) return;
+    const found = new Set(await this.container.skillsRepo.idsInWorkspace(workspaceId, skillIds));
+    const foreign = [...new Set(skillIds)].filter((id) => !found.has(id));
+    if (foreign.length > 0) {
+      throw new ValidationError('Unknown skill for this workspace', { skill_ids: foreign });
+    }
   }
 
   /**

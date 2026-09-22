@@ -45,6 +45,29 @@ swallow clicks meant for the row underneath.
 
 ## Tool & Library Notes
 
+### 2026-09-22 — the `useSearchParams`/`Suspense` rule only bites on STATIC routes
+
+**Symptom:** the codebase looks inconsistent about a build-breaking rule.
+`skills/page.tsx` wrapped its view in `<Suspense>` with a comment saying every
+search-param consumer does, while `agents/[id]/page.tsx` calls
+`useSearchParams()` at the top of a `"use client"` page with no boundary at all
+— and `pnpm build` is green on both.
+**Cause:** Next only fails the build when it tries to PRERENDER the page.
+`/agents/[id]` and `/skills/[id]` are dynamic (`ƒ` in the build table) because a
+`[param]` route with no `generateStaticParams` is never prerendered, so the
+missing boundary is never exercised. `/skills` and `/agents` are static (`○`) and
+are, so there the same code aborts the build.
+**Rule:** read the `○`/`ƒ` column of the `pnpm build` route table before
+concluding a page is safe. Add the boundary on every page that reads
+`useSearchParams` regardless — a route flips from `ƒ` to `○` the day someone
+adds `generateStaticParams` or drops the dynamic segment, and the failure then
+lands on whoever made that unrelated change. Inside a `"use client"` page the
+boundary is a two-component split in the same file (default export renders
+`<Suspense><Route/></Suspense>`); there is no need for a separate file.
+**Evidence:** `pnpm build` → `○ /skills` vs `ƒ /skills/[id]` ·
+`src/app/skills/[id]/page.tsx` · `src/app/agents/[id]/page.tsx` (no boundary,
+builds clean)
+
 ### 2026-09-18 — there is no `@testing-library/user-event` here; use `fireEvent`
 
 **Symptom:** a new component test written the usual way — `const user =
@@ -60,6 +83,30 @@ client/package.json` before reaching for it out of habit.
 `src/app/repos/[repoId]/pulls/[number]/_components/RunReviewDropdown/RunReviewDropdown.test.tsx`
 
 ## Recurring Errors & Fixes
+
+### 2026-09-22 — `getByText` finding "multiple elements" is usually a copy bug, not a query bug
+
+**Symptom:** a new component test failed with RTL's
+`Found multiple elements with the text: No context attached`, pointing at a
+`screen.getByText(messages.context.empty.title)` that looked perfectly
+reasonable. The obvious fixes — `getAllByText(...)[0]`, or narrowing with a
+`within()` — both make it pass.
+**Cause:** the component rendered that ONE string for three different states:
+no repository selected, the repository carries no context documents, and
+documents exist but none are attached. Only the third one is "No context
+attached"; the other two were telling the user the wrong thing about what to do
+next. The duplicate match was the test reporting a product defect, and widening
+the query would have silenced it.
+**Rule:** when `getByText` reports multiple matches on i18n copy, check whether
+the two places mean the same thing before touching the query. Because tests here
+assert against `messages/en/*.json` values rather than test ids, a string reused
+across states is *structurally* undetectable except like this — it is the only
+signal you get. Reach for `getAllByText`/`within` only once you have confirmed
+the copy is genuinely the same statement in both places.
+**Evidence:** `src/app/skills/[id]/_components/SkillEditor/_components/ContextTab/ContextTab.tsx`
+→ `context.noRepo` / `context.noDocs` / `context.empty` are now three keys ·
+`ContextTab.test.tsx` → "distinguishes a repo with no documents from nothing
+being attached"
 
 ### 2026-09-18 — "Updating a style property during rerender" survives the obvious fix
 

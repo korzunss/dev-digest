@@ -1,0 +1,47 @@
+{
+  "name": "Skill editor: the rail, the six tabs, and the agent link",
+  "description": "Opens /skills, picks a seeded skill (which navigates to /skills/:id), walks the Config → Context → Preview → Versions → Stats tabs asserting each one rendered, checks the Evals placeholder, then opens the agent editor's Skills tab and confirms the attached skills are listed. Exercises the skills read paths, the tab routing in ?tab=, the context/stats/versions endpoints, and the agent↔skill link.",
+  "steps": [
+    { "cmd": ["open", "{BASE}/skills"], "label": "load the skills page" },
+    { "cmd": ["wait", "--url", "/skills"], "label": "skills route reached" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "skills fetch settles" },
+    { "cmd": ["wait", "--text", "secret-leakage-gate"], "label": "seeded skill is in the rail" },
+
+    { "cmd": ["click", "--text", "secret-leakage-gate"], "label": "open the skill" },
+    { "cmd": ["wait", "--url", "/skills/"], "label": "selection is a route, not a query param" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "skill fetch settles" },
+    { "cmd": ["wait", "--text", "Configuration"], "label": "Config tab is the default" },
+
+    { "cmd": ["click", "--text", "Context"], "label": "switch to Context" },
+    { "cmd": ["wait", "--url", "tab=context"], "label": "tab is in the URL" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "context fetch settles" },
+    { "cmd": ["wait", "--text", "inherits these documents"], "label": "Context tab rendered" },
+
+    { "cmd": ["click", "--text", "Preview"], "label": "switch to Preview" },
+    { "cmd": ["wait", "--url", "tab=preview"], "label": "tab is in the URL" },
+    { "cmd": ["wait", "--text", "as the reviewing agent receives it"], "label": "Preview tab rendered" },
+
+    { "cmd": ["click", "--text", "Versions"], "label": "switch to Versions" },
+    { "cmd": ["wait", "--url", "tab=versions"], "label": "tab is in the URL" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "versions fetch settles" },
+    { "cmd": ["wait", "--text", "Current"], "label": "the seeded skill's v1 is marked current" },
+
+    { "cmd": ["click", "--text", "Stats"], "label": "switch to Stats" },
+    { "cmd": ["wait", "--url", "tab=stats"], "label": "tab is in the URL" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "stats fetch settles" },
+    { "cmd": ["wait", "--text", "USED BY"], "label": "Stats tiles rendered" },
+
+    { "cmd": ["click", "--text", "Evals"], "label": "switch to Evals" },
+    { "cmd": ["wait", "--url", "tab=evals"], "label": "tab is in the URL" },
+
+    { "cmd": ["open", "{BASE}/agents"], "label": "load the agents page" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "agents fetch settles" },
+    { "cmd": ["click", "--text", "Test Quality Reviewer"], "label": "open the seeded agent" },
+    { "cmd": ["wait", "--url", "/agents/"], "label": "agent editor reached" },
+    { "cmd": ["click", "--text", "Skills"], "label": "switch to the agent's Skills tab" },
+    { "cmd": ["wait", "--url", "tab=skills"], "label": "tab is in the URL" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "links fetch settles" },
+    { "cmd": ["wait", "--text", "test-coverage-nudge"], "label": "the agent's attached skill is listed" },
+    { "cmd": ["wait", "--text", "Order matters"], "label": "reorder hint is shown" }
+  ]
+}

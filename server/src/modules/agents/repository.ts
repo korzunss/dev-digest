@@ -1,4 +1,4 @@
-import { and, asc, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray } from 'drizzle-orm';
 import type { Db } from '../../db/client.js';
 import * as t from '../../db/schema.js';
 import type { CiFailOn, Provider, ReviewStrategy } from '@devdigest/shared';
@@ -197,6 +197,22 @@ export class AgentsRepository {
       .where(eq(t.agentSkills.agentId, agentId))
       .orderBy(asc(t.agentSkills.order));
     return rows.map((r) => ({ skill: r.skill, order: r.order }));
+  }
+
+  /**
+   * How many skills each of `agentIds` has attached. One IN-query for the whole
+   * page, grouped in JS — the same shape as the PR-list rollups, and the reason
+   * the agents list doesn't issue a query per card.
+   */
+  async skillCounts(agentIds: string[]): Promise<Map<string, number>> {
+    const counts = new Map<string, number>();
+    if (agentIds.length === 0) return counts;
+    const rows = await this.db
+      .select({ agentId: t.agentSkills.agentId })
+      .from(t.agentSkills)
+      .where(inArray(t.agentSkills.agentId, agentIds));
+    for (const r of rows) counts.set(r.agentId, (counts.get(r.agentId) ?? 0) + 1);
+    return counts;
   }
 
   async skillIdsForAgent(agentId: string): Promise<string[]> {

@@ -1,3 +1,4 @@
+import { readFile, stat } from 'node:fs/promises';
 import type { Container } from '../../platform/container.js';
 import type { Provider, Review, RunTrace, UnifiedDiff } from '@devdigest/shared';
 import { reviewPullRequest, countBlockers } from '@devdigest/reviewer-core';
@@ -8,6 +9,10 @@ import type { ReviewRepository, FindingRow, PullRow, ReviewRow } from './reposit
 import { REVIEW_STRATEGY } from './constants.js';
 import { taskLine } from './helpers.js';
 import { loadDiff } from './diff-loader.js';
+// The path guard is a pure function owned by the context module; importing it
+// keeps ONE definition of "which files may be read out of a clone".
+import { resolveDocPath } from '../context/helpers.js';
+import { MAX_DOC_BYTES } from '../context/constants.js';
 
 /** Thrown by a run when the user cancels it mid-flight (between map files). */
 export class RunCancelledError extends Error {
@@ -24,6 +29,19 @@ export type Logger = {
   error: (obj: unknown, msg?: string) => void;
   debug: (obj: unknown, msg?: string) => void;
 };
+
+/** The skills a run pulled, in prompt order, with their rendered blocks. */
+interface ResolvedSkills {
+  blocks: { skillId: string; order: number; body: string }[];
+}
+
+/** Project-context documents a run actually managed to read. */
+interface ResolvedContext {
+  /** Document bodies, in attachment order — the prompt's `specs` slot. */
+  bodies: string[];
+  /** Their repo-relative paths, recorded on the trace as `specs_read`. */
+  paths: string[];
+}
 
 // A reduced "Review per file" — same schema as Review (the model returns a small
 // Review per file; we merge findings + take the worst verdict / mean score).
@@ -183,6 +201,20 @@ export class ReviewRunExecutor {
 
       const task = taskLine(pull) + rankNote;
 
+      // Skills attached to this agent, in the order the editor stored them —
+      // that order is the order of the blocks in the assembled prompt.
+      const skills = await this.resolveSkills(agent.id, runLog);
+      const skillBodies = skills.blocks.map((b) => b.body);
+
+      // Record WHICH skills this run pulled, before the model call: the trace
+      // keeps only the rendered text, which cannot be matched back to a skill
+      // once its body is edited. Every Stats figure reads this table.
+      await this.recordRunSkills(runId, skills, runLog);
+
+      // Documents attached to those skills — "any agent using this skill
+      // inherits these documents".
+      const context = await this.buildContextDocs(repo, skills, runLog);
+
       // ---- Engine: assemble → single-pass → grounding -----------------------
       // The pure review pipeline lives in @devdigest/reviewer-core (shared with
       // the CI runner). The service owns only I/O: repo-intel context resolution
@@ -200,6 +232,13 @@ export class ReviewRunExecutor {
         ...(callersDigest ? { callers: callersDigest } : {}),
         // T3 — repo skeleton, same omit-when-empty contract.
         ...(repoMap ? { repoMap } : {}),
+        // Linked skills. Same omit-when-empty contract: an agent with none
+        // produces a prompt with no `## Skills / rules` section at all, rather
+        // than an empty one.
+        ...(skillBodies.length > 0 ? { skills: skillBodies } : {}),
+        // Project-context documents inherited through those skills. Same
+        // omit-when-empty contract: no documents ⇒ no `## Project context`.
+        ...(context.bodies.length > 0 ? { specs: context.bodies } : {}),
         // PR author's description/body — untrusted; assemblePrompt wraps +
         // truncates it. Omitted when the PR has no body.
         ...(pull.body ? { prDescription: pull.body } : {}),
@@ -275,7 +314,17 @@ export class ReviewRunExecutor {
           cost_usd: costUsd,
           cost_source: costSource,
         },
-        prompt_assembly: outcome.assembly,
+        // The engine cannot count tokens (it is pure and has no tokenizer), so
+        // the "what did the skills block cost me" figure is attached here.
+        prompt_assembly: {
+          ...outcome.assembly,
+          skills_tokens: outcome.assembly.skills
+            ? this.container.tokenizer.count(outcome.assembly.skills)
+            : null,
+          specs_tokens: outcome.assembly.specs
+            ? this.container.tokenizer.count(outcome.assembly.specs)
+            : null,
+        },
         tool_calls: outcome.chunks.map((c) => ({
           tool: 'review_file',
           args: c.label,
@@ -284,7 +333,7 @@ export class ReviewRunExecutor {
         })),
         raw_output: outcome.raw,
         memory_pulled: [],
-        specs_read: [],
+        specs_read: context.paths,
         // Persisted log = the run's FULL event buffer (incl. shared pre-work:
         // diff load + intent), not just events recorded inside this method.
         log: runLog.logFor(runId),
@@ -317,6 +366,144 @@ export class ReviewRunExecutor {
         .catch(() => undefined);
       this.container.runBus.complete(runId);
       throw err;
+    }
+  }
+
+  /**
+   * Resolve the agent's attached skills into prompt blocks, in link order.
+   *
+   * Two gates, both deliberate: a skill has to be ATTACHED to this agent, and
+   * it has to be globally ENABLED. The second is what makes the skill list a
+   * kill switch — turning a skill off removes it from every agent's next run
+   * without detaching it from any of them.
+   *
+   * Each body is prefixed with its name so the assembled block is readable in
+   * the trace; the body itself goes in verbatim and is NOT wrapped as untrusted
+   * data, because a skill's purpose is to be an instruction and the injection
+   * guard would tell the model to ignore it. Imported skills are held back by
+   * landing disabled until a person vets them (spec 003), not by markup.
+   */
+  private async resolveSkills(agentId: string, runLog: RunLogger): Promise<ResolvedSkills> {
+    let links;
+    try {
+      links = await this.agents.linkedSkills(agentId);
+    } catch (err) {
+      // An enrichment must never break the run.
+      runLog.info(`skills: could not load links — ${(err as Error).message}`);
+      return { blocks: [] };
+    }
+
+    const enabled = links.filter((l) => l.skill.enabled);
+    if (links.length === 0) {
+      runLog.info('skills: none attached to this agent');
+      return { blocks: [] };
+    }
+    const skipped = links.length - enabled.length;
+    runLog.info(
+      `skills: ${enabled.length} attached and enabled` +
+        (skipped > 0 ? `, ${skipped} skipped (disabled)` : '') +
+        (enabled.length > 0 ? ` — ${enabled.map((l) => l.skill.name).join(', ')}` : ''),
+    );
+
+    return {
+      blocks: enabled.map((l, i) => ({
+        skillId: l.skill.id,
+        order: i,
+        body: `### Skill: ${l.skill.name}\n\n${l.skill.body}`,
+      })),
+    };
+  }
+
+  /**
+   * Read the project-context documents attached to the skills this run pulled.
+   *
+   * Attachments store a PATH, and paths belong to a repo — so an attachment
+   * made against one repo may simply not exist in the repo of this PR. A
+   * missing document is SKIPPED with a line in the run log, never a failure:
+   * the user attached a rule, not a dependency, and failing the review because
+   * a doc moved would be the wrong trade.
+   *
+   * Every path goes through the same `resolveDocPath` guard the HTTP route
+   * uses, because a stored path is no more trustworthy than a requested one —
+   * it was a request once.
+   */
+  private async buildContextDocs(
+    repo: typeof schema.repos.$inferSelect,
+    skills: ResolvedSkills,
+    runLog: RunLogger,
+  ): Promise<ResolvedContext> {
+    const empty: ResolvedContext = { bodies: [], paths: [] };
+    if (skills.blocks.length === 0) return empty;
+
+    let links;
+    try {
+      links = await this.container.skillsRepo.contextDocsForSkills(
+        skills.blocks.map((b) => b.skillId),
+      );
+    } catch (err) {
+      runLog.info(`project context: could not load attachments — ${(err as Error).message}`);
+      return empty;
+    }
+    if (links.length === 0) return empty;
+
+    // Two skills may attach the same document; it belongs in the prompt once.
+    const wanted = [...new Set(links.map((l) => l.path))];
+    const cloneDir = this.container.git.clonePathFor({ owner: repo.owner, name: repo.name });
+
+    const bodies: string[] = [];
+    const paths: string[] = [];
+    const skipped: string[] = [];
+
+    for (const rel of wanted) {
+      const abs = resolveDocPath(cloneDir, rel);
+      if (!abs) {
+        skipped.push(rel);
+        continue;
+      }
+      try {
+        const stats = await stat(abs);
+        if (!stats.isFile() || stats.size > MAX_DOC_BYTES) {
+          skipped.push(rel);
+          continue;
+        }
+        bodies.push(await readFile(abs, 'utf8'));
+        paths.push(rel);
+      } catch {
+        skipped.push(rel);
+      }
+    }
+
+    runLog.info(
+      `project context: ${paths.length} document(s) attached` +
+        (paths.length > 0 ? ` — ${paths.join(', ')}` : '') +
+        (skipped.length > 0 ? `; skipped ${skipped.length} not in this repo: ${skipped.join(', ')}` : ''),
+    );
+    return { bodies, paths };
+  }
+
+  /**
+   * Persist which skills this run pulled, with each block's token cost.
+   *
+   * Best-effort on purpose: a failure here loses a statistic, and losing a
+   * statistic must never cost the user their review.
+   */
+  private async recordRunSkills(
+    runId: string,
+    skills: ResolvedSkills,
+    runLog: RunLogger,
+  ): Promise<void> {
+    if (skills.blocks.length === 0) return;
+    try {
+      await this.container.skillsRepo.recordRunSkills(
+        runId,
+        skills.blocks.map((b) => ({
+          skillId: b.skillId,
+          order: b.order,
+          tokens: this.container.tokenizer.count(b.body),
+        })),
+      );
+    } catch (err) {
+      runLog.info(`skills: could not record run usage — ${(err as Error).message}`);
     }
   }
 
@@ -439,7 +626,14 @@ export class ReviewRunExecutor {
         cost_usd: null,
         cost_source: null,
       },
-      prompt_assembly: { system: agent.systemPrompt, skills: null, memory: null, specs: null, user: '' },
+      prompt_assembly: {
+        system: agent.systemPrompt,
+        skills: null,
+        skills_tokens: null,
+        memory: null,
+        specs: null,
+        user: '',
+      },
       tool_calls: [],
       raw_output: '',
       memory_pulled: [],

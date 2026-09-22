@@ -1,0 +1,72 @@
+import type { CSSProperties } from "react";
+
+/** Co-located styles for ImportSkillDrawer. */
+export const s = {
+  body: { display: "flex", flexDirection: "column", gap: 14, padding: "16px 24px 24px" } satisfies CSSProperties,
+  tabsBar: { borderBottom: "1px solid var(--border)" } satisfies CSSProperties,
+  picker: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: 10,
+    padding: "28px 20px",
+    borderRadius: 8,
+    border: "1px dashed var(--border-strong)",
+    background: "var(--bg-surface)",
+    textAlign: "center",
+  } satisfies CSSProperties,
+  pickerLabel: { fontSize: 13, color: "var(--text-secondary)" } satisfies CSSProperties,
+  hiddenInput: { display: "none" } satisfies CSSProperties,
+  filename: { fontSize: 12, color: "var(--text-muted)" } satisfies CSSProperties,
+  previewCard: {
+    border: "1px solid var(--border)",
+    borderRadius: 8,
+    background: "var(--bg-surface)",
+    padding: "14px 16px",
+  } satisfies CSSProperties,
+  previewTitle: { fontSize: 14, fontWeight: 600, marginBottom: 4 } satisfies CSSProperties,
+  previewHint: {
+    fontSize: 12.5,
+    color: "var(--text-secondary)",
+    lineHeight: 1.5,
+    marginBottom: 12,
+  } satisfies CSSProperties,
+  sectionLabel: {
+    fontSize: 12,
+    fontWeight: 600,
+    color: "var(--text-muted)",
+    letterSpacing: "0.04em",
+    textTransform: "uppercase",
+    marginBottom: 6,
+  } satisfies CSSProperties,
+  bodyBox: {
+    border: "1px solid var(--border)",
+    borderRadius: 8,
+    padding: "10px 12px",
+    background: "var(--bg-primary)",
+    maxHeight: 260,
+    overflow: "auto",
+  } satisfies CSSProperties,
+  ignoredBox: {
+    border: "1px solid var(--border)",
+    borderRadius: 8,
+    padding: "10px 12px",
+    background: "var(--bg-primary)",
+  } satisfies CSSProperties,
+  ignoredHint: {
+    fontSize: 12,
+    color: "var(--text-muted)",
+    lineHeight: 1.5,
+    marginTop: 6,
+  } satisfies CSSProperties,
+  ignoredItem: {
+    fontSize: 12.5,
+    color: "var(--text-secondary)",
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    padding: "2px 0",
+  } satisfies CSSProperties,
+  footer: { display: "flex", gap: 8, justifyContent: "flex-end" } satisfies CSSProperties,
+  error: { fontSize: 12.5, color: "var(--crit)" } satisfies CSSProperties,
+} as const;

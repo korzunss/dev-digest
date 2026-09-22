@@ -101,3 +101,4 @@ a CI artifact by `.github/workflows/e2e-web.yml`).
 | `06-onboarding` | `/onboarding` → add-repository form renders (no submit) |
 | `07-settings` | `/settings/api-keys` + `/settings/models` → section titles render |
 | `08-severity-filter` | PR list FINDINGS chip → PR #482 filtered to CRITICAL → clear the filter |
+| `09-skills` | `/skills` → open a seeded skill → walk Config/Context/Preview/Versions/Stats/Evals; agent editor → Skills tab lists its attached skills |

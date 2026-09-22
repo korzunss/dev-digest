@@ -83,6 +83,26 @@ that path; it's runtime data, and the next resync overwrites it.
 
 ## Tool & Library Notes
 
+### 2026-09-21 — `TESTING.md`'s "`server/package.json` is skip-worktree" is not true here
+
+**Symptom:** adding a runtime dependency to `server/` looked risky:
+`TESTING.md` states that *"`server/package.json` is `skip-worktree` (a local
+variant diverges from the committed file)"*, which would mean a new dependency
+never reaches the commit and CI installs without it.
+**Cause:** the note is stale for this checkout. `git ls-files -v server/package.json`
+reports `H` (normal), not `S` (skip-worktree) — the flag is per-clone, set by
+hand, and is not set here. The claim reads as a fact about the repo but is a
+description of one machine.
+**Rule:** check the flag before trusting the note — `git ls-files -v <file>`, and
+treat only a leading `S` or `h` as skip-worktree. Do this for any dependency
+change in `server/` or `client/`: if the flag *is* set locally, `pnpm add` edits
+a file git will not stage, and the missing dependency surfaces only in CI. The
+same command is the right check whenever a doc claims a file is untracked in
+some way.
+**Evidence:** `TESTING.md` → "Conventions" · `git ls-files -v server/package.json`
+→ `H server/package.json` · `fflate` added for the skills import and committed
+normally
+
 ### 2026-09-21 — `git stash pop` silently un-stages a symlink, and the working tree hides it
 
 **Symptom:** mid-way through staging the `CLAUDE.md` → `AGENTS.md` rename, a
