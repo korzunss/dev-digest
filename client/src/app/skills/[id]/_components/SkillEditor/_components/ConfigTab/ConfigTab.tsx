@@ -30,12 +30,23 @@ export function ConfigTab({ skill }: { skill: Skill }) {
   const [enabled, setEnabled] = React.useState(skill.enabled);
   const [message, setMessage] = React.useState("");
 
-  // The editor remounts per skill (SkillEditor keys the pane on skill.id), but
-  // a save replaces `skill` in place — re-sync so the saved body becomes the
-  // new baseline and the `unsaved` badge clears.
-  React.useEffect(() => {
-    setBody(skill.body);
-  }, [skill.body]);
+  /**
+   * Re-sync a field when the STORED value of that field changes.
+   *
+   * The dependencies are the values, not the `skill` object: a background
+   * refetch hands back a new object with identical contents, and depending on
+   * the object would throw away whatever the user is typing every time one
+   * lands. Depending on each value means a field resets only when the server's
+   * version of THAT field actually moved — after a save, after a restore on the
+   * Versions tab, or after the rail's toggle flipped `enabled` for the same
+   * skill while this form was open. Without the last one the form keeps a stale
+   * toggle and the next save writes it back, silently undoing the rail.
+   */
+  React.useEffect(() => setName(skill.name), [skill.name]);
+  React.useEffect(() => setDescription(skill.description), [skill.description]);
+  React.useEffect(() => setType(skill.type), [skill.type]);
+  React.useEffect(() => setEnabled(skill.enabled), [skill.enabled]);
+  React.useEffect(() => setBody(skill.body), [skill.body]);
 
   const unvetted = needsVetting(skill);
   const dirty = isDirty(body, skill.body);

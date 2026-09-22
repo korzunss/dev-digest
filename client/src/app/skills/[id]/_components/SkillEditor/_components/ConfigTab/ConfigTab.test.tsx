@@ -197,3 +197,43 @@ describe("ConfigTab", () => {
   });
 
 });
+
+describe("ConfigTab and the world outside it", () => {
+  it("follows a change made to the same skill elsewhere on the screen", () => {
+    // The rail renders beside this tab and carries its own enabled toggle for
+    // the same skill. Without a sync the form keeps the old value and the next
+    // save writes it back, silently undoing what the rail just did.
+    const { rerender } = renderTab();
+    expect(screen.getByRole("switch")).toHaveAttribute("aria-checked", "true");
+
+    rerender(
+      <NextIntlClientProvider locale="en" messages={{ skills: messages }}>
+        <ToastProvider>
+          <ConfigTab skill={{ ...SKILL, enabled: false }} />
+        </ToastProvider>
+      </NextIntlClientProvider>,
+    );
+
+    expect(screen.getByRole("switch")).toHaveAttribute("aria-checked", "false");
+  });
+
+  it("does not clobber what you are typing when the query merely refetches", () => {
+    // A background refetch hands back an identical skill as a NEW object. If
+    // the effect watched the object rather than its values, this would throw
+    // away the edit in progress.
+    const { container, rerender } = renderTab();
+    fireEvent.change(bodyTextarea(container), { target: { value: "# Rule\nMine." } });
+    fireEvent.change(screen.getByDisplayValue(SKILL.name), { target: { value: "renamed" } });
+
+    rerender(
+      <NextIntlClientProvider locale="en" messages={{ skills: messages }}>
+        <ToastProvider>
+          <ConfigTab skill={{ ...SKILL }} />
+        </ToastProvider>
+      </NextIntlClientProvider>,
+    );
+
+    expect(bodyTextarea(container)).toHaveValue("# Rule\nMine.");
+    expect(screen.getByDisplayValue("renamed")).toBeInTheDocument();
+  });
+});
