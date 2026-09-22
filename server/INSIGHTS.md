@@ -47,6 +47,29 @@ foreign key POINTS AT"
 
 ## Tool & Library Notes
 
+### 2026-09-22 — `pnpm db:generate` hangs forever when one table both drops and adds a column
+
+**Symptom:** `pnpm db:generate` produced no output at all and never exited —
+killed at a 120 s timeout with a zero-byte log and no migration written. It reads
+like a hung DB connection or a broken `drizzle.config.ts`, and neither is
+involved: the same config generates fine before and after.
+**Cause:** drizzle-kit's rename detection. When a single diff gives one table
+**both** a deleted column and added ones, it cannot tell a drop+add from a
+rename, so it asks — and the prompt (hanji, raw-mode TTY) renders nothing and
+reads nothing when stdin is not a terminal. It waits forever, silently. Here
+`conventions` lost `accepted` and gained nine columns in the same change.
+**Rule:** when a schema change removes a column from a table that also gains
+one, split it into **two** `db:generate` runs: first a schema variant carrying
+only the deletion, then the full schema carrying only additions. Neither diff is
+ambiguous, so neither prompts, and both outputs are ordinary generated
+migrations — the "migrations are generated, never hand-written" rule survives
+intact. Do not try to feed the prompt from a pipe or `/dev/null`; it is not
+reading stdin in a way that helps. The same trap is waiting for any table rename.
+**Evidence:** `src/db/migrations/0015_short_vin_gonzales.sql` (the lone
+`ALTER TABLE "conventions" DROP COLUMN "accepted"`) ·
+`0016_majestic_korath.sql` (the additions + `convention_scans`) ·
+`drizzle.config.ts`
+
 ### 2026-09-22 — a `realpath` containment check must resolve BOTH sides, or it fails closed
 
 **Symptom:** a symlink guard that reads as obviously correct — `realpath()` the

@@ -236,15 +236,104 @@ export const CommunitySkill = z.object({
 export type CommunitySkill = z.infer<typeof CommunitySkill>;
 
 // ---- Conventions ----
+/**
+ * The bucket a house rule falls into. A CLOSED set on purpose: the model picks
+ * from it rather than inventing a label, so candidates from two different scans
+ * group together and the "one skill per category" split is stable.
+ */
+export const ConventionCategory = z.enum([
+  'naming',
+  'structure',
+  'error-handling',
+  'async',
+  'data-access',
+  'api',
+  'testing',
+  'tooling',
+]);
+export type ConventionCategory = z.infer<typeof ConventionCategory>;
+
+/** Where a candidate stands with the human reviewing it. */
+export const ConventionStatus = z.enum(['pending', 'accepted', 'rejected']);
+export type ConventionStatus = z.infer<typeof ConventionStatus>;
+
+/**
+ * One extracted house rule, AFTER the evidence gate.
+ *
+ * `evidence_path` + `evidence_line` are guaranteed to point at code that really
+ * exists in the scanned commit — a candidate whose snippet could not be found in
+ * the file it cited never becomes one of these (see the conventions module's
+ * grounding step, which mirrors `groundFindings`). That is what makes the
+ * GitHub deep-link on the card safe to render.
+ */
 export const ConventionCandidate = z.object({
   id: z.string(),
+  repo_id: z.string(),
+  scan_id: z.string(),
   rule: z.string(),
+  category: ConventionCategory,
   evidence_path: z.string(),
+  evidence_line: z.number().int(),
+  evidence_end_line: z.number().int(),
   evidence_snippet: z.string(),
   confidence: z.number().min(0).max(1),
-  accepted: z.boolean(),
+  status: ConventionStatus,
+  /** The skill this candidate was folded into, once one was created. */
+  skill_id: z.string().nullish(),
+  created_at: z.string(),
 });
 export type ConventionCandidate = z.infer<typeof ConventionCandidate>;
+
+/**
+ * One extraction run. `commit_sha` is the point of the row: evidence links are
+ * pinned to it, so a later push cannot slide a cited line out from under a card.
+ * `sample_paths` records exactly what the model was shown, which is the only way
+ * to tell "the repo has no such convention" from "we never showed it that file".
+ */
+export const ConventionScan = z.object({
+  id: z.string(),
+  repo_id: z.string(),
+  commit_sha: z.string().nullable(),
+  provider: z.string(),
+  model: z.string(),
+  sample_paths: z.array(z.string()),
+  candidates_raw: z.number().int(),
+  candidates_kept: z.number().int(),
+  /** Per-reason drop tally from the evidence gate, e.g. `{ snippet_absent: 3 }`. */
+  dropped: z.record(z.string(), z.number().int()).nullish(),
+  tokens_in: z.number().int().nullable(),
+  tokens_out: z.number().int().nullable(),
+  cost_usd: z.number().nullable(),
+  status: z.enum(['running', 'done', 'error']),
+  error: z.string().nullish(),
+  created_at: z.string(),
+  finished_at: z.string().nullish(),
+});
+export type ConventionScan = z.infer<typeof ConventionScan>;
+
+/** What `GET /repos/:id/conventions` and the extract route both return. */
+export const ConventionScanResult = z.object({
+  scan: ConventionScan.nullable(),
+  candidates: z.array(ConventionCandidate),
+});
+export type ConventionScanResult = z.infer<typeof ConventionScanResult>;
+
+/**
+ * What a skill built from accepted candidates WOULD look like. Persisted by
+ * nothing — the modal holds it, the user edits it, and only a confirmed preview
+ * comes back as a create. Same contract shape as `SkillImportPreview` for the
+ * same reason: abandoning the flow must leave no row behind.
+ */
+export const ConventionSkillPreview = z.object({
+  name: z.string(),
+  description: z.string(),
+  type: SkillType,
+  body: z.string(),
+  evidence_files: z.array(z.string()),
+  /** Which candidates this preview was built from — echoed back on commit. */
+  candidate_ids: z.array(z.string()),
+});
+export type ConventionSkillPreview = z.infer<typeof ConventionSkillPreview>;
 
 // ---- Agents ----
 export const Provider = z.enum(['openai', 'anthropic', 'openrouter']);

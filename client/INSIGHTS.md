@@ -25,6 +25,32 @@ _Nothing yet._
 
 ## Codebase Patterns
 
+### 2026-09-22 — `vendor/ui/nav.ts` is the one vendored file we edit, and the edit is disposable
+
+**Symptom:** spec 004 asks for a sidebar entry under SKILLS LAB, and the only
+place that can carry one is `client/src/vendor/ui/nav.ts` — a file `CLAUDE.md`
+lists under "Do not touch". There is no override file, no app-level `NAV`
+extension point, and no consumer that merges a local array into the vendored
+one: `useGlobalShortcuts` and the shell both read `NAV` straight from
+`@devdigest/ui`. Left alone, the Conventions screen would only be reachable by
+typing its URL.
+**Cause:** the vendored UI kit treats the nav as *data about the host app*,
+which the host app is the only one who knows — so the data lives upstream while
+its content is downstream's business. That is a packaging mistake in the kit,
+not a rule we can satisfy by finding the right seam here.
+**Rule:** adding a nav item (and only a nav item) to `NAV`/`SETTINGS_ITEM` is a
+signed-off exception, recorded in the spec that asks for it and commented at the
+line. Nothing else under `src/vendor/**` follows from it — a contract change
+still starts in `server/src/vendor/shared`. Treat the line as **disposable**:
+the next vendor refresh overwrites `nav.ts` wholesale and silently takes the
+entry with it, and the symptom is a route that still builds, still renders, and
+has simply vanished from the sidebar. After any kit refresh, `grep -c 'key: "'
+client/src/vendor/ui/nav.ts` and re-add what is missing; the route table from
+`pnpm build` will not tell you, because the page is fine.
+**Evidence:** `client/src/vendor/ui/nav.ts` → the `conventions` item and its
+comment · `src/components/app-shell/hooks/useGlobalShortcuts.ts:45` reads `NAV`
+directly · `specs/004-conventions-extractor.md` → "Risks and known traps" #7
+
 ### 2026-09-18 — a popover inside the PR list must portal; the table clips it
 
 **Symptom:** a hover card rendered as an absolutely-positioned child of a PR row

@@ -1,0 +1,110 @@
+import type { CSSProperties } from "react";
+
+/** Co-located styles for ConventionCard. Same card shell as FindingCard — an
+    accent stripe down the left, the decision state carried by opacity — so the
+    two "here is a claim about your code, decide" surfaces read as one thing. */
+export const s = {
+  card: (accent: string, muted: boolean): CSSProperties => ({
+    display: "flex",
+    alignItems: "stretch",
+    gap: 16,
+    padding: "14px 16px",
+    borderRadius: 8,
+    // All four sides longhand: only the left differs, and mixing
+    // `borderColor` with `borderLeftColor` trips React's shorthand warning the
+    // moment a decision repaints a mounted card (client/INSIGHTS.md).
+    borderStyle: "solid",
+    borderTopWidth: 1,
+    borderRightWidth: 1,
+    borderBottomWidth: 1,
+    borderLeftWidth: 3,
+    borderTopColor: "var(--border)",
+    borderRightColor: "var(--border)",
+    borderBottomColor: "var(--border)",
+    borderLeftColor: accent,
+    background: "var(--bg-elevated)",
+    opacity: muted ? 0.6 : 1,
+    transition: "opacity .2s",
+  }),
+  main: { flex: 1, minWidth: 0 } satisfies CSSProperties,
+  ruleRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    flexWrap: "wrap",
+  } satisfies CSSProperties,
+  rule: (rejected: boolean): CSSProperties => ({
+    fontSize: 14.5,
+    fontWeight: 600,
+    fontStyle: "italic",
+    lineHeight: 1.4,
+    color: "var(--text-primary)",
+    textDecoration: rejected ? "line-through" : "none",
+    background: "none",
+    border: "none",
+    padding: 0,
+    textAlign: "left",
+    cursor: "text",
+  }),
+  categoryChip: (color: string): CSSProperties => ({
+    fontSize: 12,
+    fontWeight: 600,
+    color,
+    background: color + "1a",
+    padding: "1px 8px",
+    borderRadius: 4,
+  }),
+  editRow: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 8,
+  } satisfies CSSProperties,
+  editActions: { display: "flex", gap: 8 } satisfies CSSProperties,
+  evidence: {
+    marginTop: 10,
+    borderRadius: 6,
+    border: "1px solid var(--border)",
+    background: "var(--bg-surface)",
+    overflow: "hidden",
+  } satisfies CSSProperties,
+  evidenceHead: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    padding: "6px 10px",
+    borderBottom: "1px solid var(--border)",
+    color: "var(--text-muted)",
+  } satisfies CSSProperties,
+  snippet: {
+    margin: 0,
+    padding: "8px 10px",
+    fontSize: 12.5,
+    lineHeight: 1.55,
+    color: "var(--text-secondary)",
+    whiteSpace: "pre-wrap",
+    wordBreak: "break-word",
+    overflowX: "auto",
+  } satisfies CSSProperties,
+  confidenceRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 10,
+  } satisfies CSSProperties,
+  confidenceLabel: {
+    fontSize: 12,
+    fontWeight: 600,
+    letterSpacing: "0.05em",
+    textTransform: "uppercase",
+    color: "var(--text-muted)",
+  } satisfies CSSProperties,
+  confidenceTrack: { flex: 1, maxWidth: 180 } satisfies CSSProperties,
+  confidenceValue: { fontSize: 12, color: "var(--text-muted)" } satisfies CSSProperties,
+  actions: {
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "center",
+    gap: 8,
+    flexShrink: 0,
+  } satisfies CSSProperties,
+} as const;

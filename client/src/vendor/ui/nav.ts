@@ -34,6 +34,11 @@ export const NAV: NavGroup[] = [
     items: [
       { key: "agents", label: "Agents", icon: "Cpu", href: "/agents", gKey: "a" },
       { key: "skills", label: "Skills", icon: "Sparkles", href: "/skills", gKey: "s" },
+      // Signed-off exception to "don't edit src/vendor/**" (spec 004): the nav
+      // is data, and there is no other seam — a Skills Lab screen that only
+      // deep links can reach is not shipped. Expect the next vendor refresh to
+      // drop this line; see client/INSIGHTS.md.
+      { key: "conventions", label: "Conventions", icon: "ListChecks", href: "/repos/:repoId/conventions", gKey: "c" },
     ],
   },
 ];
