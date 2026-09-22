@@ -108,4 +108,14 @@ describe("SkillsRail", () => {
     expect(updateMutate).toHaveBeenCalledWith({ id: "sk1", patch: { enabled: false } });
     expect(routerPush).not.toHaveBeenCalled();
   });
+
+  it("resolves its copy, rather than rendering the key", () => {
+    // next-intl renders a MISSING key as the literal key string, so a typo or
+    // a dropped entry ships as a button labelled page.addSkill and nothing
+    // fails. Assert the resolved text and the absence of the key itself.
+    renderRail();
+    expect(screen.getByText(messages.page.addSkill)).toBeInTheDocument();
+    expect(screen.queryByText(/^page\./)).not.toBeInTheDocument();
+  });
+
 });
