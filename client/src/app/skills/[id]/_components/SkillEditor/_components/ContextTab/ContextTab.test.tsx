@@ -4,7 +4,15 @@ import { NextIntlClientProvider } from "next-intl";
 import type { Skill, SkillContextLink, SpecFile } from "@devdigest/shared";
 import skillMessages from "../../../../../../../../messages/en/skills.json";
 import commonMessages from "../../../../../../../../messages/en/common.json";
-import { attachedPaths, docFolder, docName, filterDocs, folderTag, orderedDocs } from "./helpers";
+import {
+  attachedPaths,
+  docFolder,
+  docName,
+  filterDocs,
+  folderTag,
+  orderedDocs,
+  untrustedMarker,
+} from "./helpers";
 
 const setContextMutate = vi.fn();
 const useSkillContext = vi.fn();
@@ -166,6 +174,10 @@ describe("ContextTab", () => {
     expect(screen.getByText("## Project context")).toBeInTheDocument();
     expect(screen.getByText("- specs/public-api.md")).toBeInTheDocument();
     expect(screen.getByText("- docs/architecture.md")).toBeInTheDocument();
+    // The marker beside each path is what says the whole document is sent, not
+    // its name — and it has to read like the real delimiter.
+    expect(screen.getAllByText(/<untrusted source="spec-\d+">/)).toHaveLength(2);
+    expect(document.body.textContent).not.toContain("<\\/untrusted>");
   });
 
   it("says so rather than showing an empty heading when nothing is attached", () => {
@@ -254,5 +266,25 @@ describe("ContextTab search", () => {
 
     fireEvent.change(search, { target: { value: "" } });
     expect(screen.getByText("public-api.md")).toBeInTheDocument();
+  });
+});
+
+describe("untrustedMarker", () => {
+  it("spells the delimiter exactly as the engine emits it", () => {
+    // Pinned as a literal because the two live in packages that cannot import
+    // each other: reviewer-core is pure and the client does not depend on it.
+    // The engine's wrapper is `reviewer-core/src/prompt.ts:33` —
+    // `<untrusted source="${label}">\n${safe}\n</untrusted>`.
+    expect(untrustedMarker(0)).toBe('<untrusted source="spec-0">…</untrusted>');
+    expect(untrustedMarker(3)).toBe('<untrusted source="spec-3">…</untrusted>');
+  });
+
+  it("does not escape the closing tag", () => {
+    // `prompt.ts:32` escapes `</untrusted>` when it appears INSIDE the content,
+    // so a document cannot close its own wrapper early. That escape belongs to
+    // the content, never to the delimiter — showing it here would misdescribe
+    // the prompt this box is meant to explain.
+    expect(untrustedMarker(0)).not.toContain("\\");
+    expect(untrustedMarker(0).endsWith("</untrusted>")).toBe(true);
   });
 });
