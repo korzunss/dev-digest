@@ -133,6 +133,23 @@ export function useSetAgentSkills() {
   return useMutation({
     mutationFn: ({ agentId, skillIds }: { agentId: string; skillIds: string[] }) =>
       api.post<AgentSkillLink[]>(`/agents/${agentId}/skills`, { skill_ids: skillIds }),
+    // Written to the cache BEFORE the request, not after it. Reordering is a
+    // repeated keypress: the next press recomputes from this list, so waiting
+    // for the round-trip means the second press reads the pre-first order and
+    // is silently lost. Optimism here is correctness, not polish.
+    onMutate: async ({ agentId, skillIds }) => {
+      await qc.cancelQueries({ queryKey: ["agent-skills", agentId] });
+      const previous = qc.getQueryData<AgentSkillLink[]>(["agent-skills", agentId]);
+      qc.setQueryData<AgentSkillLink[]>(
+        ["agent-skills", agentId],
+        skillIds.map((skill_id, order) => ({ agent_id: agentId, skill_id, order })),
+      );
+      return { previous };
+    },
+    onError: (_err, { agentId }, context) => {
+      // Put the server's order back; the global error toast reports why.
+      if (context?.previous) qc.setQueryData(["agent-skills", agentId], context.previous);
+    },
     onSuccess: (data, { agentId }) => {
       qc.setQueryData(["agent-skills", agentId], data);
       // The agent card shows the attached count.
@@ -183,6 +200,21 @@ export function useSetSkillContext() {
   return useMutation({
     mutationFn: ({ id, paths }: { id: string; paths: string[] }) =>
       api.put<SkillContextLink[]>(`/skills/${id}/context`, { paths }),
+    // Same reasoning as useSetAgentSkills: the attachment list is reordered by
+    // repeated keypresses, so the cache has to hold the new order before the
+    // next one is computed from it.
+    onMutate: async ({ id, paths }) => {
+      await qc.cancelQueries({ queryKey: ["skill-context", id] });
+      const previous = qc.getQueryData<SkillContextLink[]>(["skill-context", id]);
+      qc.setQueryData<SkillContextLink[]>(
+        ["skill-context", id],
+        paths.map((path, order) => ({ skill_id: id, path, order })),
+      );
+      return { previous };
+    },
+    onError: (_err, { id }, context) => {
+      if (context?.previous) qc.setQueryData(["skill-context", id], context.previous);
+    },
     onSuccess: (data, { id }) => qc.setQueryData(["skill-context", id], data),
   });
 }
