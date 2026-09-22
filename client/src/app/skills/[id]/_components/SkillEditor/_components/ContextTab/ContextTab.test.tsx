@@ -9,12 +9,15 @@ import { attachedPaths, docFolder, docName, filterDocs, folderTag, orderedDocs }
 const setContextMutate = vi.fn();
 const useSkillContext = vi.fn();
 const useContextDocs = vi.fn();
+const useContextDoc = vi.fn();
+// Shared, so the modal's Retry can be asserted at all.
+const docRefetch = vi.fn();
 
 vi.mock("../../../../../../../lib/hooks/skills", () => ({
   useContextDocs: (repoId: string | null) => useContextDocs(repoId),
   useSkillContext: (id: string) => useSkillContext(id),
   useSetSkillContext: () => ({ mutate: setContextMutate, isPending: false }),
-  useContextDoc: () => ({ data: undefined, isLoading: false, isError: false }),
+  useContextDoc: (repoId: string | null, path: string | null) => useContextDoc(repoId, path),
 }));
 
 vi.mock("../../../../../../../lib/repo-context", () => ({
@@ -47,6 +50,9 @@ function renderTab(links: SkillContextLink[] = [], docs: SpecFile[] = DOCS) {
     refetch: vi.fn(),
   });
   useSkillContext.mockReturnValue({ data: links });
+  if (useContextDoc.mock.results.length === 0 && !useContextDoc.getMockImplementation()) {
+    docState();
+  }
   return render(
     <NextIntlClientProvider
       locale="en"
@@ -62,7 +68,20 @@ afterEach(() => {
   setContextMutate.mockReset();
   useSkillContext.mockReset();
   useContextDocs.mockReset();
+  useContextDoc.mockReset();
+  docRefetch.mockReset();
 });
+
+/** Default: the document query is idle until a path names one. */
+function docState(state: Record<string, unknown> = {}) {
+  useContextDoc.mockReturnValue({
+    data: undefined,
+    isLoading: false,
+    isError: false,
+    refetch: docRefetch,
+    ...state,
+  });
+}
 
 describe("ContextTab helpers", () => {
   it("reads attachment order from the links, not the array order", () => {
@@ -161,5 +180,79 @@ describe("ContextTab", () => {
     renderTab([], []);
     expect(screen.getByText(skillMessages.context.noDocs.title)).toBeInTheDocument();
     expect(screen.queryByText(skillMessages.context.noDocs.title)).not.toBe(null);
+  });
+});
+
+describe("ContextTab document preview", () => {
+  it("fetches nothing until a document is opened", () => {
+    docState();
+    renderTab([link("specs/public-api.md", 0)]);
+    // Lazily enabled: the hook is called, but with no path to fetch.
+    expect(useContextDoc).toHaveBeenCalledWith("repo-1", null);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("opens the document and shows its content", () => {
+    docState({ data: { path: "specs/public-api.md", content: "# Public API\n\nVersioned." } });
+    renderTab([]);
+
+    fireEvent.click(screen.getByLabelText("specs/public-api.md"));
+
+    expect(useContextDoc).toHaveBeenLastCalledWith("repo-1", "specs/public-api.md");
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByText(/Versioned\./)).toBeInTheDocument();
+  });
+
+  it("shows a placeholder while the document loads", () => {
+    docState({ isLoading: true });
+    const { container } = renderTab([]);
+
+    fireEvent.click(screen.getByLabelText("specs/public-api.md"));
+    expect(container.querySelectorAll(".skeleton").length).toBeGreaterThan(0);
+  });
+
+  it("reports a failed read inside the modal, and retries there", () => {
+    docState({ isError: true });
+    renderTab([]);
+
+    fireEvent.click(screen.getByLabelText("specs/public-api.md"));
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+    expect(screen.getByText(skillMessages.context.loadError)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("Retry"));
+    expect(docRefetch).toHaveBeenCalledTimes(1);
+    // The list is still behind it — a document that will not open is not a
+    // broken tab, and the attachments must stay editable.
+    expect(screen.getByLabelText("Reorder specs/rate-limiting.md")).toBeInTheDocument();
+  });
+});
+
+describe("ContextTab search", () => {
+  it("says the search found nothing, without claiming the repo is empty", () => {
+    // Two different nothings again: a filter that matched no document is not a
+    // repo carrying none, and only the second one should send the user off to
+    // add files.
+    docState();
+    renderTab([]);
+
+    fireEvent.change(screen.getByPlaceholderText(skillMessages.context.filterPlaceholder), {
+      target: { value: "nothing-matches-this" },
+    });
+
+    expect(screen.getByText(commonMessages.states.empty)).toBeInTheDocument();
+    expect(screen.queryByText(skillMessages.context.noDocs.title)).not.toBeInTheDocument();
+    expect(screen.queryByText("public-api.md")).not.toBeInTheDocument();
+  });
+
+  it("brings the documents back when the search is cleared", () => {
+    docState();
+    renderTab([]);
+    const search = screen.getByPlaceholderText(skillMessages.context.filterPlaceholder);
+
+    fireEvent.change(search, { target: { value: "zzz" } });
+    expect(screen.getByText(commonMessages.states.empty)).toBeInTheDocument();
+
+    fireEvent.change(search, { target: { value: "" } });
+    expect(screen.getByText("public-api.md")).toBeInTheDocument();
   });
 });
