@@ -16,16 +16,25 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: routerPush, replace: vi.fn() }),
 }));
 
-const skillsData: { data: Skill[] } = { data: [] };
+// The rail has three data-dependent branches besides the list, so the query
+// state is driven per test rather than pinned to "loaded". `refetch` is shared
+// rather than made fresh per call, or the retry button could not be asserted.
+const refetch = vi.fn();
+const skillsData: { data: Skill[]; isLoading: boolean; isError: boolean } = {
+  data: [],
+  isLoading: false,
+  isError: false,
+};
 vi.mock("../../../../lib/hooks/skills", () => ({
-  useSkills: () => ({ ...skillsData, isLoading: false, isError: false, refetch: vi.fn() }),
+  useSkills: () => ({ ...skillsData, refetch }),
   useUpdateSkill: () => ({ mutate: updateMutate, isPending: false }),
-  useCreateSkill: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useCreateSkill: () => ({ mutate: vi.fn(), isPending: false }),
   useImportSkillPreview: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
 import { SkillsRail } from "./SkillsRail";
 import { filterSkills, skillHref } from "./helpers";
+import { SKELETON_COUNT } from "./constants";
 
 function skill(over: Partial<Skill> & Pick<Skill, "id" | "name">): Skill {
   return {
@@ -53,6 +62,9 @@ afterEach(() => {
   routerPush.mockReset();
   updateMutate.mockReset();
   skillsData.data = [];
+  skillsData.isLoading = false;
+  skillsData.isError = false;
+  refetch.mockReset();
 });
 
 function renderRail(props: { selectedId?: string; tab?: string } = {}) {
@@ -118,4 +130,56 @@ describe("SkillsRail", () => {
     expect(screen.queryByText(/^page\./)).not.toBeInTheDocument();
   });
 
+});
+
+describe("SkillsRail data states", () => {
+  function renderWith(state: Partial<typeof skillsData>) {
+    Object.assign(skillsData, state);
+    return render(
+      <NextIntlClientProvider locale="en" messages={{ skills: messages }}>
+        <SkillsRail />
+      </NextIntlClientProvider>,
+    );
+  }
+
+  it("shows placeholders while loading, and no cards", () => {
+    const { container } = renderWith({ isLoading: true, data: [] });
+    expect(container.querySelectorAll(".skeleton")).toHaveLength(SKELETON_COUNT);
+    expect(screen.queryByText("pr-quality-rubric")).not.toBeInTheDocument();
+    // The three states are exclusive: loading must not also claim emptiness.
+    expect(screen.queryByText(messages.page.empty.title)).not.toBeInTheDocument();
+  });
+
+  it("does not mistake a slow load for an empty library", () => {
+    // `data` is undefined until the first response, which is the shape that
+    // makes a loading rail render the no-skills CTA if the branches are
+    // ordered wrongly.
+    renderWith({ isLoading: true, data: undefined as unknown as Skill[] });
+    expect(screen.queryByText(messages.page.empty.title)).not.toBeInTheDocument();
+  });
+
+  it("reports a failed load and retries from the button", () => {
+    renderWith({ isError: true, data: [] });
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+    expect(screen.getByText(messages.page.loadError)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("Retry"));
+    expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("offers the import drawer from the empty state's call to action", () => {
+    renderWith({ data: [] });
+    expect(screen.getByText(messages.page.empty.title)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText(messages.page.empty.cta));
+    // The CTA is wired to the drawer, not merely present: opening it is the
+    // only way a first skill gets imported.
+    expect(screen.getByText(messages.drawer.title)).toBeInTheDocument();
+  });
+
+  it("keeps the search box out of the way when there is nothing to search", () => {
+    renderWith({ data: [] });
+    expect(screen.queryByText(messages.page.loadError)).not.toBeInTheDocument();
+    expect(screen.getByText(messages.page.addSkill)).toBeInTheDocument();
+  });
 });
