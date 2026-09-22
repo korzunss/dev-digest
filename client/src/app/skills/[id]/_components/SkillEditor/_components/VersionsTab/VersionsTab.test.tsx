@@ -9,6 +9,10 @@ import { currentVersion } from "./helpers";
 const useSkillVersions = vi.fn();
 const useVersionDiff = vi.fn();
 const restoreMutate = vi.fn();
+// Shared, not rebuilt per call: a fresh vi.fn() each render makes the retry
+// button impossible to assert even deliberately.
+const refetch = vi.fn();
+const diffRefetch = vi.fn();
 
 vi.mock("../../../../../../../lib/hooks/skills", () => ({
   useSkillVersions: (id: string) => useSkillVersions(id),
@@ -36,7 +40,7 @@ function renderTab(versions: SkillVersion[] = HISTORY) {
     data: versions,
     isLoading: false,
     isError: false,
-    refetch: vi.fn(),
+    refetch,
   });
   return render(
     <NextIntlClientProvider
@@ -53,10 +57,12 @@ afterEach(() => {
   useSkillVersions.mockReset();
   useVersionDiff.mockReset();
   restoreMutate.mockReset();
+  refetch.mockReset();
+  diffRefetch.mockReset();
   vi.restoreAllMocks();
 });
 
-const idleDiff = { data: undefined, isLoading: false, isError: false, refetch: vi.fn() };
+const idleDiff = { data: undefined, isLoading: false, isError: false, refetch: diffRefetch };
 
 describe("currentVersion", () => {
   it("is the highest version, not the first row", () => {
@@ -126,5 +132,74 @@ describe("VersionsTab", () => {
     useVersionDiff.mockReturnValue(idleDiff);
     renderTab([]);
     expect(screen.getByText(skillMessages.versions.empty.title)).toBeInTheDocument();
+  });
+});
+
+describe("VersionsTab data states", () => {
+  /** Render straight against a query state, bypassing renderTab's happy path. */
+  function renderWith(state: Record<string, unknown>) {
+    useSkillVersions.mockReturnValue({ data: [], isLoading: false, isError: false, refetch, ...state });
+    useVersionDiff.mockReturnValue(idleDiff);
+    return render(
+      <NextIntlClientProvider
+        locale="en"
+        messages={{ skills: skillMessages, common: commonMessages }}
+      >
+        <VersionsTab skill={SKILL} />
+      </NextIntlClientProvider>,
+    );
+  }
+
+  it("shows a placeholder while the history loads", () => {
+    const { container } = renderWith({ isLoading: true, data: undefined });
+    expect(container.querySelectorAll(".skeleton").length).toBeGreaterThan(0);
+    // Loading must not also claim the skill has no history.
+    expect(screen.queryByText(skillMessages.versions.empty.title)).not.toBeInTheDocument();
+  });
+
+  it("reports a failed load and retries from the button", () => {
+    renderWith({ isError: true });
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+    expect(screen.getByText(skillMessages.versions.loadError)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("Retry"));
+    expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("says so when there is only the first version to show", () => {
+    // One version is not an empty history, and it is not a changelog either —
+    // there is nothing to diff or restore against, and the row alone would not
+    // explain why every action is missing.
+    renderWith({ data: [v(1, "Initial rubric")] });
+    expect(screen.getByText(skillMessages.versions.current)).toBeInTheDocument();
+    expect(screen.queryByText(skillMessages.versions.diff)).not.toBeInTheDocument();
+    expect(screen.queryByText(skillMessages.versions.restore)).not.toBeInTheDocument();
+    expect(screen.getByText(skillMessages.versions.empty.body)).toBeInTheDocument();
+  });
+
+  it("drops that hint once a second version exists", () => {
+    renderWith({ data: [v(2, "Second"), v(1, null)] });
+    expect(screen.queryByText(skillMessages.versions.empty.body)).not.toBeInTheDocument();
+  });
+
+  it("reports a failed diff inside the modal, and retries there", () => {
+    useSkillVersions.mockReturnValue({ data: HISTORY, isLoading: false, isError: false, refetch });
+    useVersionDiff.mockReturnValue({ ...idleDiff, isError: true });
+    render(
+      <NextIntlClientProvider
+        locale="en"
+        messages={{ skills: skillMessages, common: commonMessages }}
+      >
+        <VersionsTab skill={SKILL} />
+      </NextIntlClientProvider>,
+    );
+
+    fireEvent.click(screen.getAllByText(skillMessages.versions.diff)[0]!);
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("Retry"));
+    expect(diffRefetch).toHaveBeenCalledTimes(1);
+    // The list is still behind the modal — a failed diff is not a failed tab.
+    expect(screen.getByText("Tightened the scope rule")).toBeInTheDocument();
   });
 });
