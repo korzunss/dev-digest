@@ -77,20 +77,29 @@ export function ImportSkillDrawer({
     runPreview(input);
   };
 
-  const confirm = async () => {
+  const confirm = () => {
     if (!parsed) return;
     if (name.trim() === "") return setError(t("import.nameRequired"));
     if (description.trim() === "") return setError(t("import.descriptionRequired"));
 
-    const skill = await create.mutateAsync({
-      name: name.trim(),
-      description: description.trim(),
-      type: parsed.type,
-      body: parsed.body,
-      source: parsed.source,
-    });
-    onClose();
-    onImported?.(skill);
+    // See CreateSkillModal: `mutate` + onSuccess rather than an awaited
+    // `mutateAsync` nobody catches. A failed save keeps the preview on screen,
+    // which matters more here — the parsed skill is not stored anywhere else.
+    create.mutate(
+      {
+        name: name.trim(),
+        description: description.trim(),
+        type: parsed.type,
+        body: parsed.body,
+        source: parsed.source,
+      },
+      {
+        onSuccess: (skill) => {
+          onClose();
+          onImported?.(skill);
+        },
+      },
+    );
   };
 
   return (

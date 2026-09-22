@@ -29,16 +29,21 @@ export function CreateSkillModal({
 
   const ready = name.trim() !== "" && description.trim() !== "" && body.trim() !== "";
 
-  const submit = async () => {
-    const skill = await create.mutateAsync({
-      name: name.trim(),
-      description: description.trim(),
-      type,
-      body,
-    });
-    onClose();
-    onCreated?.(skill);
-  };
+  // `mutate` with callbacks, not `mutateAsync`: an awaited mutation whose
+  // rejection nobody catches is an unhandled promise rejection, and there is
+  // nothing here to catch it — the caller is an onClick. Closing only on
+  // success is the other half: a failed create keeps the user's typing on
+  // screen, and the global MutationCache.onError has already toasted why.
+  const submit = () =>
+    create.mutate(
+      { name: name.trim(), description: description.trim(), type, body },
+      {
+        onSuccess: (skill) => {
+          onClose();
+          onCreated?.(skill);
+        },
+      },
+    );
 
   return (
     <Modal

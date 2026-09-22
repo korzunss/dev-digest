@@ -6,11 +6,11 @@ import messages from "../../../../../messages/en/skills.json";
 import { isArchiveFile, isMarkdownFile } from "./helpers";
 
 const previewMutate = vi.fn();
-const createMutateAsync = vi.fn();
+const createMutate = vi.fn();
 
 vi.mock("../../../../lib/hooks/skills", () => ({
   useImportSkillPreview: () => ({ mutate: previewMutate, isPending: false }),
-  useCreateSkill: () => ({ mutateAsync: createMutateAsync, isPending: false }),
+  useCreateSkill: () => ({ mutate: createMutate, isPending: false }),
 }));
 
 import { ImportSkillDrawer } from "./ImportSkillDrawer";
@@ -27,7 +27,7 @@ const PREVIEW: SkillImportPreview = {
 afterEach(() => {
   cleanup();
   previewMutate.mockReset();
-  createMutateAsync.mockReset();
+  createMutate.mockReset();
 });
 
 function renderDrawer() {
@@ -70,7 +70,7 @@ describe("ImportSkillDrawer", () => {
       expect.anything(),
     );
     // The preview is a parse, not a save.
-    expect(createMutateAsync).not.toHaveBeenCalled();
+    expect(createMutate).not.toHaveBeenCalled();
   });
 
   it("shows the parsed skill and the entries it refused to process", async () => {
@@ -89,7 +89,7 @@ describe("ImportSkillDrawer", () => {
     expect(screen.getByText("Not processed (2)")).toBeInTheDocument();
     expect(screen.getByText("install.sh")).toBeInTheDocument();
     // Still nothing stored.
-    expect(createMutateAsync).not.toHaveBeenCalled();
+    expect(createMutate).not.toHaveBeenCalled();
   });
 
   it("creates the skill only once the preview is confirmed, carrying its source", async () => {
@@ -105,14 +105,17 @@ describe("ImportSkillDrawer", () => {
     fireEvent.click(screen.getByText("Save skill"));
 
     await waitFor(() =>
-      expect(createMutateAsync).toHaveBeenCalledWith({
-        name: "archived-rule",
-        description: "The rule itself.",
-        type: "custom",
-        body: "# archived-rule\n\nThe rule itself.",
-        // The source is what makes it land disabled server-side.
-        source: "imported_file",
-      }),
+      expect(createMutate).toHaveBeenCalledWith(
+        {
+          name: "archived-rule",
+          description: "The rule itself.",
+          type: "custom",
+          body: "# archived-rule\n\nThe rule itself.",
+          // The source is what makes it land disabled server-side.
+          source: "imported_file",
+        },
+        expect.objectContaining({ onSuccess: expect.any(Function) }),
+      ),
     );
   });
 
@@ -133,11 +136,39 @@ describe("ImportSkillDrawer", () => {
         screen.getByText("Add a description — it is what tells an agent when this rule applies."),
       ).toBeInTheDocument(),
     );
-    expect(createMutateAsync).not.toHaveBeenCalled();
+    expect(createMutate).not.toHaveBeenCalled();
   });
 
   it("cannot be confirmed before a preview exists", () => {
     renderDrawer();
     expect(screen.getByText("Save skill").closest("button")).toBeDisabled();
   });
+
+  it("keeps the preview on screen when the save fails", async () => {
+    // The parsed skill lives nowhere but this component, so closing on failure
+    // would throw away work the user cannot get back without re-importing.
+    // `mutate` + onSuccess also means no awaited promise is left to reject
+    // unhandled; the global MutationCache.onError reports the reason.
+    const onClose = vi.fn();
+    render(
+      <NextIntlClientProvider locale="en" messages={{ skills: messages }}>
+        <ImportSkillDrawer onClose={onClose} />
+      </NextIntlClientProvider>,
+    );
+    fireEvent.click(screen.getByText("From URL"));
+    fireEvent.change(screen.getByPlaceholderText("https://example.com/skills/security.md"), {
+      target: { value: "https://example.com/skill.md" },
+    });
+    fireEvent.click(screen.getByText("Import from URL"));
+    resolvePreview();
+
+    await waitFor(() => expect(screen.getByText("Save skill")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("Save skill"));
+
+    // The mutation was fired but never succeeded: onSuccess is simply not run.
+    expect(createMutate).toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByText("Preview — nothing is saved yet")).toBeInTheDocument();
+  });
+
 });
