@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { GitLabRestClient, GitLabHttpError } from '../src/adapters/gitlab/rest.js';
+import { GitLabRestClient, GitLabHttpError, redactUrl } from '../src/adapters/gitlab/rest.js';
 import {
   mapMrState,
   countDiffLines,
@@ -198,6 +198,28 @@ describe('GitLabRestClient — transport', () => {
     const client = new GitLabRestClient('tok');
     await expect(client.currentLogin()).rejects.toMatchObject({ status: 404 });
     await expect(client.currentLogin()).rejects.toBeInstanceOf(GitLabHttpError);
+  });
+
+  it('keeps credentials out of the error message', async () => {
+    // The message is not internal: test-connection returns err.message to the
+    // HTTP client. apiRoot is operator-supplied and parseForgeBases passes
+    // userinfo through, so a GITLAB_HOST carrying a PAT would print it back.
+    stubFetch({});
+    const client = new GitLabRestClient('tok', 'https://oauth2:glpat-SECRET@git.acme.com');
+    await expect(client.currentLogin()).rejects.toThrow(/git\.acme\.com/);
+    await expect(client.currentLogin()).rejects.not.toThrow(/glpat-SECRET|oauth2/);
+  });
+
+  it('redacts only the userinfo, leaving the URL diagnosable', () => {
+    // A 401 here is usually a token checked against the wrong instance, so the
+    // host and path have to survive — redacting the whole URL would remove the
+    // one thing the message exists to show.
+    expect(redactUrl(new URL('https://oauth2:glpat-SECRET@git.acme.com/api/v4/user'))).toBe(
+      'https://git.acme.com/api/v4/user',
+    );
+    expect(redactUrl(new URL('https://git.acme.com/api/v4/user?page=2'))).toBe(
+      'https://git.acme.com/api/v4/user?page=2',
+    );
   });
 
   it('retries a 429 and succeeds', async () => {

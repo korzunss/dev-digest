@@ -63,6 +63,23 @@ interface RequestOptions {
  * installed under a relative URL — which is why the base is an `apiBase`
  * (origin + optional path prefix) and never a bare host.
  */
+/**
+ * A URL safe to put in an error message. `test-connection` returns an adapter's
+ * `err.message` straight to the HTTP client, and `apiRoot` is operator-supplied:
+ * `parseForgeBases` passes userinfo through untouched, so a GITLAB_HOST written
+ * as `https://oauth2:<pat>@git.acme.com` — the exact shape `withForgeToken`
+ * builds for clones, so an easy thing to copy across — would otherwise print
+ * the PAT back out. The PRIVATE-TOKEN header is not in the URL and never was;
+ * this covers the credential that can be.
+ */
+export function redactUrl(url: URL): string {
+  if (!url.username && !url.password) return url.href;
+  const safe = new URL(url.href);
+  safe.username = '';
+  safe.password = '';
+  return safe.href;
+}
+
 export class GitLabRestClient implements ForgeClient {
   readonly provider: ForgeProvider = 'gitlab';
   private readonly apiRoot: string;
@@ -109,7 +126,7 @@ export class GitLabRestClient implements ForgeClient {
       const detail = body.trim().slice(0, 200);
       throw new GitLabHttpError(
         res.status,
-        `GitLab ${opts.method ?? 'GET'} ${url.href} failed: ${res.status}` +
+        `GitLab ${opts.method ?? 'GET'} ${redactUrl(url)} failed: ${res.status}` +
           (res.statusText ? ` ${res.statusText}` : '') +
           (detail ? ` — ${detail}` : ''),
         body,
