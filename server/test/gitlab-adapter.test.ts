@@ -537,6 +537,48 @@ describe('GitLabRestClient — writes', () => {
     expect(calls.some((c) => c.url.includes('/discussions/d1/notes'))).toBe(true);
   });
 
+  it('refuses to anchor a comment on an MR with no diff_refs', async () => {
+    // A fresh MR, or one whose source branch has gone, comes back without
+    // diff_refs. buildPosition would then produce a position with undefined
+    // shas, which GitLab rejects with a 400 naming none of this — so the
+    // adapter stops first and says what is actually missing.
+    const calls = stubFetch({
+      'GET /api/v4/projects/acme%2Fapi/merge_requests/7': { ...MR_WITH_REFS, diff_refs: null },
+    });
+
+    await expect(
+      new GitLabRestClient('tok').createReviewComment(REPO, 7, {
+        commitId: 'HEAD1',
+        path: 'src/a.ts',
+        line: 12,
+        body: 'looks wrong',
+      }),
+    ).rejects.toMatchObject({ status: 422 });
+
+    // 422 not 500: the MR is in a state that cannot take the comment, which is
+    // the caller's problem to report, not a transport failure to retry.
+    expect(calls.some((c) => c.method === 'POST')).toBe(false);
+  });
+
+  it('refuses to invent a comment when the discussion comes back with no diff note', async () => {
+    // GitLab answered 2xx, so the write may well have landed — but the note we
+    // must return is not in the payload. Returning a half-built PrReviewComment
+    // would put an id in the UI that resolves to nothing.
+    stubFetch({
+      'GET /api/v4/projects/acme%2Fapi/merge_requests/7': MR_WITH_REFS,
+      'POST /api/v4/projects/acme%2Fapi/merge_requests/7/discussions': { id: 'd9', notes: [] },
+    });
+
+    await expect(
+      new GitLabRestClient('tok').createReviewComment(REPO, 7, {
+        commitId: 'HEAD1',
+        path: 'src/a.ts',
+        line: 12,
+        body: 'looks wrong',
+      }),
+    ).rejects.toMatchObject({ status: 500 });
+  });
+
   it('fails loudly when a reply targets a discussion that does not exist', async () => {
     stubFetch({ 'GET /api/v4/projects/acme%2Fapi/merge_requests/7/discussions': [] });
     await expect(
