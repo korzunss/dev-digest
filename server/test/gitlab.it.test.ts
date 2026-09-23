@@ -92,21 +92,26 @@ d('GitLab repos', () => {
     });
   });
 
-  it('rejects an unknown host unless the provider is explicit', async () => {
-    const bad = await app.inject({
-      method: 'POST',
-      url: '/repos',
-      payload: { url: 'https://git.elsewhere.com/team/api' },
-    });
-    expect(bad.statusCode).toBe(400);
+  it('refuses an unlisted instance, with or without an explicit provider', async () => {
+    // Accepting it would hand the GitLab PAT to a host chosen by the request.
+    for (const payload of [
+      { url: 'https://git.elsewhere.com/team/api' },
+      { url: 'https://git.elsewhere.com/team/api', provider: 'gitlab' },
+    ]) {
+      const res = await app.inject({ method: 'POST', url: '/repos', payload });
+      expect(res.statusCode).toBe(400);
+      expect(res.json().error.code).toBe('unknown_forge_host');
+    }
+  });
 
-    const ok = await app.inject({
+  it('refuses a provider that contradicts a known host', async () => {
+    const res = await app.inject({
       method: 'POST',
       url: '/repos',
-      payload: { url: 'https://git.elsewhere.com/team/api', provider: 'gitlab' },
+      payload: { url: 'https://github.com/a/b', provider: 'gitlab' },
     });
-    expect(ok.statusCode).toBe(201);
-    expect(ok.json().api_base).toBe('https://git.elsewhere.com');
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('provider_mismatch');
   });
 
   it('keeps the same full_name on two forges as two distinct repos', async () => {

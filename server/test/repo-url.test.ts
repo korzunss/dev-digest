@@ -87,15 +87,42 @@ describe('parseRepoUrl — self-managed', () => {
     ).toMatchObject({ provider: 'gitlab', owner: 'team', name: 'api' });
   });
 
-  it('rejects an unknown host unless the provider is explicit', () => {
+  it('rejects an unknown host even when the caller names a provider', () => {
+    // `provider` disambiguates among hosts we already trust; it must not be
+    // able to authorise a new one. An unlisted instance that got through would
+    // receive the forge PAT as a PRIVATE-TOKEN header AND embedded in the
+    // clone URL by withForgeToken.
     expect(() => parseRepoUrl('https://git.other.com/team/api')).toThrow(/not a known forge/);
-    expect(parseRepoUrl('https://git.other.com/team/api', { provider: 'gitlab' })).toEqual({
+    expect(() =>
+      parseRepoUrl('https://git.other.com/team/api', { provider: 'gitlab' }),
+    ).toThrow(/not a known forge/);
+    // Allowlisting it is the operator's call, and then it works.
+    expect(
+      parseRepoUrl('https://git.other.com/team/api', {
+        gitlabBases: ['https://git.other.com'],
+      }),
+    ).toMatchObject({ provider: 'gitlab', apiBase: 'https://git.other.com' });
+  });
+
+  it('rejects a provider that contradicts a known host', () => {
+    // Silently honouring either side would send the wrong forge's token.
+    expect(() =>
+      parseRepoUrl('https://gitlab.com/a/b', { provider: 'github' }),
+    ).toThrow(/is gitlab, but the request asked for github/);
+    expect(() =>
+      parseRepoUrl('https://github.com/a/b', { provider: 'gitlab' }),
+    ).toThrow(/is github, but the request asked for gitlab/);
+    // Agreeing with the host is fine.
+    expect(parseRepoUrl('https://gitlab.com/a/b', { provider: 'gitlab' })).toMatchObject({
       provider: 'gitlab',
-      apiBase: 'https://git.other.com',
-      owner: 'team',
-      name: 'api',
-      fullName: 'team/api',
     });
+  });
+
+  it('rejects a non-web scheme', () => {
+    // z.string().url() accepts file:/ftp:, whose origin is the string 'null'.
+    for (const u of ['file:///etc/passwd', 'ftp://host/a/b']) {
+      expect(() => parseRepoUrl(u, { provider: 'gitlab' })).toThrow(/http\(s\)/);
+    }
   });
 });
 

@@ -151,11 +151,15 @@ parseRepoUrl(url, explicit?: ForgeProvider):
   before it reaches `join` — today the two-segment GitHub regex made that
   impossible, and widening it removes the accidental guard;
 - provider inference: `github.com` → github, `gitlab.com` → gitlab, anything
-  else → ambiguous. Resolve with, in order: the explicit `provider` on
-  `RepoInput`, then a `GITLAB_HOST` env allowlist (comma-separated, for
-  self-managed), then default `github`. `RepoInput` gains
-  `provider: ForgeProvider.optional()`, and the Add-repo form gets a picker that
-  only appears when the host is not one of the two known ones.
+  else → **only** what the `GITLAB_HOST` allowlist says. `RepoInput.provider`
+  exists but is a *disambiguator among trusted hosts*, never an authoriser:
+  an unlisted host is rejected whether or not a provider is named, and a
+  provider contradicting a known host is a 400 rather than a silent
+  preference. Anything looser hands the forge PAT to a host the request picks
+  — it travels as a `PRIVATE-TOKEN` header to `${origin}/api/v4` and is
+  embedded in the clone URL by `withForgeToken`. Non-http(s) schemes are
+  rejected too: `z.string().url()` accepts `file:`/`ftp:`, whose `origin` is
+  the string `'null'`.
 
 `withGitHubToken` → `withForgeToken(url, token, provider)`: the embedded
 username differs — GitHub wants `x-access-token`, GitLab wants `oauth2`. Match
@@ -510,8 +514,9 @@ first, separately, so phase 3's diff is purely additive.
     `event: 'APPROVE'` against a Free/CE instance posts the note and reports
     "commented, not approved" instead of throwing.
 11. A self-managed host listed in `GITLAB_HOST` imports without an explicit
-    provider on the request; an unlisted unknown host is rejected with
-    `invalid_repo_url` unless `provider` is supplied.
+    provider on the request. An unlisted host is rejected with
+    `unknown_forge_host` **even when `provider` is supplied**, and a provider
+    contradicting a known host is rejected with `provider_mismatch`.
 12. A project on a **subpath install** (`https://acme.com/gitlab/group/proj`)
     imports, its MRs list, and the client's "View on GitLab" link resolves to
     `https://acme.com/gitlab/group/proj/-/merge_requests/N` — i.e. the prefix

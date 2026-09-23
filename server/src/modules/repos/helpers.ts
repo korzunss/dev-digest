@@ -26,7 +26,13 @@ export interface ParsedRepoUrl {
 }
 
 export interface ParseRepoUrlOptions {
-  /** Explicit forge from the request body; wins over host inference. */
+  /**
+   * Forge hint from the request body. It DISAMBIGUATES among hosts we already
+   * trust — it never authorises a new one. See the unknown-host branch: a
+   * caller must not be able to point the app at an arbitrary instance just by
+   * naming a provider, because that instance then receives the forge PAT both
+   * as a PRIVATE-TOKEN header and embedded in the clone URL.
+   */
   provider?: ForgeProvider;
   /**
    * Configured self-managed GitLab bases, as full URLs
@@ -107,12 +113,32 @@ export function parseRepoUrl(url: string, opts: ParseRepoUrlOptions = {}): Parse
     throw new AppError('invalid_repo_url', `Could not parse owner/repo from '${url}'`, 400);
   }
 
+  // Everything downstream assumes a web origin: the REST base is
+  // `${origin}/api/v4` and the clone URL carries credentials. `z.string().url()`
+  // accepts file:, ftp: and friends, whose origin is the string 'null'.
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+    throw new AppError(
+      'invalid_repo_url',
+      `Only http(s) repository URLs are supported, got '${parsed.protocol}'`,
+      400,
+    );
+  }
+
   // 2. Known public hosts.
   const host = parsed.host.toLowerCase();
   const hosted = (Object.entries(FORGE_PUBLIC_HOST) as [ForgeProvider, string][]).find(
     ([, h]) => host === h || host === `www.${h}`,
   );
   if (hosted) {
+    // An explicit provider that contradicts the host is a mistake, not a
+    // preference — honouring either side silently would send the wrong token.
+    if (opts.provider && opts.provider !== hosted[0]) {
+      throw new AppError(
+        'provider_mismatch',
+        `'${parsed.host}' is ${hosted[0]}, but the request asked for ${opts.provider}.`,
+        400,
+      );
+    }
     return {
       provider: hosted[0],
       apiBase: null,
@@ -120,19 +146,16 @@ export function parseRepoUrl(url: string, opts: ParseRepoUrlOptions = {}): Parse
     };
   }
 
-  // 3. Unknown host: the URL cannot tell the forges apart, so the caller must.
-  if (!opts.provider) {
-    throw new AppError(
-      'unknown_forge_host',
-      `'${parsed.host}' is not a known forge. Pass "provider", or add the instance to GITLAB_HOST.`,
-      400,
-    );
-  }
-  return {
-    provider: opts.provider,
-    apiBase: parsed.origin,
-    ...cleanProjectPath(parsed.pathname, url),
-  };
+  // 3. Unknown host. It is NOT enough for the caller to name a provider: doing
+  //    so would let any request hand the forge PAT to a host of its choosing —
+  //    the token travels as a PRIVATE-TOKEN header to `${origin}/api/v4`, and
+  //    `withForgeToken` embeds it in the clone URL for any https host. A
+  //    self-managed instance has to be allowlisted by the operator first.
+  throw new AppError(
+    'unknown_forge_host',
+    `'${parsed.host}' is not a known forge instance. Add it to GITLAB_HOST to use it.`,
+    400,
+  );
 }
 
 /**
