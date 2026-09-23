@@ -118,6 +118,21 @@ describe('parseRepoUrl — self-managed', () => {
     });
   });
 
+  it('accepts http, which then silently declines to authenticate', () => {
+    // http is deliberately allowed alongside https: a self-managed instance on
+    // a LAN may not have TLS. Nothing downstream re-checks the scheme, so pin
+    // where that lands. parseRepoUrl treats the URL as ordinary...
+    const parsed = parseRepoUrl('http://gitlab.com/acme/api', {});
+    expect(parsed).toMatchObject({ provider: 'gitlab', apiBase: null, fullName: 'acme/api' });
+
+    // ...but withForgeToken refuses to put a PAT on a cleartext URL, so the
+    // clone goes out anonymous and a private project fails with a 404 that
+    // names neither the scheme nor the missing credential.
+    expect(withForgeToken('http://gitlab.com/acme/api.git', 'tok', 'gitlab')).toBe(
+      'http://gitlab.com/acme/api.git',
+    );
+  });
+
   it('rejects a non-web scheme', () => {
     // z.string().url() accepts file:/ftp:, whose origin is the string 'null'.
     for (const u of ['file:///etc/passwd', 'ftp://host/a/b']) {
