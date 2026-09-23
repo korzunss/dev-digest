@@ -688,6 +688,35 @@ describe('GitLabRestClient — commitFiles', () => {
 });
 
 describe('GitLabRestClient — review', () => {
+  it.each(['COMMENT', 'REQUEST_CHANGES'] as const)(
+    'posts %s as a plain note and never reaches for approve',
+    async (event) => {
+      // The branch that matters is the one that does NOT run. GitLab has no
+      // request-changes verb, so these events are notes only; if the APPROVE
+      // guard were dropped or inverted, a Free instance would answer 403 and
+      // the catch would swallow it, hiding the bug — while on an instance where
+      // approve succeeds, a COMMENT review would silently approve the MR.
+      const calls = stubFetch({
+        'POST /api/v4/projects/acme%2Fapi/merge_requests/7/notes': { id: 4242 },
+      });
+
+      const res = await new GitLabRestClient('tok').postReview(REPO, 7, {
+        body: 'needs a second look',
+        event,
+      });
+
+      // id is a number on the wire and a string on the port.
+      expect(res).toEqual({ id: '4242' });
+      expect(calls).toHaveLength(1);
+      expect(calls[0]).toMatchObject({
+        method: 'POST',
+        url: '/api/v4/projects/acme%2Fapi/merge_requests/7/notes',
+        body: { body: 'needs a second look' },
+      });
+      expect(calls.some((c) => c.url.endsWith('/approve'))).toBe(false);
+    },
+  );
+
   it('posts the note and swallows a Premium-only 403 from approve', async () => {
     // On GitLab 14.x approve/unapprove are Premium ("Moved to Premium in 13.9"),
     // so a Free/CE instance answers 403 — the review must still land as a note.
