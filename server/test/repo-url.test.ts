@@ -222,6 +222,18 @@ describe('forge-resolve', () => {
     expect(forgeTokenKeys('github', null)).toEqual(['GITHUB_TOKEN']);
   });
 
+  it('falls back to the canonical key when apiBase yields no host', () => {
+    // Two different routes into the same fallback, and only the first is a
+    // throw: a bare host has no scheme so new URL rejects it, while file:///x
+    // parses fine and just has an empty host. Both must degrade to the
+    // canonical key rather than producing a key with an empty or literal
+    // undefined host, which would miss every secret and clone unauthenticated.
+    expect(forgeTokenKeys('gitlab', 'not-a-url')).toEqual(['GITLAB_TOKEN']);
+    expect(forgeTokenKeys('gitlab', 'git.acme.com')).toEqual(['GITLAB_TOKEN']);
+    expect(forgeTokenKeys('gitlab', 'file:///x')).toEqual(['GITLAB_TOKEN']);
+    expect(forgeTokenKeys('github', '')).toEqual(['GITHUB_TOKEN']);
+  });
+
   it('keys the client cache per instance, not just per provider', () => {
     expect(forgeCacheKey('gitlab', 'https://a.com')).not.toBe(
       forgeCacheKey('gitlab', 'https://b.com'),
