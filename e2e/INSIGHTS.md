@@ -3,7 +3,7 @@
 Append-only. Things that cost someone time in the browser suite. Repo-wide
 findings go in [`../INSIGHTS.md`](../INSIGHTS.md), which carries the entry format,
 the section guide and the promotion rule (a standing rule becomes one line under
-`Gotchas` in `e2e/CLAUDE.md`). The `engineering-insights` skill writes here.
+`Gotchas` in `e2e/AGENTS.md`). The `engineering-insights` skill writes here.
 
 ```md
 ### YYYY-MM-DD — short title

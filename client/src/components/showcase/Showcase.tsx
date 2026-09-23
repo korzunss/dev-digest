@@ -216,6 +216,15 @@ export function Gallery() {
             { label: "anthropic", value: 2.1, color: "var(--ok)" },
           ]}
         />
+        {/* Same chart with integer counts — `formatValue` replaces the money
+            default, which would render a count of 12 as "$12.00". */}
+        <Donut
+          segments={[
+            { label: "security", value: 12, color: "var(--crit)" },
+            { label: "perf", value: 5, color: "var(--warn)" },
+          ]}
+          formatValue={(v) => String(v)}
+        />
         <div style={s.w320}>
           <BarRow label="security-agent" value={42} max={60} suffix="42" />
           <BarRow label="perf-agent" value={28} max={60} color="var(--ok)" suffix="28" />

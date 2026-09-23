@@ -49,8 +49,17 @@ export type ToolCall = z.infer<typeof ToolCall>;
 export const PromptAssembly = z.object({
   system: z.string(),
   skills: z.string().nullish(),
+  /**
+   * Tokens the skills block added to the prompt, counted server-side with the
+   * tokenizer adapter (reviewer-core is pure and has none). NULLISH, not
+   * nullable: traces written before spec 003 lack the key, and a required field
+   * would fail to parse them.
+   */
+  skills_tokens: z.number().int().nullish(),
   memory: z.string().nullish(),
   specs: z.string().nullish(),
+  /** Tokens the project-context block added. Nullish for the same reason. */
+  specs_tokens: z.number().int().nullish(),
   /** Callers-of-changed-symbols digest (T1.3); null when absent. */
   callers: z.string().nullish(),
   /** Repo skeleton / map (T3); null when absent. Enables per-slot token

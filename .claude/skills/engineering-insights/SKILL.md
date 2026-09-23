@@ -44,7 +44,7 @@ An entry is written **only if all three hold**:
 3. **Actionable cold.** A future agent reads it and knows what to do, without
    re-investigating.
 
-Never write: a replay of what you did, a restatement of `CLAUDE.md`, a generic
+Never write: a replay of what you did, a restatement of `AGENTS.md`, a generic
 best practice, or an entry whose rule is "be careful".
 
 **Writing nothing is a correct outcome.** Most sessions produce no entry. If the
@@ -153,7 +153,7 @@ Even then you add lines to it — you never delete or reword what is already the
 
 When an entry has been hit a third time, or has hardened into a rule everyone
 must follow, add a **one-line** version under `Gotchas` in that package's
-`CLAUDE.md` and leave the full write-up in `INSIGHTS.md`. That keeps `CLAUDE.md`
+`AGENTS.md` and leave the full write-up in `INSIGHTS.md`. That keeps `AGENTS.md`
 short without losing the reasoning.
 
 ## The two halves are not optional in the same way

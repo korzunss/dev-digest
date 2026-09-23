@@ -1,6 +1,6 @@
 # reviewer-core/docs — deep documentation for the review engine
 
-Index of engine-local documentation. `reviewer-core/CLAUDE.md` links here rather
+Index of engine-local documentation. `reviewer-core/AGENTS.md` links here rather
 than inlining it. One line per document, enough to decide whether to open it.
 
 _No engine docs yet — the pipeline diagram and the exported API live in
@@ -19,6 +19,6 @@ in the repo-root `docs/`; how to *write* an agent's system prompt lives in
 
 ## What does not
 
-Anything an agent needs every session (→ `reviewer-core/CLAUDE.md`, as one line),
+Anything an agent needs every session (→ `reviewer-core/AGENTS.md`, as one line),
 a single incident (→ `reviewer-core/INSIGHTS.md`), or work not yet built
 (→ `reviewer-core/specs/`).

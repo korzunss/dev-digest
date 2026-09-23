@@ -9,6 +9,8 @@ in the DB). The canonical, reviewable copies live next to this file:
 - [`general-reviewer.md`](./general-reviewer.md)
 - [`security-reviewer.md`](./security-reviewer.md)
 - [`performance-reviewer.md`](./performance-reviewer.md)
+- [`test-quality-reviewer.md`](./test-quality-reviewer.md)
+- [`api-contract-reviewer.md`](./api-contract-reviewer.md)
 
 > The DB is the source of truth at run time. These files are the human-readable
 > originals — when you change a prompt, edit the file here **and** push it to the
@@ -49,6 +51,27 @@ delimiter-wrapped (`prompt.ts:104-122`):
 Sections with no content are omitted. Everything repo- or author-derived is wrapped
 in `<untrusted source="…">…</untrusted>` so the model can tell instructions
 (system) from data (user).
+
+## Skills — the part of the prompt you don't write
+
+`## Skills / rules` is assembled from the skills attached to the agent in the
+editor's **Skills** tab, in the order they are attached. Two gates decide what
+lands there: the skill must be attached to this agent, and it must be enabled in
+the skills library (the library toggle is a kill switch across every agent).
+
+Consequences for prompt authors:
+
+- **Don't duplicate a skill in the system prompt.** If a rule is a skill, the
+  agent already has it; repeating it costs tokens and creates two versions of the
+  rule that drift.
+- **Order is meaning.** Earlier skills are read first. Put the rubric that frames
+  the review before the narrow gates it applies.
+- **Skill bodies are trusted text, on purpose.** They are NOT wrapped in
+  `<untrusted>` — the injection guard would tell the model to ignore them, and a
+  skill that the model ignores is not a skill. The control is that an imported
+  skill lands disabled until a person reads it and turns it on (spec 003).
+- The run trace shows the assembled block and the tokens it added, so a prompt
+  that got expensive is visible rather than inferred.
 
 ## The output schema is NOT in the prompt
 

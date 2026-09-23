@@ -15,12 +15,74 @@
       "body": "Scan the repo to surface house-rules — naming, error handling, structure — each backed by evidence you can turn into a Skill.",
       "cta": "Run extraction"
     },
-    "candidateCount": "{count, plural, one {# candidate} other {# candidates}} · grounded against sampled files"
+    "candidateCount": "{count, plural, one {# candidate} other {# candidates}} · grounded against sampled files",
+    "noEvidence": {
+      "title": "Nothing survived the evidence gate",
+      "body": "The model proposed rules, but none of them cited code that could be found in the files it was shown. Re-scan, or index the repo first so the scan sees more than the config files.",
+      "cta": "Re-scan"
+    },
+    "dropped": "{count, plural, one {# candidate was dropped} other {# candidates were dropped}} — the cited code was not in the sampled files.",
+    "sampleCount": "{count, plural, one {# file sampled} other {# files sampled}}",
+    "lastScan": "last scan {when}"
   },
   "card": {
     "confidence": "Confidence",
     "accepted": "Accepted",
     "accepting": "Accepting…",
-    "acceptAsSkill": "Accept as Skill"
+    "acceptAsSkill": "Accept as Skill",
+    "reject": "Reject",
+    "rejected": "Rejected",
+    "edit": "Edit",
+    "save": "Save",
+    "cancel": "Cancel"
+  },
+  "category": {
+    "naming": "Naming",
+    "structure": "Structure",
+    "error-handling": "Error handling",
+    "async": "Async",
+    "data-access": "Data access",
+    "api": "API",
+    "testing": "Testing",
+    "tooling": "Tooling"
+  },
+  "selection": {
+    "selectAll": "Select all",
+    "deselectAll": "Deselect all",
+    "accepted": "{count, plural, =0 {No rules accepted of {total}} one {# rule accepted of {total}} other {# rules accepted of {total}}}",
+    "createSkill": "Create skill",
+    "createSkillDisabled": "Accept at least one rule to build a skill from it."
+  },
+  "createSkill": {
+    "title": "Create skill from conventions",
+    "subtitle": "Nothing is stored until you press Create. Every field below is editable first.",
+    "mergedFrom": "Merged from {rules, plural, one {# accepted rule} other {# accepted rules}} citing {files, plural, one {# file} other {# files}}.",
+    "previewError": "Could not build the preview.",
+    "previewLoading": "Building the preview…",
+    "previewEmpty": "Nothing is accepted any more, so there is no skill to build. Close this and accept at least one rule.",
+    "fields": {
+      "name": "Name",
+      "description": "Description (the skill's interface)",
+      "descriptionHint": "What an agent reads to decide the rule applies. Write it as an instruction — “Enforce X”, not “About X”.",
+      "type": "Type",
+      "enabled": "Enabled",
+      "enabledHint": "An extracted skill is your own, not an import, so it starts enabled — attach it to an agent and the next run carries it.",
+      "body": "Skill body (Markdown)",
+      "bodyHint": "Generated from the accepted rules and their evidence. Edit it freely — what you see here is what reaches the prompt."
+    },
+    "fileChip": "{name}.md",
+    "tokens": "{tokens} tokens",
+    "tokensTitle": "Estimated from the character count — the exact count comes from the provider and shows up in the run trace.",
+    "split": "Split by category",
+    "splitHint": "One skill per category instead of a single merged skill. Useful when you want to attach naming rules without the async ones.",
+    "step": "Skill {index} of {total}",
+    "stepHint": "Create makes all of them.",
+    "prev": "Previous skill",
+    "next": "Next skill",
+    "cancel": "Cancel",
+    "create": "Create skill",
+    "createMany": "Create {count} skills",
+    "creating": "Creating…",
+    "created": "{count, plural, one {Created “{name}” — it is in the Skills Lab, ready to attach to an agent.} other {Created # skills — they are in the Skills Lab, ready to attach to an agent.}}"
   }
 }

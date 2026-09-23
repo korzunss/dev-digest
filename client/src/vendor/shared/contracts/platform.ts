@@ -75,8 +75,12 @@ export const FEATURE_MODELS: FeatureModelDef[] = [
     id: 'conventions',
     label: 'Conventions',
     description: 'Extracts coding conventions from the repo.',
-    defaultProvider: 'openai',
-    defaultModel: 'gpt-5.4',
+    // Deliberately the cheap lane, like `onboarding`: this feature reads ~15
+    // whole files and is re-run on demand, so the default must be affordable to
+    // press twice. A workspace that wants a stronger model overrides it in
+    // Settings -> Feature Models.
+    defaultProvider: 'openrouter',
+    defaultModel: 'deepseek/deepseek-v4-flash',
   },
 ];
 

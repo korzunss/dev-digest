@@ -23,7 +23,22 @@ export const NAV: NavGroup[] = [
     section: "WORKSPACE",
     items: [
       { key: "pulls", label: "Pull Requests", icon: "GitPullRequest", href: "/repos/:repoId/pulls", gKey: "p" },
+    ],
+  },
+  {
+    // Agents and skills are one workbench, not two workspace tools: a skill is
+    // only ever exercised through an agent, and both screens already say
+    // "Skills Lab" in their breadcrumb. Grouping them makes the sidebar agree
+    // with the breadcrumbs. Only screens that exist are listed.
+    section: "SKILLS LAB",
+    items: [
       { key: "agents", label: "Agents", icon: "Cpu", href: "/agents", gKey: "a" },
+      { key: "skills", label: "Skills", icon: "Sparkles", href: "/skills", gKey: "s" },
+      // Signed-off exception to "don't edit src/vendor/**" (spec 004): the nav
+      // is data, and there is no other seam — a Skills Lab screen that only
+      // deep links can reach is not shipped. Expect the next vendor refresh to
+      // drop this line; see client/INSIGHTS.md.
+      { key: "conventions", label: "Conventions", icon: "ListChecks", href: "/repos/:repoId/conventions", gKey: "c" },
     ],
   },
 ];
@@ -53,6 +68,7 @@ export const SHORTCUTS: ShortcutDef[] = [
   { keys: "?", label: "Show keyboard shortcuts", group: "Global" },
   { keys: "g p", label: "Go to Pull Requests", group: "Navigation" },
   { keys: "g a", label: "Go to Agents", group: "Navigation" },
+  { keys: "g s", label: "Go to Skills", group: "Navigation" },
   { keys: "j / k", label: "Next / previous finding", group: "Findings" },
   { keys: "a", label: "Accept finding", group: "Findings" },
   { keys: "d", label: "Dismiss finding", group: "Findings" },

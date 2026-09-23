@@ -30,13 +30,13 @@ import { users, workspaces, workspaceMembers, settings } from './schema/core';
 import { repos } from './schema/repos';
 import { pullRequests, prFiles, prCommits } from './schema/pulls';
 import { reviews, findings, prIntent, prBrief } from './schema/reviews';
-import { skills, skillVersions } from './schema/skills';
+import { skills, skillVersions, skillContextDocs } from './schema/skills';
 import { agents, agentVersions, agentSkills } from './schema/agents';
-import { memory, conventions } from './schema/knowledge';
+import { memory, conventions, conventionScans } from './schema/knowledge';
 import { codeChunks, symbols, references, onboarding } from './schema/context';
 import { evalCases, evalRuns, conformanceChecks, composedReviews } from './schema/eval';
 import { ciInstallations, ciRuns } from './schema/ci';
-import { agentRuns, runTraces, multiAgentRuns } from './schema/runs';
+import { agentRuns, runTraces, multiAgentRuns, runSkills } from './schema/runs';
 import { jobs, installedPlugins, digests } from './schema/ops';
 import {
   repoIndexState,
@@ -62,10 +62,12 @@ export const schema = {
   prBrief,
   skills,
   skillVersions,
+  skillContextDocs,
   agents,
   agentVersions,
   agentSkills,
   conventions,
+  conventionScans,
   memory,
   codeChunks,
   symbols,
@@ -79,6 +81,7 @@ export const schema = {
   ciRuns,
   agentRuns,
   runTraces,
+  runSkills,
   multiAgentRuns,
   jobs,
   installedPlugins,

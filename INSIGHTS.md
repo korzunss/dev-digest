@@ -37,8 +37,8 @@ order. Entries go newest-first **within** their section.
 gets a new, dated correction naming what changed.
 
 **Promotion.** When an entry hardens into a standing rule, promote a **one-line**
-version into the `Gotchas` section of the relevant `CLAUDE.md` and leave the full
-write-up here. That keeps `CLAUDE.md` short without losing the reasoning.
+version into the `Gotchas` section of the relevant `AGENTS.md` and leave the full
+write-up here. That keeps `AGENTS.md` short without losing the reasoning.
 
 ---
 
@@ -83,7 +83,46 @@ that path; it's runtime data, and the next resync overwrites it.
 
 ## Tool & Library Notes
 
-_Nothing yet._
+### 2026-09-21 — `TESTING.md`'s "`server/package.json` is skip-worktree" is not true here
+
+**Symptom:** adding a runtime dependency to `server/` looked risky:
+`TESTING.md` states that *"`server/package.json` is `skip-worktree` (a local
+variant diverges from the committed file)"*, which would mean a new dependency
+never reaches the commit and CI installs without it.
+**Cause:** the note is stale for this checkout. `git ls-files -v server/package.json`
+reports `H` (normal), not `S` (skip-worktree) — the flag is per-clone, set by
+hand, and is not set here. The claim reads as a fact about the repo but is a
+description of one machine.
+**Rule:** check the flag before trusting the note — `git ls-files -v <file>`, and
+treat only a leading `S` or `h` as skip-worktree. Do this for any dependency
+change in `server/` or `client/`: if the flag *is* set locally, `pnpm add` edits
+a file git will not stage, and the missing dependency surfaces only in CI. The
+same command is the right check whenever a doc claims a file is untracked in
+some way.
+**Evidence:** `TESTING.md` → "Conventions" · `git ls-files -v server/package.json`
+→ `H server/package.json` · `fflate` added for the skills import and committed
+normally
+
+### 2026-09-21 — `git stash pop` silently un-stages a symlink, and the working tree hides it
+
+**Symptom:** mid-way through staging the `CLAUDE.md` → `AGENTS.md` rename, a
+`git stash -u` / `git clone .` / `git stash pop` round-trip left `ls -la` showing
+a correct `CLAUDE.md -> AGENTS.md` symlink, while `git ls-files -s CLAUDE.md` had
+reverted from `120000 47dc3e3` to `100644 02ee35f` — the *old regular file*.
+`git status` reported ` T` (unstaged type change), and `git checkout-index -a
+--prefix=…` then wrote plausible-looking but stale regular files, so the
+verification step "passed" against the wrong content.
+**Cause:** `git stash pop` without `--index` restores everything as *unstaged*.
+For an ordinary content edit that is invisible; for a mode/type change
+(`100644` → `120000`) it means the index keeps HEAD's blob, and only the
+working tree carries the symlink.
+**Rule:** never use `git stash` to snapshot a tree mid-rename — clone from a
+`HEAD` that predates the work instead, or just commit first. After *any* stash
+round-trip in a change that stages symlinks or mode bits, verify with
+`git ls-files -s`, not with `ls -la` or a diff of file contents: the working
+tree looks right in exactly the case the index is wrong.
+**Evidence:** `git ls-files -s CLAUDE.md` · `git status --short` → ` T CLAUDE.md`
+· the five committed links in `019925b`
 
 ## Recurring Errors & Fixes
 

@@ -7,10 +7,14 @@
     "searchPlaceholder": "Search skills…",
     "loadError": "Could not load skills.",
     "menu": {
+      "createFromScratch": "Create from scratch",
       "fromFile": "Import from file",
       "fromUrl": "Import from URL",
       "community": "Search community skills…"
     },
+    "subtitle": "Reusable blocks of review rules. Attach them to any agent — the order you attach them is the order they appear in the prompt.",
+    "deleteConfirm": "Delete skill \"{name}\"? Agents using it lose it. This cannot be undone.",
+    "delete": "Delete skill",
     "empty": {
       "title": "No skills yet",
       "body": "Import a skill from a file, a URL, or the community catalog.",
@@ -18,7 +22,26 @@
     },
     "selectPrompt": {
       "title": "Select a skill",
-      "body": "Pick a skill on the left to preview its body."
+      "body": "Pick a skill on the left to edit its body, its context and its evals."
+    },
+    "railHeading": "Skills"
+  },
+  "create": {
+    "title": "Create skill",
+    "subtitle": "A skill is a reusable block of review rules that any agent can attach.",
+    "cancel": "Cancel",
+    "create": "Create skill",
+    "creating": "Creating…",
+    "fields": {
+      "name": "Name",
+      "namePlaceholder": "no-then-chains",
+      "description": "Description",
+      "descriptionPlaceholder": "Reject .then() chains in new code; require async/await.",
+      "descriptionHint": "This is the skill's interface — what an agent reads to decide the rule applies. Write it as an instruction, not a summary: \"Reject X\", not \"About X\".",
+      "type": "Type",
+      "body": "Skill body (Markdown)",
+      "bodyHint": "Goes into the agent's prompt verbatim, under \"Skills / rules\".",
+      "bodyPlaceholder": "# Rule\nDescribe the rule…"
     }
   },
   "detail": {
@@ -84,7 +107,13 @@
       "manual": "Manual",
       "extracted": "Extracted",
       "community": "Community",
+      "imported_file": "Imported file",
       "imported_url": "Imported"
+    },
+    "stats": {
+      "line": "{agents} agents · {pull} pull · {accept} accept",
+      "title": "Agents with this skill attached · how often it reached a prompt · accept rate of findings from those runs",
+      "none": "—"
     }
   },
   "preview": {
@@ -96,6 +125,139 @@
     "untrustedNotice": "This skill came from an untrusted source. Its body is stored as data (delimiter-wrapped) and must be vetted before it is enabled for an agent.",
     "bodyLabel": "Skill body (Markdown)",
     "bodyHint": "Saving a changed body creates a new immutable version.",
-    "version": "v{version}"
+    "version": "v{version}",
+    "saving": "Saving…",
+    "cancel": "Cancel",
+    "descriptionLabel": "Description (the skill's interface)",
+    "subtitle": "Rendered as the reviewing agent receives it.",
+    "emptyBody": "This skill has no body yet. Add one in the Config tab."
+  },
+  "import": {
+    "chooseFile": "Choose a .md file or a .zip archive",
+    "chooseFileCta": "Select file",
+    "selected": "{filename}",
+    "reading": "Reading…",
+    "previewTitle": "Preview — nothing is saved yet",
+    "previewHint": "Check the body before you store it. A skill you import is somebody else's instructions inside your agent's prompt, so it lands disabled until you enable it.",
+    "ignoredTitle": "Not processed ({count})",
+    "ignoredHint": "Only the markdown core is imported. These entries were listed and left alone — never unpacked, never executed.",
+    "confirm": "Save skill",
+    "saving": "Saving…",
+    "back": "Choose another file",
+    "unsupported": "Only .md files and .zip archives can be imported.",
+    "nameRequired": "Give the skill a name.",
+    "descriptionRequired": "Add a description — it is what tells an agent when this rule applies."
+  },
+  "tabs": {
+    "config": "Config",
+    "context": "Context",
+    "preview": "Preview",
+    "evals": "Evals",
+    "stats": "Stats",
+    "versions": "Versions"
+  },
+  "editor": {
+    "versionChip": "v{version}",
+    "loadError": "Couldn’t load this skill",
+    "loadErrorBody": "The skill could not be loaded."
+  },
+  "config": {
+    "title": "Configuration",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "name": "Name",
+    "description": "Description (the skill's interface)",
+    "descriptionHint": "What an agent reads to decide the rule applies. Write it as an instruction — “Reject X”, not “About X”.",
+    "type": "Type",
+    "body": "Skill body (Markdown)",
+    "bodyHint": "The only text sent to the model. Editing the body is the entire skill — everything else is metadata.",
+    "fileChip": "{name}.md",
+    "unsaved": "unsaved",
+    "unsavedTitle": "The body below differs from the saved version. Save to snapshot it.",
+    "tokens": "{tokens} tokens",
+    "tokensTitle": "Estimated from the character count (about 4 characters per token) — there is no tokenizer in the browser. The exact count for a run appears in its trace.",
+    "message": "What changed (optional)",
+    "messagePlaceholder": "Tightened the secret-detection rule",
+    "messageHint": "Stored on the version this save creates, so the history reads as a changelog.",
+    "save": "Save skill",
+    "saving": "Saving…",
+    "saved": "Saved (v{version})",
+    "savedToast": "Saved as v{version}.",
+    "untrustedBadge": "untrusted source",
+    "untrustedNotice": "This skill came from an untrusted source. Its body is stored as data (delimiter-wrapped) and must be vetted before it is enabled for an agent.",
+    "typeOptions": {
+      "rubric": "rubric",
+      "convention": "convention",
+      "security": "security",
+      "custom": "custom"
+    },
+    "cancel": "Cancel",
+    "snapshotNote": "Saving snapshots the body as <v>{version}</v>",
+    "deleteTitle": "Delete skill",
+    "deleteBody": "Removes it from all agents. This can't be undone.",
+    "deleteAction": "Delete"
+  },
+  "evals": {
+    "run": "Run on evals",
+    "runDisabledTitle": "The eval pipeline is not wired up yet — a skill cannot be scored until eval sets exist.",
+    "empty": {
+      "title": "Evals arrive in a later lesson",
+      "body": "Once eval sets exist, this tab scores the skill against them and shows whether a body change helped or hurt."
+    }
+  },
+  "context": {
+    "title": "Project context to use",
+    "hint": "Any agent using this skill inherits these documents.",
+    "attached": "{count} attached",
+    "filterPlaceholder": "Filter documents…",
+    "serializesAs": "SERIALIZES AS",
+    "previewTitle": "{path}",
+    "loadError": "Could not load project context.",
+    "empty": {
+      "title": "No context attached",
+      "body": "Attach a spec, a style guide or an ADR and every agent running this skill reads it alongside the rule."
+    },
+    "noRepo": {
+      "title": "No repository selected",
+      "body": "Context documents live in a repository. Pick one from the switcher above to see what this skill can carry."
+    },
+    "noDocs": {
+      "title": "No context documents in this repo",
+      "body": "Add markdown under specs/, docs/ or insights/ and it shows up here, ready to attach."
+    }
+  },
+  "stats": {
+    "usedBy": "USED BY",
+    "pullFrequency": "PULL FREQUENCY",
+    "acceptRate": "ACCEPT RATE",
+    "findings30d": "FINDINGS (30D)",
+    "agentsUsing": "AGENTS USING THIS SKILL",
+    "findingsByCategory": "FINDINGS BY CATEGORY",
+    "open": "Open",
+    "agentsValue": "{count} agents",
+    "caveat": "Pull frequency, accept rate and findings are measured over the runs where this skill was present. They say the skill was in the prompt when a finding appeared — not that it caused one. Read them as correlation, not attribution.",
+    "loadError": "Could not load usage figures.",
+    "empty": {
+      "title": "No runs with this skill yet",
+      "body": "Attach it to an agent and review a pull request — the figures fill in from the runs that included it."
+    }
+  },
+  "versions": {
+    "title": "Version history",
+    "count": "{count} versions",
+    "hint": "Every save snapshots the body so eval runs stay reproducible against the exact text they scored.",
+    "current": "Current",
+    "diff": "Diff",
+    "restore": "Restore",
+    "restoring": "Restoring…",
+    "restoreConfirm": "Restore v{version}? It is appended as a new version — nothing in the history is rewritten or lost.",
+    "restoreMessage": "Restored from v{version}",
+    "noMessage": "No note",
+    "diffTitle": "v{from} → v{to}",
+    "loadError": "Could not load the version history.",
+    "empty": {
+      "title": "Only one version so far",
+      "body": "Editing the body in the Config tab appends a snapshot here."
+    }
   }
 }

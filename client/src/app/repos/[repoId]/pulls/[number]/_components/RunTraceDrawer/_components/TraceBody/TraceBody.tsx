@@ -75,8 +75,19 @@ export function TraceBody({ trace, findings }: { trace: RunTrace; findings: Find
 
       <TraceSection icon="FileText" title={t("trace.promptAssembly")} defaultOpen={false}>
         <PromptBlock label={t("trace.prompt.system")} text={trace.prompt_assembly.system} color={PROMPT_COLORS.system} />
+        {/* The skills block carries what it cost. Traces written before spec 003
+            have no count — the block renders, just without the badge. */}
         {trace.prompt_assembly.skills != null && (
-          <PromptBlock label={t("trace.prompt.skills")} text={trace.prompt_assembly.skills} color={PROMPT_COLORS.skills} />
+          <PromptBlock
+            label={t("trace.prompt.skills")}
+            text={trace.prompt_assembly.skills}
+            color={PROMPT_COLORS.skills}
+            note={
+              trace.prompt_assembly.skills_tokens != null
+                ? t("trace.prompt.addedTokens", { count: trace.prompt_assembly.skills_tokens })
+                : undefined
+            }
+          />
         )}
         {trace.prompt_assembly.memory != null && (
           <PromptBlock label={t("trace.prompt.memory")} text={trace.prompt_assembly.memory} color={PROMPT_COLORS.memory} />
@@ -84,8 +95,20 @@ export function TraceBody({ trace, findings }: { trace: RunTrace; findings: Find
         {trace.prompt_assembly.repo_map != null && (
           <PromptBlock label={t("trace.prompt.repoMap")} text={trace.prompt_assembly.repo_map} color={PROMPT_COLORS.repoMap} />
         )}
+        {/* Same treatment as the skills block: the project-context documents a
+            run inherited through its skills, and what they cost. Traces written
+            before spec 003 carry no count and render the block without it. */}
         {trace.prompt_assembly.specs != null && (
-          <PromptBlock label={t("trace.prompt.specs")} text={trace.prompt_assembly.specs} color={PROMPT_COLORS.specs} />
+          <PromptBlock
+            label={t("trace.prompt.specs")}
+            text={trace.prompt_assembly.specs}
+            color={PROMPT_COLORS.specs}
+            note={
+              trace.prompt_assembly.specs_tokens != null
+                ? t("trace.prompt.addedTokens", { count: trace.prompt_assembly.specs_tokens })
+                : undefined
+            }
+          />
         )}
         {trace.prompt_assembly.callers != null && (
           <PromptBlock label={t("trace.prompt.callers")} text={trace.prompt_assembly.callers} color={PROMPT_COLORS.callers} />

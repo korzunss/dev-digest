@@ -7,9 +7,11 @@ import {
   jsonb,
   timestamp,
   doublePrecision,
+  primaryKey,
 } from 'drizzle-orm/pg-core';
 import { workspaces } from './core';
 import { agents } from './agents';
+import { skills } from './skills';
 import { pullRequests } from './pulls';
 
 // ============================================================ Observability
@@ -48,6 +50,34 @@ export const agentRuns = pgTable('agent_runs', {
   // in-flight check, and the PR list's cost rollup. Postgres does not index a
   // FK column on its own, so without this each of those scans the whole table.
   prIdx: index('agent_runs_pr_idx').on(t.prId),
+  // Skill stats and "this agent's runs" both filter on agent_id, which is a FK
+  // and therefore carries no index of its own.
+  agentIdx: index('agent_runs_agent_idx').on(t.agentId),
+}));
+
+/**
+ * Which skills a run actually pulled into its prompt, in prompt order.
+ *
+ * Written by the run executor at assembly time. Without it there is no record
+ * at all: the trace holds only the rendered text blob, which cannot be matched
+ * back to a skill once its body is edited. Every Stats figure but "used by"
+ * reads this table.
+ */
+export const runSkills = pgTable('run_skills', {
+  runId: uuid('run_id')
+    .notNull()
+    .references(() => agentRuns.id, { onDelete: 'cascade' }),
+  skillId: uuid('skill_id')
+    .notNull()
+    .references(() => skills.id, { onDelete: 'cascade' }),
+  order: integer('order').notNull(),
+  /** Tokens this skill's block contributed, when the tokenizer produced one. */
+  tokens: integer('tokens'),
+}, (t) => ({
+  pk: primaryKey({ columns: [t.runId, t.skillId] }),
+  // Every metric reads "the runs of THIS skill", and the composite PK only
+  // covers the run side.
+  skillIdx: index('run_skills_skill_idx').on(t.skillId),
 }));
 
 /** Whole trace of one run as a SINGLE jsonb document. */

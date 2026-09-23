@@ -1,0 +1,39 @@
+{
+  "name": "Conventions: sidebar → decide on candidates → create the skill → Skills Lab",
+  "description": "Reaches /repos/:repoId/conventions through the SKILLS LAB sidebar entry (which is also the only coverage the vendored nav item has), rejects one candidate, accepts the rest with the bulk button, then opens the create-skill modal and confirms the generated skill lands in the Skills Lab. Only decisions are exercised — the flow never presses Run extraction / Re-scan, because that is the one button on this screen that calls a model, and flows here run key-free. PRECONDITION: the seeded database must already contain grounded convention candidates for acme/payments-api (at least two, all pending); without them the screen renders its empty state and this flow fails at the first card assertion. Rejecting before the bulk accept is deliberate: 'Select all' only touches PENDING rows, so it leaves the rejected one rejected, which is what gives us one of each at the same time from first-match-only text locators.",
+  "steps": [
+    { "cmd": ["open", "{BASE}/"], "label": "load the app root" },
+    { "cmd": ["wait", "--url", "/pulls"], "label": "root redirects to the seeded repo's PR list" },
+    { "cmd": ["click", "--text", "Conventions"], "label": "follow the SKILLS LAB sidebar entry" },
+    { "cmd": ["wait", "--url", "/conventions"], "label": ":repoId resolved into a real route" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "latest-scan fetch settles" },
+    { "cmd": ["wait", "--text", "Conventions in"], "label": "header names the scanned repo" },
+    { "cmd": ["wait", "--text", "accepted of"], "label": "the candidate list rendered, not an empty state" },
+    { "cmd": ["wait", "--text", "Confidence"], "label": "a candidate card is on screen" },
+
+    { "cmd": ["click", "--text", "Reject"], "label": "reject the first candidate" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "the PATCH and its refetch settle" },
+    { "cmd": ["wait", "--text", "Rejected"], "label": "the rejection persisted" },
+
+    { "cmd": ["click", "--text", "Select all"], "label": "accept every still-pending rule" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "the bulk PATCHes settle" },
+    { "cmd": ["wait", "--text", "Accepted"], "label": "at least one rule is accepted" },
+    { "cmd": ["wait", "--text", "Deselect all"], "label": "nothing is pending, and the rejected rule stayed rejected" },
+
+    { "cmd": ["click", "--text", "Create skill"], "label": "open the create-skill modal" },
+    { "cmd": ["wait", "--text", "Create skill from conventions"], "label": "modal is up" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "the preview request settles (it stores nothing)" },
+    { "cmd": ["wait", "--text", "Nothing is stored until you press Create."], "label": "preview, not a row" },
+    { "cmd": ["wait", "--text", "Merged from"], "label": "the preview was built from the accepted set" },
+    { "cmd": ["wait", "--text", "Skill body (Markdown)"], "label": "the body is editable before anything is written" },
+
+    { "cmd": ["click", "--text", "Create skill"], "label": "confirm — the modal's footer button, the only Create on screen that writes" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "the create settles" },
+    { "cmd": ["wait", "--text", "ready to attach to an agent"], "label": "success toast" },
+
+    { "cmd": ["open", "{BASE}/skills"], "label": "load the Skills Lab" },
+    { "cmd": ["wait", "--url", "/skills"], "label": "skills route reached" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "skills fetch settles" },
+    { "cmd": ["wait", "--text", "payments-api-conventions"], "label": "the extracted skill is in the rail" }
+  ]
+}

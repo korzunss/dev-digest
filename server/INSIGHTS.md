@@ -3,7 +3,7 @@
 Append-only. Things that cost someone time in the server package. Repo-wide
 findings go in [`../INSIGHTS.md`](../INSIGHTS.md), which carries the entry format,
 the section guide and the promotion rule (a standing rule becomes one line under
-`Gotchas` in `server/CLAUDE.md`). The `engineering-insights` skill writes here.
+`Gotchas` in `server/AGENTS.md`). The `engineering-insights` skill writes here.
 
 ```md
 ### YYYY-MM-DD — short title
@@ -47,6 +47,74 @@ foreign key POINTS AT"
 
 ## Tool & Library Notes
 
+### 2026-09-22 — `pnpm db:generate` hangs forever when one table both drops and adds a column
+
+**Symptom:** `pnpm db:generate` produced no output at all and never exited —
+killed at a 120 s timeout with a zero-byte log and no migration written. It reads
+like a hung DB connection or a broken `drizzle.config.ts`, and neither is
+involved: the same config generates fine before and after.
+**Cause:** drizzle-kit's rename detection. When a single diff gives one table
+**both** a deleted column and added ones, it cannot tell a drop+add from a
+rename, so it asks — and the prompt (hanji, raw-mode TTY) renders nothing and
+reads nothing when stdin is not a terminal. It waits forever, silently. Here
+`conventions` lost `accepted` and gained nine columns in the same change.
+**Rule:** when a schema change removes a column from a table that also gains
+one, split it into **two** `db:generate` runs: first a schema variant carrying
+only the deletion, then the full schema carrying only additions. Neither diff is
+ambiguous, so neither prompts, and both outputs are ordinary generated
+migrations — the "migrations are generated, never hand-written" rule survives
+intact. Do not try to feed the prompt from a pipe or `/dev/null`; it is not
+reading stdin in a way that helps. The same trap is waiting for any table rename.
+**Evidence:** `src/db/migrations/0015_short_vin_gonzales.sql` (the lone
+`ALTER TABLE "conventions" DROP COLUMN "accepted"`) ·
+`0016_majestic_korath.sql` (the additions + `convention_scans`) ·
+`drizzle.config.ts`
+
+### 2026-09-22 — a `realpath` containment check must resolve BOTH sides, or it fails closed
+
+**Symptom:** a symlink guard that reads as obviously correct — `realpath()` the
+requested file, then check it is still under the clone directory — refuses
+*every* document as soon as the clone directory is a temp dir, which is exactly
+how an integration test builds one (`mkdtemp(path.join(tmpdir(), …))`).
+**Cause:** on macOS `os.tmpdir()` is `/var/folders/…` and `/var` is a symlink to
+`/private/var`. `realpath()` of a file inside the fixture therefore returns
+`/private/var/folders/…` while the un-resolved `cloneDir` string is still
+`/var/folders/…`. The boundary check is comparing two different spellings of the
+same directory, so it rejects — and the failure looks like the guard catching a
+real escape rather than like a path-normalisation bug.
+**Rule:** whenever you check "is this resolved path still inside the allowed
+root", call `realpath` on the **root** as well as on the target, then compare on
+the separator boundary (`p === root || p.startsWith(root + sep)`) — never a bare
+`startsWith` on the raw strings, which accepts the sibling
+`/clones/acme/payments-api-evil`. Holds in production too: `config.cloneDir` is
+operator-supplied and may itself sit behind a symlink.
+**Evidence:** `server/src/modules/context/service.ts` → `getDoc()` resolves
+`realDir` *and* `realTarget` before `isInsideDir` ·
+`server/src/modules/context/helpers.ts` → `isInsideDir` ·
+`server/test/context.it.test.ts` → `specs/leak.md -> /etc/hosts` expects 422
+
+### 2026-09-21 — a Drizzle `text(..., { enum })` column has NO constraint in SQL
+
+**Symptom:** adding `'imported_file'` to `skills.source` looked like it needed a
+migration — the column is declared with an `enum` list, so the obvious assumption
+is a `CHECK` or a Postgres enum type that has to be altered. `pnpm db:generate`
+produced nothing for it.
+**Cause:** `text(name, { enum: [...] })` is a **TypeScript-level** narrowing only.
+The generated DDL is a plain `"source" text NOT NULL` — Drizzle emits no `CHECK`
+and no `CREATE TYPE`. This repo uses that form for every enum-ish column
+(`provider`, `strategy`, `ci_fail_on`, `type`, `source`, `cost_source`); there is
+not one `pgEnum` in the schema.
+**Rule:** adding a value to one of these enums is a **code-only** change — edit
+the `@devdigest/shared` contract and the schema literal, mirror the contract into
+the client copy, done. Don't write a migration for it, and don't expect
+`db:generate` to produce one. The flip side is that the database will happily
+store a value your TypeScript forbids, so an old row with a retired value still
+reads back: keep DTO mappers total (`row.source as SkillSource`) rather than
+switching exhaustively over the enum and throwing on the default.
+**Evidence:** `server/src/db/schema/skills.ts` (declared enum) vs
+`server/src/db/migrations/0000_init.sql:322` → `"source" text NOT NULL` ·
+`0013_complex_thundra.sql` contains only the two new indexes
+
 ### 2026-09-18 — `MockGitHubClient` lists exactly one PR, so "the other PR" doesn't exist
 
 **Symptom:** an integration test that asserts something about a *second* pull
@@ -63,6 +131,30 @@ list-endpoint test that several PRs were exercised — one was.
 rollup test inserts PR #999 for exactly this reason
 
 ## Recurring Errors & Fixes
+
+### 2026-09-21 — `waitForPrRuns` returns before the run trace exists
+
+**Symptom:** an integration test reads `GET /runs/:id/trace` right after
+`waitForPrRuns(db, prId, { expected: 1 })` and gets
+`TypeError: Cannot read properties of undefined (reading 'skills')`. It passes
+every time when the file is run alone (`vitest run skills-in-prompt`) and fails
+when the whole `.it.test` lane runs — which reads as flakiness in the feature
+rather than in the wait.
+**Cause:** `waitForPrRuns` polls `agent_runs` until the row reaches a terminal
+status, and the executor writes the trace document **after** that:
+`completeAgentRun(...)` then `saveRunTrace(runId, trace)` several statements
+later. So "the run is done" and "the trace is readable" are two different
+moments, and the gap only widens when nine containers compete for the machine.
+Worse, `waitForPrRuns` returns the rows on timeout instead of throwing, so a wait
+that gave up looks identical to one that succeeded.
+**Rule:** never read `run_traces` straight after `waitForPrRuns`. Poll for the
+document itself — retry `GET /runs/:id/trace` until it is 200 **and**
+`prompt_assembly` is present, then throw on timeout so a genuine failure is not
+reported as a missing field. The same applies to anything else the executor
+persists after `completeAgentRun`.
+**Evidence:** `server/src/modules/reviews/run-executor.ts` → `completeAgentRun`
+precedes `saveRunTrace` · `server/test/helpers/runs.ts:31` (returns on timeout) ·
+`server/test/skills-in-prompt.it.test.ts` → the `readTrace` poll helper
 
 ### 2026-09-17 — `relation "…" does not exist` on a fresh checkout
 

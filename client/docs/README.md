@@ -1,6 +1,6 @@
 # client/docs — deep documentation for `@devdigest/web`
 
-Index of client-local documentation. `client/CLAUDE.md` links here rather than
+Index of client-local documentation. `client/AGENTS.md` links here rather than
 inlining it. One line per document, enough to decide whether to open it.
 
 | Document | Read it when |
@@ -17,5 +17,5 @@ goes in the repo-root `docs/`.
 
 ## What does not
 
-Anything an agent needs every session (→ `client/CLAUDE.md`, as one line), a
+Anything an agent needs every session (→ `client/AGENTS.md`, as one line), a
 single incident (→ `client/INSIGHTS.md`), or work not yet built (→ `client/specs/`).

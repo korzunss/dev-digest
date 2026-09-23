@@ -1,6 +1,6 @@
 # e2e/docs — deep documentation for the browser suite
 
-Index of e2e-local documentation. `e2e/CLAUDE.md` links here rather than inlining
+Index of e2e-local documentation. `e2e/AGENTS.md` links here rather than inlining
 it. One line per document, enough to decide whether to open it.
 
 **Prose lives here, not in `specs/`** — in this package `specs/` holds executable
@@ -22,5 +22,5 @@ lives in [`../../TESTING.md`](../../TESTING.md).
 
 ## What does not
 
-Anything an agent needs every session (→ `e2e/CLAUDE.md`, as one line), or a
+Anything an agent needs every session (→ `e2e/AGENTS.md`, as one line), or a
 single incident (→ `e2e/INSIGHTS.md`).
