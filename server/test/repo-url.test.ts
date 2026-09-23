@@ -12,6 +12,7 @@ import {
   gitlabApiRoot,
 } from '../src/platform/forge-resolve.js';
 import { resolveTestApiBase } from '../src/modules/settings/constants.js';
+import { AppError } from '../src/platform/errors.js';
 
 describe('parseRepoUrl — public hosts', () => {
   it('parses github https and ssh forms identically', () => {
@@ -197,6 +198,29 @@ describe('parseRepoUrl — traversal guard', () => {
     });
     // Collapsing can also shorten the path below two segments, which does throw.
     expect(() => parseRepoUrl('https://gitlab.com/../evil')).toThrow(/Could not parse/);
+  });
+
+  it('rejects input `new URL` cannot parse at all, as a 400 and not a crash', () => {
+    // A distinct branch from the single-segment case below: that one parses
+    // fine and fails on the path, this one never becomes a URL. Both share a
+    // code and a message, which is why the status is what is worth asserting —
+    // these reach the route as an AppError, and anything that is not one comes
+    // back to the UI as a 500 with a stack instead of a message a user can act on.
+    for (const input of ['', '   ', 'not-a-url', 'github.com/acme/api', 'git@host:']) {
+      expect(() => parseRepoUrl(input)).toThrow(AppError);
+      expect(() => parseRepoUrl(input)).toThrow(/Could not parse/);
+      try {
+        parseRepoUrl(input);
+      } catch (err) {
+        expect(err).toMatchObject({ code: 'invalid_repo_url', statusCode: 400 });
+      }
+    }
+
+    // `github.com/acme/api` with no scheme is the realistic one — it is what a
+    // browser address bar shows and what people paste. It is NOT silently
+    // upgraded to https, and the message quotes what the user actually typed,
+    // untrimmed, rather than the normalized string the parser worked on.
+    expect(() => parseRepoUrl('  not-a-url  ')).toThrow("'  not-a-url  '");
   });
 
   it('rejects a single-segment path', () => {
