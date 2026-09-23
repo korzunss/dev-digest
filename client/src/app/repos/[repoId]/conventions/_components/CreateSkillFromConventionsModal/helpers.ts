@@ -6,15 +6,17 @@ import { DEFAULT_ENABLED } from "./constants";
 /** Fallback base name on the file chip, if the name field is emptied. */
 const UNNAMED = "conventions";
 
-/** A server preview as the editable draft the modal holds. */
+/**
+ * A server preview as the editable draft the modal holds.
+ *
+ * Spread rather than field-by-field: `evidence_files` and `candidate_ids` are
+ * not shown anywhere in the form, so listing the visible fields silently left
+ * them behind and the commit route — which requires both — answered 422 on
+ * every Create. Carrying the whole preview through keeps the draft a superset
+ * of what the wire needs, whatever the contract grows next.
+ */
 export function toDraft(preview: ConventionSkillPreview): ConventionSkillDraft {
-  return {
-    name: preview.name,
-    description: preview.description,
-    type: preview.type,
-    body: preview.body,
-    enabled: DEFAULT_ENABLED,
-  };
+  return { ...preview, enabled: DEFAULT_ENABLED };
 }
 
 /**
@@ -31,17 +33,6 @@ export function isDraftReady(draft: ConventionSkillDraft): boolean {
     leading whitespace in markdown is meaningful (fenced blocks, indents). */
 export function trimDraft(draft: ConventionSkillDraft): ConventionSkillDraft {
   return { ...draft, name: draft.name.trim(), description: draft.description.trim() };
-}
-
-/**
- * Every candidate the shown previews were built from, de-duplicated in first-
- * seen order. Under `split` a rule belongs to exactly one category preview, so
- * the union is normally already distinct — but this list is a *claim* the
- * server re-derives and re-checks, and sending the same id twice would make a
- * refusal harder to read than it needs to be.
- */
-export function candidateIdsOf(previews: ConventionSkillPreview[]): string[] {
-  return [...new Set(previews.flatMap((p) => p.candidate_ids))];
 }
 
 /** The base name on the body editor's chip — a skill body is a markdown file

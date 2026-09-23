@@ -32,7 +32,7 @@ vi.mock("@/lib/hooks/conventions", () => ({
 }));
 
 import { CreateSkillFromConventionsModal } from "./CreateSkillFromConventionsModal";
-import { candidateIdsOf, fileBaseName, isDraftReady, toDraft, trimDraft } from "./helpers";
+import { fileBaseName, isDraftReady, toDraft, trimDraft } from "./helpers";
 
 const MERGED: ConventionSkillPreview = {
   name: "payments-api-conventions",
@@ -129,13 +129,10 @@ function createButton() {
 
 describe("helpers", () => {
   it("starts an extracted skill enabled, unlike an import", () => {
-    expect(toDraft(MERGED)).toEqual({
-      name: MERGED.name,
-      description: MERGED.description,
-      type: "convention",
-      body: MERGED.body,
-      enabled: true,
-    });
+    // The WHOLE preview plus the toggle — not a hand-picked subset. Listing the
+    // visible fields here is what let `evidence_files` and `candidate_ids` fall
+    // out of the draft while this assertion stayed green.
+    expect(toDraft(MERGED)).toEqual({ ...MERGED, enabled: true });
   });
 
   it("requires a name and a body, but not a description", () => {
@@ -154,9 +151,13 @@ describe("helpers", () => {
     expect(draft.body).toBe("  # x");
   });
 
-  it("de-duplicates the candidate ids across previews", () => {
-    expect(candidateIdsOf(BY_CATEGORY)).toEqual(["c1", "c2"]);
-    expect(candidateIdsOf([])).toEqual([]);
+  // Trimming is the last thing that touches a draft before it goes on the wire,
+  // and the commit route requires both of these. Neither is on a form control,
+  // so any rebuild-from-visible-fields here answers 422 on every Create.
+  it("keeps the fields the form never shows through the trim", () => {
+    const trimmed = trimDraft({ ...toDraft(MERGED), name: "  a  " });
+    expect(trimmed.evidence_files).toEqual(MERGED.evidence_files);
+    expect(trimmed.candidate_ids).toEqual(MERGED.candidate_ids);
   });
 
   it("never lets the file chip degrade to a bare extension", () => {
@@ -252,14 +253,19 @@ describe("CreateSkillFromConventionsModal", () => {
     fireEvent.click(screen.getByText("Create 2 skills"));
     expect(createMutate).toHaveBeenCalledTimes(1);
     const payload = createMutate.mock.calls[0]?.[0] as {
-      skills: { name: string }[];
-      candidateIds: string[];
+      skills: { name: string; candidate_ids: string[]; evidence_files: string[] }[];
     };
     expect(payload.skills.map((d) => d.name)).toEqual([
       "payments-api-naming",
       "payments-api-async",
     ]);
-    expect(payload.candidateIds).toEqual(["c1", "c2"]);
+    // Per skill, not one shared list: the server stamps skill_id from exactly
+    // this, so each draft must carry the ids of the preview it was built from.
+    expect(payload.skills.map((d) => d.candidate_ids)).toEqual([
+      NAMING.candidate_ids,
+      ASYNC.candidate_ids,
+    ]);
+    expect(payload.skills.every((d) => d.evidence_files.length > 0)).toBe(true);
   });
 
   it("keeps an incomplete step from being created by a button two steps away", () => {

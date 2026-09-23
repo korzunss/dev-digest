@@ -18,7 +18,6 @@ import type {
   ConventionSkillPreview,
   ConventionStatus,
   Skill,
-  SkillType,
 } from "@devdigest/shared";
 
 /** The latest scan for a repo, with its candidates. `scan` is null before the
@@ -83,21 +82,26 @@ export function useConventionSkillPreview() {
   });
 }
 
-/** One preview as the modal hands it back — every field editable, plus the
-    enabled toggle the preview contract has no opinion about. */
-export interface ConventionSkillDraft {
-  name: string;
-  description: string;
-  type: SkillType;
-  body: string;
-  enabled: boolean;
-}
+/**
+ * One preview as the modal hands it back: the SERVER's preview contract plus
+ * the enabled toggle, which the preview itself has no opinion about.
+ *
+ * It extends `ConventionSkillPreview` rather than restating its fields, and
+ * that is load-bearing. A hand-written twin of the contract compiles green on
+ * both sides while dropping whatever the commit route also requires — here
+ * `evidence_files` and `candidate_ids`, whose absence made every Create a 422
+ * that neither package's tests could see. Extending the contract makes the
+ * omission a typecheck failure instead.
+ */
+export type ConventionSkillDraft = ConventionSkillPreview & { enabled: boolean };
 
 /**
- * Commit the edited preview(s). `candidate_ids` is sent so the server can mark
- * which candidates were folded into which skill — it re-derives the accepted
- * set itself and refuses anything not accepted, so this list is a claim, not
- * the authority.
+ * Commit the edited preview(s).
+ *
+ * `candidate_ids` travels PER SKILL, inside each draft, because a split
+ * produces disjoint sets — one per category — and a single shared list could
+ * not say which skill consumed which rule. It is a claim either way: the server
+ * re-derives the accepted set and refuses anything not in it.
  */
 export function useCreateConventionSkill() {
   const qc = useQueryClient();
@@ -105,16 +109,10 @@ export function useCreateConventionSkill() {
     mutationFn: ({
       repoId,
       skills,
-      candidateIds,
     }: {
       repoId: string;
       skills: ConventionSkillDraft[];
-      candidateIds: string[];
-    }) =>
-      api.post<Skill[]>(`/repos/${repoId}/conventions/skill`, {
-        skills,
-        candidate_ids: candidateIds,
-      }),
+    }) => api.post<Skill[]>(`/repos/${repoId}/conventions/skill`, { skills }),
     onSuccess: (_data, { repoId }) => {
       // The Skills Lab rail has a new entry…
       qc.invalidateQueries({ queryKey: ["skills"] });

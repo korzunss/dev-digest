@@ -40,7 +40,7 @@ import {
 import { formatTokenEstimate } from "@/lib/estimate-tokens";
 import { useToast } from "@/lib/toast";
 import { BODY_ROWS, MODAL_WIDTH, SKELETON_COUNT, SKELETON_HEIGHT, TYPE_VALUES } from "./constants";
-import { candidateIdsOf, fileBaseName, isDraftReady, toDraft, trimDraft } from "./helpers";
+import { fileBaseName, isDraftReady, toDraft, trimDraft } from "./helpers";
 import { s } from "./styles";
 
 export function CreateSkillFromConventionsModal({
@@ -121,10 +121,10 @@ export function CreateSkillFromConventionsModal({
     create.mutate(
       {
         repoId,
+        // Each draft carries its own `candidate_ids`, straight from the
+        // preview it was built from — a claim, not the authority: the server
+        // re-derives the accepted set and refuses any id that is not accepted.
         skills: drafts.map(trimDraft),
-        // A claim, not the authority: the server re-derives the accepted set
-        // and refuses any id that is not accepted.
-        candidateIds: candidateIdsOf(previews),
       },
       {
         onSuccess: (skills) => {
