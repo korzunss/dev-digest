@@ -40,6 +40,15 @@ export const repos = pgTable(
     // self-managed GitLabs. `coalesce` is load-bearing — Postgres treats NULLs
     // as distinct in a unique index, so a bare `api_base` column would stop
     // deduplicating every hosted repo (the null case, i.e. most of them).
+    //
+    // '' is the right sentinel precisely BECAUSE it collapses into NULL: both
+    // spell "no self-managed instance", so a hand-inserted '' must collide with
+    // an existing NULL row rather than sit beside it as a second copy of the
+    // same repo. A sentinel that cannot be a URL ('-', 'DEFAULT') would make
+    // the two distinct and reintroduce the duplicate this index exists to stop
+    // — `findByFullName` looks up `coalesce(api_base,'') = $apiBase ?? ''` and
+    // would then match only one of them. App code never writes '': parseRepoUrl
+    // yields either null or a non-empty configured base.
     uq: uniqueIndex('repos_ws_forge_fullname_uq').on(
       t.workspaceId,
       t.provider,
