@@ -20,11 +20,12 @@
       "body": "Import a skill from a file, a URL, or the community catalog.",
       "cta": "Import from file"
     },
-    "selectPrompt": {
-      "title": "Select a skill",
-      "body": "Pick a skill on the left to edit its body, its context and its evals."
+    "railHeading": "Skills",
+    "noMatches": {
+      "title": "No skills match that search",
+      "body": "Try a different word, or clear the search to see the whole library."
     },
-    "railHeading": "Skills"
+    "deleteTitle": "Delete this skill?"
   },
   "create": {
     "title": "Create skill",

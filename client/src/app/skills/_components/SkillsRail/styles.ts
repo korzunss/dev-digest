@@ -12,13 +12,6 @@ export const layout = {
     minWidth: 0,
     minHeight: 0,
   } satisfies CSSProperties,
-  paneCentered: {
-    flex: 1,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    minWidth: 0,
-  } satisfies CSSProperties,
 } as const;
 
 /** Co-located styles for SkillsRail. */

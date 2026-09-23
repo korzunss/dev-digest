@@ -14,7 +14,10 @@
     "loadError": "Could not load agents.",
     "emptyTitle": "No agents yet",
     "emptyBody": "An agent is a configured reviewer — a model, a prompt, and the skills it uses. Create one to start reviewing.",
-    "emptyCta": "Create your first agent"
+    "emptyCta": "Create your first agent",
+    "delete": "Delete agent",
+    "deleteConfirm": "Delete agent {name}? Its skill links go with it. This cannot be undone.",
+    "deleteTitle": "Delete this agent?"
   },
   "create": {
     "title": "Create agent",

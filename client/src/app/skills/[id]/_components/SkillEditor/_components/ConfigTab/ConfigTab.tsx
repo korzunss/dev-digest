@@ -9,6 +9,7 @@ import { useTranslations } from "next-intl";
 import { Badge, Button, FormField, Icon, SelectInput, TextInput, Textarea, Toggle } from "@devdigest/ui";
 import type { Skill, SkillType } from "@devdigest/shared";
 import { useDeleteSkill, useUpdateSkill } from "../../../../../../../lib/hooks/skills";
+import { ConfirmModal } from "@/components/confirm-modal";
 import { useToast } from "../../../../../../../lib/toast";
 import { formatTokenEstimate } from "../../../../../../../lib/estimate-tokens";
 import { needsVetting } from "../../../../../_components/SkillCard";
@@ -23,6 +24,7 @@ export function ConfigTab({ skill }: { skill: Skill }) {
   const update = useUpdateSkill();
   const del = useDeleteSkill();
 
+  const [confirmingDelete, setConfirmingDelete] = React.useState(false);
   const [name, setName] = React.useState(skill.name);
   const [description, setDescription] = React.useState(skill.description);
   const [type, setType] = React.useState<SkillType>(skill.type);
@@ -180,13 +182,23 @@ export function ConfigTab({ skill }: { skill: Skill }) {
           kind="danger"
           icon="Trash"
           disabled={del.isPending}
-          onClick={() => {
-            if (!window.confirm(t("page.deleteConfirm", { name: skill.name }))) return;
-            del.mutate(skill.id, { onSuccess: () => router.push("/skills") });
-          }}
+          onClick={() => setConfirmingDelete(true)}
         >
           {t("config.deleteAction")}
         </Button>
+        {confirmingDelete && (
+          <ConfirmModal
+            // NOT `config.deleteTitle` / `config.deleteAction`: both are already
+            // on screen in the danger zone behind this modal, and repeating them
+            // inside it makes the question ambiguous to read and to query.
+            title={t("page.deleteTitle")}
+            body={t("page.deleteConfirm", { name: skill.name })}
+            confirmLabel={t("page.delete")}
+            pending={del.isPending}
+            onClose={() => setConfirmingDelete(false)}
+            onConfirm={() => del.mutate(skill.id, { onSuccess: () => router.push("/skills") })}
+          />
+        )}
       </div>
     </div>
   );

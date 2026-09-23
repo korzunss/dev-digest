@@ -51,6 +51,15 @@ export const s = {
     overflow: "hidden",
     textOverflow: "ellipsis",
   } satisfies CSSProperties,
+  deleteBtn: {
+    background: "none",
+    border: "none",
+    cursor: "pointer",
+    color: "var(--text-muted)",
+    display: "inline-flex",
+    padding: 4,
+    flexShrink: 0,
+  } satisfies CSSProperties,
   typeChip: (color: string): CSSProperties => ({
     fontSize: 12,
     fontWeight: 600,

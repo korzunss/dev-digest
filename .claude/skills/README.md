@@ -6,9 +6,11 @@ Reusable AI skills that provide specialized knowledge and workflows. Canonical l
 
 | Skill | Scope | Description |
 |-------|-------|-------------|
+| [onion-architecture](onion-architecture/SKILL.md) | Backend | Ports-and-adapters layering for `server/` + `reviewer-core/` — where routes, services, repositories and adapters belong, DI wiring, the inward dependency rule and its dependency-cruiser gate |
 | [fastify-best-practices](fastify-best-practices/SKILL.md) | Backend | Fastify routes, plugins, JSON-schema validation, error handling |
 | [drizzle-orm-patterns](drizzle-orm-patterns/SKILL.md) | Backend | Drizzle schema, queries, relations, transactions, migrations |
 | [postgresql-table-design](postgresql-table-design/SKILL.md) | Backend | Postgres schema design, data types, indexing, constraints |
+| [frontend-architecture](frontend-architecture/SKILL.md) | Frontend | Code architecture & organization — where files/components live, folder structure, splitting components, business-logic layering, Next.js App Router organization |
 | [next-best-practices](next-best-practices/SKILL.md) | Frontend | Next.js App Router, RSC boundaries, data fetching, optimization |
 | [react-best-practices](react-best-practices/SKILL.md) | Frontend | React anti-patterns, state management, hooks rules |
 | [react-testing-library](react-testing-library/SKILL.md) | Frontend | General-purpose React Testing Library guide with Vitest |
@@ -17,6 +19,7 @@ Reusable AI skills that provide specialized knowledge and workflows. Canonical l
 | [security](security/SKILL.md) | Full-stack | OWASP Top 10:2025, auth, injection, uploads, secrets |
 | [mermaid-diagram](mermaid-diagram/SKILL.md) | Shared | Mermaid diagrams in markdown (flowcharts, sequence, ERD, …) |
 | [engineering-insights](engineering-insights/SKILL.md) | Meta | Captures session learnings into the per-package `INSIGHTS.md` files |
+| [pr-self-review](pr-self-review/SKILL.md) | Review | Pre-PR gate — runs cheap deterministic checks (tsc, lint, dependency-cruiser, tests), routes the diff through architecture/quality skills per file bucket, and blocks the push on any verified CRITICAL |
 
 ## What Are Skills?
 
