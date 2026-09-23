@@ -21,6 +21,8 @@ import {
   sumFileStats,
   mapCommits,
   mapDiscussions,
+  mapNote,
+  diffNotesOf,
   buildPosition,
   supportsDiffsEndpoint,
   type GlMergeRequest,
@@ -28,6 +30,7 @@ import {
   type GlCommit,
   type GlDiscussion,
   type GlDiffRefs,
+  type GlNote,
 } from './mappers.js';
 
 const TIMEOUT = 30_000;
@@ -261,49 +264,79 @@ export class GitLabRestClient implements ForgeClient {
     n: number,
     input: CreateReviewCommentInput,
   ): Promise<PrReviewComment> {
-    const discussionId = await this.resolveDiscussionId(repo, n, input.inReplyTo);
+    const thread = await this.resolveThread(repo, n, input.inReplyTo);
+    const base = {
+      webBase: this.webBase,
+      projectPath: projectPath(repo),
+      iid: n,
+      // A note that was just created is anchored to the current diff by
+      // construction, so there is nothing to compare a head sha against.
+      currentHeadSha: null,
+    };
 
-    if (discussionId) {
-      await this.call(`${this.mrPath(repo, n)}/discussions/${discussionId}/notes`, {
-        method: 'POST',
-        body: { body: input.body },
-      });
-    } else {
-      const mr = await this.call<GlMergeRequest>(this.mrPath(repo, n));
-      const refs = mr.diff_refs;
-      if (!refs) {
-        throw new GitLabHttpError(
-          422,
-          'Merge request has no diff_refs — it has no diff to anchor a comment to.',
-        );
-      }
-      await this.call(`${this.mrPath(repo, n)}/discussions`, {
-        method: 'POST',
-        body: { body: input.body, position: buildPosition(refs as GlDiffRefs, input) },
+    // Both POSTs return the object GitLab created, so the ids and URL come
+    // from GitLab rather than from matching on our own text afterwards: two
+    // comments can carry the same body on different lines, and a body GitLab
+    // normalises would match nothing at all.
+    if (thread) {
+      const note = await this.call<GlNote>(
+        `${this.mrPath(repo, n)}/discussions/${thread.discussionId}/notes`,
+        { method: 'POST', body: { body: input.body } },
+      );
+      return mapNote(note, {
+        ...base,
+        discussionId: thread.discussionId,
+        rootNoteId: thread.rootNoteId,
       });
     }
 
-    // Re-read so the returned comment carries the ids/URL GitLab assigned,
-    // rather than a locally-synthesised guess at them.
-    const after = await this.listReviewComments(repo, n);
-    const mine = [...after]
-      .reverse()
-      .find((c) => c.body === input.body && c.path === input.path);
-    if (mine) return mine;
-    throw new GitLabHttpError(500, 'Comment was created but could not be read back.');
+    const mr = await this.call<GlMergeRequest>(this.mrPath(repo, n));
+    const refs = mr.diff_refs;
+    if (!refs) {
+      throw new GitLabHttpError(
+        422,
+        'Merge request has no diff_refs — it has no diff to anchor a comment to.',
+      );
+    }
+    const created = await this.call<GlDiscussion>(`${this.mrPath(repo, n)}/discussions`, {
+      method: 'POST',
+      body: { body: input.body, position: buildPosition(refs as GlDiffRefs, input) },
+    });
+    const note = diffNotesOf(created)[0];
+    if (!note) {
+      throw new GitLabHttpError(
+        500,
+        'GitLab accepted the comment but returned a discussion with no diff note.',
+      );
+    }
+    // This note IS the thread root, hence no in_reply_to.
+    return mapNote(note, { ...base, discussionId: created.id, rootNoteId: null });
   }
 
   /**
-   * GitLab replies are addressed by DISCUSSION id (a 40-char string). A numeric
-   * `inReplyTo` is a note id — resolve it to its discussion by search.
+   * Resolve a reply target to the discussion it belongs to AND that thread's
+   * first note. Both are needed: GitLab addresses a reply by DISCUSSION id (a
+   * 40-char string), while the web client groups a thread by
+   * `in_reply_to_id ?? id`, so a reply that reports no root splits the thread
+   * in two on screen.
    */
-  private async resolveDiscussionId(
+  private async resolveThread(
     repo: RepoRef,
     n: number,
     inReplyTo: number | string | undefined,
-  ): Promise<string | null> {
+  ): Promise<{ discussionId: string; rootNoteId: number | null } | null> {
     if (inReplyTo == null) return null;
-    if (typeof inReplyTo === 'string') return inReplyTo;
+
+    if (typeof inReplyTo === 'string') {
+      // A thread_id we handed out earlier. One read tells us its root note and
+      // validates the discussion exists, which beats a blind POST 404.
+      const d = await this.call<GlDiscussion>(
+        `${this.mrPath(repo, n)}/discussions/${encodeURIComponent(inReplyTo)}`,
+      );
+      return { discussionId: d.id, rootNoteId: diffNotesOf(d)[0]?.id ?? null };
+    }
+
+    // A numeric note id — find the discussion holding it.
     const discussions = await this.paginate<GlDiscussion>(
       `${this.mrPath(repo, n)}/discussions`,
     );
@@ -311,7 +344,7 @@ export class GitLabRestClient implements ForgeClient {
     if (!owning) {
       throw new GitLabHttpError(404, `No discussion contains note ${inReplyTo}.`);
     }
-    return owning.id;
+    return { discussionId: owning.id, rootNoteId: diffNotesOf(owning)[0]?.id ?? null };
   }
 
   /**

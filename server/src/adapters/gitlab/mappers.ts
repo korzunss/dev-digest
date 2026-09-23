@@ -186,35 +186,65 @@ export function noteUrl(
  * when its `position.head_sha` is not the MR's current one. `currentHeadSha`
  * comes from the MR's `diff_refs`; pass null to skip the check.
  */
+export interface NoteContext {
+  webBase: string;
+  projectPath: string;
+  iid: number;
+  currentHeadSha: string | null;
+  /** The discussion this note belongs to — the only handle a reply accepts. */
+  discussionId: string;
+  /**
+   * The thread's FIRST note. Null when this note is itself the root. The web
+   * client groups by `in_reply_to_id ?? id`, so getting this wrong splits one
+   * thread into two.
+   */
+  rootNoteId: number | null;
+}
+
+/** One GitLab DiffNote → our comment DTO. The single source of the shape. */
+export function mapNote(note: GlNote, ctx: NoteContext): PrReviewComment {
+  const pos = note.position ?? {};
+  const line = pos.new_line ?? pos.old_line ?? null;
+  const outdated =
+    currentHeadMismatch(pos.head_sha ?? null, ctx.currentHeadSha) || line === null;
+  return {
+    id: note.id,
+    path: pos.new_path || pos.old_path || '',
+    line: outdated ? null : line,
+    original_line: line,
+    side: pos.new_line != null ? 'RIGHT' : 'LEFT',
+    body: note.body,
+    user: note.author?.username ?? 'unknown',
+    created_at: note.created_at,
+    html_url: noteUrl(ctx.webBase, ctx.projectPath, ctx.iid, note.id),
+    in_reply_to_id: ctx.rootNoteId,
+    thread_id: ctx.discussionId,
+    is_outdated: outdated,
+  };
+}
+
+/** Only the notes anchored to the diff — system events and plain notes are not comments. */
+export function diffNotesOf(discussion: GlDiscussion): GlNote[] {
+  return (discussion.notes ?? []).filter((nt) => nt.type === 'DiffNote' && !nt.system);
+}
+
 export function mapDiscussions(
   discussions: GlDiscussion[],
   opts: { webBase: string; projectPath: string; iid: number; currentHeadSha: string | null },
 ): PrReviewComment[] {
   const out: PrReviewComment[] = [];
   for (const d of discussions) {
-    const notes = (d.notes ?? []).filter((nt) => nt.type === 'DiffNote' && !nt.system);
+    const notes = diffNotesOf(d);
     if (notes.length === 0) continue;
     const rootId = notes[0]!.id;
     for (const nt of notes) {
-      const pos = nt.position ?? {};
-      const line = pos.new_line ?? pos.old_line ?? null;
-      const outdated =
-        currentHeadMismatch(pos.head_sha ?? null, opts.currentHeadSha) || line === null;
-      out.push({
-        id: nt.id,
-        path: pos.new_path || pos.old_path || '',
-        line: outdated ? null : line,
-        original_line: line,
-        side: pos.new_line != null ? 'RIGHT' : 'LEFT',
-        body: nt.body,
-        user: nt.author?.username ?? 'unknown',
-        created_at: nt.created_at,
-        html_url: noteUrl(opts.webBase, opts.projectPath, opts.iid, nt.id),
-        in_reply_to_id: nt.id === rootId ? null : rootId,
-        // The discussion id — the ONLY handle GitLab accepts for a reply.
-        thread_id: d.id,
-        is_outdated: outdated,
-      });
+      out.push(
+        mapNote(nt, {
+          ...opts,
+          discussionId: d.id,
+          rootNoteId: nt.id === rootId ? null : rootId,
+        }),
+      );
     }
   }
   return out;

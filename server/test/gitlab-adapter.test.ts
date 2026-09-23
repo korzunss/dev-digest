@@ -314,34 +314,32 @@ describe('GitLabRestClient — version-gated diff retrieval', () => {
 });
 
 describe('GitLabRestClient — writes', () => {
-  it('posts a new thread with a full position built from diff_refs', async () => {
-    const MR = {
-      iid: 7,
-      title: 't',
-      state: 'opened',
-      source_branch: 'a',
-      target_branch: 'main',
-      sha: 'HEAD1',
-      diff_refs: { base_sha: 'B', start_sha: 'S', head_sha: 'HEAD1' },
-    };
+  const MR_WITH_REFS = {
+    iid: 7,
+    title: 't',
+    state: 'opened',
+    source_branch: 'a',
+    target_branch: 'main',
+    sha: 'HEAD1',
+    diff_refs: { base_sha: 'B', start_sha: 'S', head_sha: 'HEAD1' },
+  };
+
+  const diffNote = (id: number, body: string, line: number) => ({
+    id,
+    body,
+    type: 'DiffNote',
+    author: { username: 'alice' },
+    created_at: '2026-06-01T00:00:00Z',
+    position: { new_path: 'src/a.ts', new_line: line, head_sha: 'HEAD1' },
+  });
+
+  it('builds the new thread from the POST response, not from a re-read', async () => {
     const calls = stubFetch({
-      'GET /api/v4/projects/acme%2Fapi/merge_requests/7': MR,
-      'POST /api/v4/projects/acme%2Fapi/merge_requests/7/discussions': { id: 'd1' },
-      'GET /api/v4/projects/acme%2Fapi/merge_requests/7/discussions': [
-        {
-          id: 'd1',
-          notes: [
-            {
-              id: 10,
-              body: 'looks wrong',
-              type: 'DiffNote',
-              author: { username: 'alice' },
-              created_at: '2026-06-01T00:00:00Z',
-              position: { new_path: 'src/a.ts', new_line: 12, head_sha: 'HEAD1' },
-            },
-          ],
-        },
-      ],
+      'GET /api/v4/projects/acme%2Fapi/merge_requests/7': MR_WITH_REFS,
+      'POST /api/v4/projects/acme%2Fapi/merge_requests/7/discussions': {
+        id: 'd1',
+        notes: [diffNote(10, 'looks wrong', 12)],
+      },
     });
 
     const created = await new GitLabRestClient('tok').createReviewComment(REPO, 7, {
@@ -356,32 +354,62 @@ describe('GitLabRestClient — writes', () => {
       body: 'looks wrong',
       position: { base_sha: 'B', start_sha: 'S', head_sha: 'HEAD1', new_line: 12 },
     });
-    expect(created.thread_id).toBe('d1');
-    expect(created.id).toBe(10);
+    expect(created).toMatchObject({
+      id: 10,
+      thread_id: 'd1',
+      line: 12,
+      // It is the thread root, so it replies to nothing.
+      in_reply_to_id: null,
+      is_outdated: false,
+    });
+    // The old implementation listed every comment back and matched on body.
+    expect(calls.some((c) => c.method === 'GET' && c.url.endsWith('/discussions'))).toBe(false);
   });
 
-  it('replies into an existing thread by discussion id (a string)', async () => {
+  it('returns the right comment when an identical body exists on another line', async () => {
+    // The exact case a re-read + body match got wrong: same text, same file,
+    // different line. The POST response carries the id GitLab assigned.
     const calls = stubFetch({
-      'POST /api/v4/projects/acme%2Fapi/merge_requests/7/discussions/d1/notes': { id: 11 },
-      'GET /api/v4/projects/acme%2Fapi/merge_requests/7': { iid: 7, state: 'opened' },
+      'GET /api/v4/projects/acme%2Fapi/merge_requests/7': MR_WITH_REFS,
+      'POST /api/v4/projects/acme%2Fapi/merge_requests/7/discussions': {
+        id: 'd-new',
+        notes: [diffNote(99, 'unchecked cast', 40)],
+      },
+      // An older identical comment that a reverse body-match could have picked.
       'GET /api/v4/projects/acme%2Fapi/merge_requests/7/discussions': [
-        {
-          id: 'd1',
-          notes: [
-            {
-              id: 11,
-              body: 'agreed',
-              type: 'DiffNote',
-              author: { username: 'bob' },
-              created_at: '2026-06-01T02:00:00Z',
-              position: { new_path: 'src/a.ts', new_line: 12 },
-            },
-          ],
-        },
+        { id: 'd-old', notes: [diffNote(11, 'unchecked cast', 12)] },
       ],
     });
 
-    await new GitLabRestClient('tok').createReviewComment(REPO, 7, {
+    const created = await new GitLabRestClient('tok').createReviewComment(REPO, 7, {
+      commitId: 'HEAD1',
+      path: 'src/a.ts',
+      line: 40,
+      body: 'unchecked cast',
+    });
+
+    expect(created.id).toBe(99);
+    expect(created.line).toBe(40);
+    expect(created.thread_id).toBe('d-new');
+    expect(calls.some((c) => c.url.includes('/discussions') && c.method === 'GET')).toBe(false);
+  });
+
+  it('replies by discussion id and reports the thread root, so the thread stays one', async () => {
+    // The web client groups by `in_reply_to_id ?? id`; a reply that reported no
+    // root would render as a second thread on the same line.
+    const calls = stubFetch({
+      'GET /api/v4/projects/acme%2Fapi/merge_requests/7/discussions/d1': {
+        id: 'd1',
+        notes: [diffNote(10, 'looks wrong', 12)],
+      },
+      'POST /api/v4/projects/acme%2Fapi/merge_requests/7/discussions/d1/notes': diffNote(
+        11,
+        'agreed',
+        12,
+      ),
+    });
+
+    const created = await new GitLabRestClient('tok').createReviewComment(REPO, 7, {
       commitId: 'HEAD1',
       path: 'src/a.ts',
       line: 12,
@@ -392,6 +420,46 @@ describe('GitLabRestClient — writes', () => {
     expect(calls.some((c) => c.method === 'POST' && c.url.includes('/discussions/d1/notes'))).toBe(
       true,
     );
+    expect(created).toMatchObject({ id: 11, thread_id: 'd1', in_reply_to_id: 10 });
+  });
+
+  it('resolves a numeric reply target to its discussion', async () => {
+    // GitHub addresses a reply by note id; that shape still has to work here.
+    const calls = stubFetch({
+      'GET /api/v4/projects/acme%2Fapi/merge_requests/7/discussions': [
+        { id: 'd1', notes: [diffNote(10, 'looks wrong', 12)] },
+      ],
+      'POST /api/v4/projects/acme%2Fapi/merge_requests/7/discussions/d1/notes': diffNote(
+        12,
+        'agreed',
+        12,
+      ),
+    });
+
+    const created = await new GitLabRestClient('tok').createReviewComment(REPO, 7, {
+      commitId: 'HEAD1',
+      path: 'src/a.ts',
+      line: 12,
+      body: 'agreed',
+      inReplyTo: 10,
+    });
+
+    expect(created.in_reply_to_id).toBe(10);
+    expect(created.thread_id).toBe('d1');
+    expect(calls.some((c) => c.url.includes('/discussions/d1/notes'))).toBe(true);
+  });
+
+  it('fails loudly when a reply targets a discussion that does not exist', async () => {
+    stubFetch({ 'GET /api/v4/projects/acme%2Fapi/merge_requests/7/discussions': [] });
+    await expect(
+      new GitLabRestClient('tok').createReviewComment(REPO, 7, {
+        commitId: 'HEAD1',
+        path: 'src/a.ts',
+        line: 12,
+        body: 'agreed',
+        inReplyTo: 404404,
+      }),
+    ).rejects.toMatchObject({ status: 404 });
   });
 
   it('posts the note and swallows a Premium-only 403 from approve', async () => {
