@@ -294,6 +294,40 @@ d('GitLab repos', () => {
     await app2.close();
   });
 
+  it('test-connection refuses an api_base outside GITLAB_HOST, before any call', async () => {
+    // The body is the attacker-controlled input, and this route has no auth in
+    // front of it (LocalNoAuthProvider). Reaching the forge at all would have
+    // put the stored PAT in a PRIVATE-TOKEN header aimed at the given origin.
+    let reached = false;
+    class TattlingForge extends VersioningForge {
+      override async currentLogin(): Promise<string> {
+        reached = true;
+        return super.currentLogin();
+      }
+    }
+    const app2 = await buildApp({
+      config: config(),
+      db: pg.handle.db,
+      overrides: {
+        forge: new TattlingForge('16.0.0'),
+        secrets: { get: async () => 'pat', set: async () => {} },
+      },
+    });
+    const res = await app2.inject({
+      method: 'POST',
+      url: '/settings/test-connection',
+      payload: { provider: 'gitlab', api_base: 'https://evil.example.net' },
+    });
+
+    // The endpoint reports failures in its body rather than as a status, so the
+    // 200 here is the contract, not a pass.
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ ok: false });
+    expect(res.json().message).toMatch(/not a known forge instance/);
+    expect(reached).toBe(false);
+    await app2.close();
+  });
+
   it('test-connection reports the instance version and where it connected', async () => {
     // Which diff endpoint exists depends on this number, so it is not decor —
     // and a self-managed PAT checked against gitlab.com is how today's 401 read.

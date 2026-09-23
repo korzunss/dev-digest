@@ -285,6 +285,29 @@ describe('resolveTestApiBase', () => {
     expect(resolveTestApiBase('gitlab', undefined, [])).toBeNull();
   });
 
+  it('refuses an api_base the operator never configured', () => {
+    // The request body is the attacker-controlled input here, not GITLAB_HOST.
+    // container.forge({provider, apiBase}) sends the stored PAT to
+    // `${apiBase}/api/v4/user` as a PRIVATE-TOKEN header, and the canonical-key
+    // fallback means an unknown host still resolves a token rather than none.
+    // There is no auth in front of this route (LocalNoAuthProvider).
+    expect(() => resolveTestApiBase('gitlab', 'https://evil.example.net', bases)).toThrow(
+      /not a known forge instance/,
+    );
+    // A path prefix on a legitimate host is still a different base.
+    expect(() => resolveTestApiBase('gitlab', 'https://git.other.com/evil', bases)).toThrow(
+      /not a known forge instance/,
+    );
+    // The public host stays reachable with nothing configured.
+    expect(resolveTestApiBase('gitlab', 'https://gitlab.com', [])).toBe('https://gitlab.com');
+  });
+
+  it('ignores an api_base for a provider with no self-managed support', () => {
+    // GitHub Enterprise is not a thing here — there is no GITHUB_HOST — so an
+    // api_base on a github test can only ever be a redirect of its PAT.
+    expect(resolveTestApiBase('github', 'https://evil.example.net', bases)).toBeNull();
+  });
+
   it('never redirects a GitHub test at a GitLab base', () => {
     expect(resolveTestApiBase('github', undefined, bases)).toBeNull();
   });
