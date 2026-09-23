@@ -243,6 +243,72 @@ describe('GitLabRestClient — transport', () => {
     expect(calls[0]!.url).toBe('/gitlab/api/v4/user');
   });
 
+  it('maps the list payload into PrMeta, keyed by iid rather than id', async () => {
+    const calls = stubFetch({
+      'GET /api/v4/projects/acme%2Fapi/merge_requests': [
+        {
+          // `id` is the global MR id and `iid` the per-project one shown in the
+          // URL. They differ in production and coincide in most hand-written
+          // fixtures, which is how a mix-up survives review — so they differ here.
+          id: 90210,
+          iid: 7,
+          title: 'Add rate limiting',
+          state: 'opened',
+          author: { username: 'alice' },
+          source_branch: 'feat/rate-limit',
+          target_branch: 'main',
+          sha: 'HEAD1',
+          created_at: '2026-09-01T10:00:00Z',
+          updated_at: '2026-09-02T11:00:00Z',
+        },
+        {
+          // No `sha` on the payload: the head falls back to diff_refs, and a
+          // missing author must not read as a crash or an empty string.
+          id: 90211,
+          iid: 8,
+          title: 'Bump deps',
+          state: 'merged',
+          author: null,
+          source_branch: 'chore/deps',
+          target_branch: 'main',
+          diff_refs: { base_sha: 'B', start_sha: 'S', head_sha: 'HEAD2' },
+        },
+        // locked is a real GitLab state and is not a fourth status for us.
+        { iid: 9, title: 'Old', state: 'locked', source_branch: 'x', target_branch: 'main' },
+        { iid: 10, title: 'Rejected', state: 'closed', source_branch: 'y', target_branch: 'main' },
+      ],
+    });
+
+    const pulls = await new GitLabRestClient('tok').listPullRequests(REPO);
+
+    expect(pulls.map((p) => p.number)).toEqual([7, 8, 9, 10]);
+    expect(pulls.map((p) => p.status)).toEqual(['open', 'merged', 'open', 'closed']);
+    expect(pulls[0]).toEqual({
+      number: 7,
+      title: 'Add rate limiting',
+      author: 'alice',
+      branch: 'feat/rate-limit',
+      base: 'main',
+      head_sha: 'HEAD1',
+      // Not on the list payload — the pulls route backfills them from detail,
+      // so zeroes here are the contract, not a mapping miss.
+      additions: 0,
+      deletions: 0,
+      files_count: 0,
+      status: 'open',
+      opened_at: '2026-09-01T10:00:00Z',
+      updated_at: '2026-09-02T11:00:00Z',
+    });
+    expect(pulls[1]).toMatchObject({ head_sha: 'HEAD2', author: 'unknown' });
+    expect(pulls[2]).toMatchObject({ head_sha: '', opened_at: null, updated_at: null });
+
+    // The query is what keeps merged/closed in the list at all, matching the
+    // Octokit client's `state: 'all'` rather than GitLab's `opened` default.
+    const listCall = calls.find((c) => c.url.includes('/merge_requests'))!;
+    expect(listCall.url).toContain('state=all');
+    expect(listCall.url).toContain('scope=all');
+  });
+
   it('URL-encodes a nested group path into the project id', async () => {
     const calls = stubFetch({
       'GET /api/v4/version': { version: '17.0.0' },
