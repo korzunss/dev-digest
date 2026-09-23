@@ -244,6 +244,56 @@ d('GitLab repos', () => {
     await app2.close();
   });
 
+  it('falls back to the canonical token when the instance-scoped one is absent', async () => {
+    // The scoped form resolves ONLY from the stored secrets file — '@' is not a
+    // legal character in an env var name — so a single-instance setup running on
+    // a plain `GITLAB_TOKEN=` in .env reaches its self-managed host entirely
+    // through this fallthrough. If it broke, those clones would go out
+    // unauthenticated and fail on private projects.
+    const git = new MockGitClient();
+    const asked: string[] = [];
+    const secrets = {
+      get: async (key: string) => {
+        asked.push(key);
+        return key === 'GITLAB_TOKEN' ? 'plain-pat' : undefined;
+      },
+    };
+    const app2 = await buildApp({
+      config: config(),
+      db: pg.handle.db,
+      overrides: { forge, git, secrets },
+    });
+
+    const [repo] = await pg.handle.db
+      .insert(t.repos)
+      .values({
+        workspaceId,
+        provider: 'gitlab',
+        apiBase: 'https://gitlab.sharksw.com',
+        owner: 'team',
+        name: 'fallback',
+        fullName: 'team/fallback',
+      })
+      .returning();
+
+    await new RepoService(app2.container).runCloneJob({
+      repoId: repo!.id,
+      owner: 'team',
+      name: 'fallback',
+      url: 'https://gitlab.sharksw.com/team/fallback.git',
+      provider: 'gitlab',
+      apiBase: 'https://gitlab.sharksw.com',
+    });
+
+    // Order matters as much as the result: the scoped key must be tried first,
+    // or a workspace with two self-managed instances would use one PAT on both.
+    expect(asked).toEqual(['GITLAB_TOKEN@gitlab.sharksw.com', 'GITLAB_TOKEN']);
+    expect(git.cloned.at(-1)!.url).toBe(
+      'https://oauth2:plain-pat@gitlab.sharksw.com/team/fallback.git',
+    );
+    await app2.close();
+  });
+
   it('test-connection reports the instance version and where it connected', async () => {
     // Which diff endpoint exists depends on this number, so it is not decor —
     // and a self-managed PAT checked against gitlab.com is how today's 401 read.
