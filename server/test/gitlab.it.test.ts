@@ -11,7 +11,8 @@ import { startPg, dockerAvailable, type PgFixture } from './helpers/pg.js';
 import { buildApp } from '../src/app.js';
 import { loadConfig } from '../src/platform/config.js';
 import { seed } from '../src/db/seed.js';
-import { MockForgeClient } from '../src/adapters/mocks.js';
+import { MockForgeClient, MockGitClient } from '../src/adapters/mocks.js';
+import { RepoService } from '../src/modules/repos/service.js';
 import * as t from '../src/db/schema.js';
 import { eq } from 'drizzle-orm';
 import type { ForgeClient, RepoRef, PrMeta } from '@devdigest/shared';
@@ -25,6 +26,16 @@ const config = () =>
     NODE_ENV: 'test',
     GITLAB_HOST: 'git.acme.com, https://acme.com/gitlab',
   } as NodeJS.ProcessEnv);
+
+/** A forge that also answers the version probe, like the real GitLab client. */
+class VersioningForge extends MockForgeClient {
+  constructor(private version: string | null) {
+    super({ provider: 'gitlab', login: 'korzunss' });
+  }
+  async instanceVersion(): Promise<string | null> {
+    return this.version;
+  }
+}
 
 /** Records the refs it was called with, so we can assert routing, not just output. */
 class RecordingForge extends MockForgeClient {
@@ -153,6 +164,127 @@ d('GitLab repos', () => {
     expect(ref.apiBase).toBe('https://git.acme.com');
     // The full path is what the adapter URL-encodes into the project id.
     expect(ref.path).toBe('team/sub/svc');
+  });
+
+  it('clones a GitLab repo from its own host, with the username GitLab accepts', async () => {
+    // The riskiest line in the change: refresh() used to rebuild the clone URL
+    // as https://github.com/<full_name>.git unconditionally, which would send a
+    // GitLab repo (and its PAT) to the wrong host.
+    const git = new MockGitClient();
+    const secrets = {
+      get: async (key: string) =>
+        key === 'GITLAB_TOKEN@gitlab.sharksw.com' ? 'scoped-pat' : undefined,
+    };
+    const app2 = await buildApp({
+      config: config(),
+      db: pg.handle.db,
+      overrides: { forge, git, secrets },
+    });
+    const service = new RepoService(app2.container);
+
+    const [repo] = await pg.handle.db
+      .insert(t.repos)
+      .values({
+        workspaceId,
+        provider: 'gitlab',
+        apiBase: 'https://gitlab.sharksw.com',
+        owner: 'team',
+        name: 'cloned',
+        fullName: 'team/cloned',
+      })
+      .returning();
+
+    await service.runCloneJob({
+      repoId: repo!.id,
+      owner: 'team',
+      name: 'cloned',
+      url: 'https://gitlab.sharksw.com/team/cloned.git',
+      provider: 'gitlab',
+      apiBase: 'https://gitlab.sharksw.com',
+    });
+
+    // oauth2, not x-access-token: GitLab rejects GitHub's username with a
+    // misleading 403. And the instance-scoped secret wins over a plain one.
+    expect(git.cloned.at(-1)!.url).toBe(
+      'https://oauth2:scoped-pat@gitlab.sharksw.com/team/cloned.git',
+    );
+    await app2.close();
+  });
+
+  it('clones unauthenticated rather than with the wrong forge token', async () => {
+    const git = new MockGitClient();
+    // Only a GitHub token is configured; a GitLab clone must not reach for it.
+    const secrets = { get: async (key: string) => (key === 'GITHUB_TOKEN' ? 'ghp' : undefined) };
+    const app2 = await buildApp({
+      config: config(),
+      db: pg.handle.db,
+      overrides: { forge, git, secrets },
+    });
+    const [repo] = await pg.handle.db
+      .insert(t.repos)
+      .values({
+        workspaceId,
+        provider: 'gitlab',
+        apiBase: null,
+        owner: 'team',
+        name: 'anon',
+        fullName: 'team/anon',
+      })
+      .returning();
+
+    await new RepoService(app2.container).runCloneJob({
+      repoId: repo!.id,
+      owner: 'team',
+      name: 'anon',
+      url: 'https://gitlab.com/team/anon.git',
+      provider: 'gitlab',
+    });
+
+    expect(git.cloned.at(-1)!.url).toBe('https://gitlab.com/team/anon.git');
+    await app2.close();
+  });
+
+  it('test-connection reports the instance version and where it connected', async () => {
+    // Which diff endpoint exists depends on this number, so it is not decor —
+    // and a self-managed PAT checked against gitlab.com is how today's 401 read.
+    const app2 = await buildApp({
+      config: config(),
+      db: pg.handle.db,
+      overrides: {
+        forge: new VersioningForge('14.5.2'),
+        secrets: { get: async () => 'pat', set: async () => {} },
+      },
+    });
+    const res = await app2.inject({
+      method: 'POST',
+      url: '/settings/test-connection',
+      payload: { provider: 'gitlab' },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.ok).toBe(true);
+    expect(body.message).toBe(
+      'Connected as @korzunss · GitLab 14.5.2 at https://git.acme.com',
+    );
+    await app2.close();
+  });
+
+  it('test-connection still succeeds when the version cannot be read', async () => {
+    const app2 = await buildApp({
+      config: config(),
+      db: pg.handle.db,
+      overrides: {
+        forge: new VersioningForge(null),
+        secrets: { get: async () => 'pat', set: async () => {} },
+      },
+    });
+    const res = await app2.inject({
+      method: 'POST',
+      url: '/settings/test-connection',
+      payload: { provider: 'gitlab' },
+    });
+    expect(res.json().message).toBe('Connected as @korzunss at https://git.acme.com');
+    await app2.close();
   });
 
   it('still serves persisted PRs when the forge client cannot be built', async () => {

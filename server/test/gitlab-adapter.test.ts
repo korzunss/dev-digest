@@ -462,6 +462,144 @@ describe('GitLabRestClient — writes', () => {
     ).rejects.toMatchObject({ status: 404 });
   });
 
+  it('opens a merge request with GitLab field names, not GitHub ones', async () => {
+    // head/base on our port are source_branch/target_branch here, and the PR
+    // body is `description` — three renames, all silent if wrong.
+    const calls = stubFetch({
+      'POST /api/v4/projects/acme%2Fapi/merge_requests': {
+        web_url: 'https://gitlab.com/acme/api/-/merge_requests/3',
+      },
+    });
+
+    const res = await new GitLabRestClient('tok').openPullRequest(REPO, {
+      title: 'Add CI',
+      head: 'devdigest/ci',
+      base: 'main',
+      body: 'Generated.',
+    });
+
+    expect(calls[0]!.body).toEqual({
+      source_branch: 'devdigest/ci',
+      target_branch: 'main',
+      title: 'Add CI',
+      description: 'Generated.',
+    });
+    expect(res.url).toBe('https://gitlab.com/acme/api/-/merge_requests/3');
+  });
+
+  it('finds an open MR by source branch, and reports null when there is none', async () => {
+    const calls = stubFetch({
+      'GET /api/v4/projects/acme%2Fapi/merge_requests': [
+        { web_url: 'https://gitlab.com/acme/api/-/merge_requests/3' },
+      ],
+    });
+    const found = await new GitLabRestClient('tok').findOpenPr(REPO, 'devdigest/ci');
+    expect(found).toEqual({ url: 'https://gitlab.com/acme/api/-/merge_requests/3' });
+    expect(calls[0]!.url).toContain('state=opened');
+    expect(calls[0]!.url).toContain('source_branch=devdigest%2Fci');
+
+    stubFetch({ 'GET /api/v4/projects/acme%2Fapi/merge_requests': [] });
+    await expect(new GitLabRestClient('tok').findOpenPr(REPO, 'nope')).resolves.toBeNull();
+  });
+});
+
+describe('GitLabRestClient — commitFiles', () => {
+  const PAYLOAD = {
+    branch: 'devdigest/ci',
+    base: 'main',
+    message: 'Add CI config',
+    files: [
+      { path: '.gitlab-ci.yml', contents: 'stages: []' },
+      { path: 'docs/new.md', contents: '# new' },
+    ],
+  };
+
+  /** Routes with an explicit set of paths that already exist on the probe ref. */
+  function stubRepo(opts: { branchExists: boolean; existing: string[] }) {
+    const calls: { method: string; url: string; body: unknown }[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: URL | string, init?: RequestInit) => {
+        const url = new URL(String(input));
+        const method = init?.method ?? 'GET';
+        calls.push({
+          method,
+          url: url.pathname + url.search,
+          body: init?.body ? JSON.parse(String(init.body)) : undefined,
+        });
+        const miss = () => new Response('404 Not Found', { status: 404, statusText: 'Not Found' });
+        if (url.pathname.includes('/repository/branches/')) {
+          return opts.branchExists ? new Response('{}', { status: 200 }) : miss();
+        }
+        if (url.pathname.includes('/repository/files/')) {
+          const path = decodeURIComponent(url.pathname.split('/repository/files/')[1]!);
+          return opts.existing.includes(path) ? new Response('{}', { status: 200 }) : miss();
+        }
+        return new Response('{}', { status: 200 });
+      }),
+    );
+    return calls;
+  }
+
+  it('picks create or update per file — GitLab rejects the wrong one', async () => {
+    const calls = stubRepo({ branchExists: true, existing: ['.gitlab-ci.yml'] });
+    await new GitLabRestClient('tok').commitFiles(REPO, PAYLOAD);
+
+    const commit = calls.find((c) => c.url.endsWith('/repository/commits'))!;
+    expect(commit.body).toMatchObject({
+      branch: 'devdigest/ci',
+      commit_message: 'Add CI config',
+      actions: [
+        { action: 'update', file_path: '.gitlab-ci.yml', content: 'stages: []' },
+        { action: 'create', file_path: 'docs/new.md', content: '# new' },
+      ],
+    });
+  });
+
+  it('forks from base with start_branch only when the branch is missing', async () => {
+    const missing = stubRepo({ branchExists: false, existing: [] });
+    await new GitLabRestClient('tok').commitFiles(REPO, PAYLOAD);
+    expect(
+      missing.find((c) => c.url.endsWith('/repository/commits'))!.body,
+    ).toMatchObject({ start_branch: 'main' });
+
+    const exists = stubRepo({ branchExists: true, existing: [] });
+    await new GitLabRestClient('tok').commitFiles(REPO, PAYLOAD);
+    // Passing start_branch for a branch that exists makes GitLab reject the commit.
+    expect(
+      exists.find((c) => c.url.endsWith('/repository/commits'))!.body,
+    ).not.toHaveProperty('start_branch');
+  });
+
+  it('probes the branch when it exists, and the base when it does not', async () => {
+    const calls = stubRepo({ branchExists: false, existing: [] });
+    await new GitLabRestClient('tok').commitFiles(REPO, PAYLOAD);
+    const probes = calls.filter((c) => c.url.includes('/repository/files/'));
+    expect(probes).toHaveLength(2);
+    // A new branch has no content of its own yet — probing it would 404 every
+    // file and turn every action into a create, which then fails on the base.
+    for (const p of probes) expect(p.url).toContain('ref=main');
+  });
+
+  it('propagates a non-404 probe failure instead of guessing create', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: URL | string) => {
+        const url = new URL(String(input));
+        if (url.pathname.includes('/repository/branches/')) return new Response('{}', { status: 200 });
+        if (url.pathname.includes('/repository/files/')) {
+          return new Response('boom', { status: 500, statusText: 'Server Error' });
+        }
+        return new Response('{}', { status: 200 });
+      }),
+    );
+    await expect(
+      new GitLabRestClient('tok').commitFiles(REPO, PAYLOAD),
+    ).rejects.toMatchObject({ status: 500 });
+  });
+});
+
+describe('GitLabRestClient — review', () => {
   it('posts the note and swallows a Premium-only 403 from approve', async () => {
     // On GitLab 14.x approve/unapprove are Premium ("Moved to Premium in 13.9"),
     // so a Free/CE instance answers 403 — the review must still land as a note.
