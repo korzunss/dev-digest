@@ -142,5 +142,6 @@
     "action": "Delete review run",
     "label": "Delete this review run",
     "fallbackAgent": "agent"
-  }
+  },
+  "commentFailed": "Could not post the comment."
 }
