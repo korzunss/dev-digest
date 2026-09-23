@@ -4,7 +4,9 @@
 "use client";
 
 import React from "react";
+import { useTranslations } from "next-intl";
 import { AppFrame, CommandPalette, ShortcutsHelp, type Crumb } from "@devdigest/ui";
+import { ConfirmModal } from "@/components/confirm-modal";
 import { useGlobalShortcuts, useShellCommands, useShellContext } from "./hooks";
 
 export function AppShell({ children, crumb }: { children: React.ReactNode; crumb?: Crumb[] }) {
@@ -17,7 +19,8 @@ export function AppShell({ children, crumb }: { children: React.ReactNode; crumb
 
   useGlobalShortcuts({ onOpenPalette: openPalette, onOpenHelp: openHelp });
   const commands = useShellCommands();
-  const ctx = useShellContext({ onOpenCommandPalette: openPalette });
+  const t = useTranslations("shell");
+  const { ctx, removal } = useShellContext({ onOpenCommandPalette: openPalette });
 
   return (
     <>
@@ -26,6 +29,21 @@ export function AppShell({ children, crumb }: { children: React.ReactNode; crumb
       </AppFrame>
       <CommandPalette open={paletteOpen} commands={commands} onClose={closePalette} />
       <ShortcutsHelp open={helpOpen} onClose={closeHelp} />
+      {/* Removing a repo is asked here, not in the hook that owns the action:
+          the confirmation is a rendered dialog now, and a hook cannot render. */}
+      {removal.repo && (
+        <ConfirmModal
+          title={t("removeRepo.title")}
+          body={t("removeRepo.body", {
+            name: removal.repo.fullName,
+            forge: removal.repo.forge,
+          })}
+          confirmLabel={t("removeRepo.action")}
+          pending={removal.pending}
+          onClose={removal.cancel}
+          onConfirm={removal.confirm}
+        />
+      )}
     </>
   );
 }

@@ -129,5 +129,18 @@
     "tokens": "{tokens} tok",
     "estimateTooltip": "Estimated from token counts × the model price — this provider does not report a cost."
   },
-  "viewOnForge": "View on {forge}"
+  "viewOnForge": "View on {forge}",
+  "deleteRun": {
+    "title": "Delete this run?",
+    "body": "Delete this run from the PR's history? Its logs and trace are removed with it. This cannot be undone.",
+    "action": "Delete run",
+    "label": "Delete this run from history"
+  },
+  "deleteReview": {
+    "title": "Delete this review run?",
+    "body": "Delete the {agent} review run? Its findings are removed with it, and the PR's findings tally drops accordingly. This cannot be undone.",
+    "action": "Delete review run",
+    "label": "Delete this review run",
+    "fallbackAgent": "agent"
+  }
 }

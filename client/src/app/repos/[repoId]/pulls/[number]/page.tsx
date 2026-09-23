@@ -7,9 +7,11 @@
 
 import React from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { Skeleton, ErrorState } from "@devdigest/ui";
 import { AppShell } from "../../../../../components/app-shell";
 import { RepoNotFound } from "@/components/repo-not-found";
+import { ConfirmModal } from "@/components/confirm-modal";
 import { PrDetailHeader } from "./_components/PrDetailHeader";
 import { OverviewTab } from "./_components/OverviewTab";
 import { FindingsTab } from "./_components/FindingsTab";
@@ -46,6 +48,9 @@ export default function PRDetailPage() {
   const { data: activeRuns } = usePrActiveRuns(prId);
   const { data: prRuns } = usePrRuns(prId);
   const deleteRun = useDeleteRun(prId);
+  const t = useTranslations("prReview");
+  // Which run the confirmation is open for; null = closed.
+  const [deletingRunId, setDeletingRunId] = React.useState<string | null>(null);
   const liveRunIds = (activeRuns ?? []).map((r) => r.run_id);
   const reviewRunning = liveRunIds.length > 0;
   const cancel = useCancelRun();
@@ -164,10 +169,7 @@ export default function PRDetailPage() {
             }
             cancelMutation={cancel}
             onOpenTrace={(id) => setParam("trace", id)}
-            onDelete={(id) => {
-              if (window.confirm("Delete this run from history? (its logs are removed too)"))
-                deleteRun.mutate(id);
-            }}
+            onDelete={(id) => setDeletingRunId(id)}
             onRunDone={() => {
               invalidateActiveRuns();
               invalidateRunHistory();
@@ -185,6 +187,21 @@ export default function PRDetailPage() {
           />
         )}
       </div>
+
+      {deletingRunId && (
+        <ConfirmModal
+          title={t("deleteRun.title")}
+          body={t("deleteRun.body")}
+          confirmLabel={t("deleteRun.action")}
+          pending={deleteRun.isPending}
+          onClose={() => setDeletingRunId(null)}
+          onConfirm={() =>
+            deleteRun.mutate(deletingRunId, {
+              onSettled: () => setDeletingRunId(null),
+            })
+          }
+        />
+      )}
 
       {prId && traceRunId && (
         <RunTraceDrawer
