@@ -40,6 +40,40 @@ describe('parseRepoUrl — public hosts', () => {
     });
   });
 
+  it('treats a www. host as the same instance, not a different one', () => {
+    // The point is not that the URL parses — it is that it parses IDENTICALLY.
+    // apiBase stays null, so findByFullName dedupes a www. paste against the
+    // bare-host row instead of adding a second copy of the same repo.
+    const github = parseRepoUrl('https://github.com/acme/payments-api');
+    expect(parseRepoUrl('https://www.github.com/acme/payments-api')).toEqual(github);
+
+    const gitlab = parseRepoUrl('https://gitlab.com/acme/payments-api');
+    expect(parseRepoUrl('https://www.gitlab.com/acme/payments-api')).toEqual(gitlab);
+
+    // Case folding here is WHATWG's, not ours: new URL lowercases the host
+    // before `.toLowerCase()` ever sees it, so this passes even without that
+    // call. Asserted anyway, so a rewrite that drops `new URL` for a regex
+    // fails loudly instead of quietly accepting only the lowercase spelling.
+    expect(parseRepoUrl('https://WWW.GitHub.COM/acme/payments-api')).toEqual(github);
+  });
+
+  it('does not let www. widen the allowlist into a suffix match', () => {
+    // The obvious way to write the www. branch is `host.endsWith(h)`, which is
+    // the same class of hole as the provider hint: 'evilgithub.com' ends with
+    // 'github.com', so an attacker-registered host would be parsed as GitHub
+    // and handed the PAT. Only the bare host and its www. form are the host.
+    for (const host of ['evilgithub.com', 'notgitlab.com', 'github.com.evil.net']) {
+      expect(() => parseRepoUrl(`https://${host}/a/b`, { provider: 'github' })).toThrow(
+        /not a known forge instance/,
+      );
+    }
+
+    // www. is a spelling of a known instance, not a way past the provider check.
+    expect(() =>
+      parseRepoUrl('https://www.gitlab.com/acme/payments-api', { provider: 'github' }),
+    ).toThrow(/gitlab/);
+  });
+
   it('keeps a nested GitLab group in `owner`', () => {
     // owner carries the '/' — clonePathFor joins it into nested directories,
     // which is what makes `<cloneDir>/acme/backend/payments-api` work.
