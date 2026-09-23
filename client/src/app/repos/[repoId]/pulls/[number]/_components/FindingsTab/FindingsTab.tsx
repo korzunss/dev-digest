@@ -16,6 +16,7 @@ import type {
 import type { UseMutationResult } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { SEVERITY_META } from "@/lib/severity";
+import type { ForgeRepoRef } from "@/lib/forge-urls";
 
 interface FindingsTabProps {
   prId: string | null;
@@ -27,7 +28,7 @@ interface FindingsTabProps {
   prCommits: PrCommit[];
   cancelMutation: UseMutationResult<any, any, string, any>;
   /** owner/repo + head sha — used to deep-link a finding's file:line to GitHub. */
-  repoFullName?: string | null;
+  repo?: ForgeRepoRef | null;
   headSha?: string | null;
   /** Severity filter from `?severity=` — null means "show everything". */
   severity: Severity | null;
@@ -48,7 +49,7 @@ export function FindingsTab({
   prRuns,
   prCommits,
   cancelMutation,
-  repoFullName,
+  repo,
   headSha,
   severity,
   sevRun,
@@ -247,7 +248,7 @@ export function FindingsTab({
             defaultOpen={pageFilter || i === 0}
             // Scoped to one run ⇒ the others render untouched.
             severity={scopedRunId == null || scopedRunId === review.run_id ? severity : null}
-            repoFullName={repoFullName}
+            repo={repo}
             headSha={headSha}
             targetRunId={target?.runId ?? null}
             targetNonce={target?.n ?? 0}

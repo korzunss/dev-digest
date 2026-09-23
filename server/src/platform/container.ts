@@ -1,7 +1,8 @@
 import type {
   AuthProvider,
   SecretsProvider,
-  GitHubClient,
+  ForgeClient,
+  ForgeProvider,
   GitClient,
   CodeIndex,
   Embedder,
@@ -14,6 +15,8 @@ import { runBus, type RunBus } from './sse.js';
 import { LocalSecretsProvider } from '../adapters/secrets/local.js';
 import { LocalNoAuthProvider } from '../adapters/auth/local.js';
 import { OctokitGitHubClient } from '../adapters/github/octokit.js';
+import { GitLabRestClient } from '../adapters/gitlab/rest.js';
+import { forgeCacheKey, forgeTokenKeys } from './forge-resolve.js';
 import { SimpleGitClient } from '../adapters/git/simple-git.js';
 import { RipgrepCodeIndex } from '../adapters/codeindex/ripgrep.js';
 import { OpenAIProvider } from '../adapters/llm/openai.js';
@@ -41,7 +44,12 @@ import { type Tokenizer, TiktokenTokenizer } from '../adapters/tokenizer/index.j
 export interface ContainerOverrides {
   secrets?: SecretsProvider;
   auth?: AuthProvider;
-  github?: GitHubClient;
+  /**
+   * Forge client(s) for tests. Either one client used for every provider, or a
+   * per-provider map — accepting both keeps the common single-mock case to one
+   * line while a mixed-forge test can inject two.
+   */
+  forge?: ForgeClient | Partial<Record<ForgeProvider, ForgeClient>>;
   git?: GitClient;
   codeIndex?: CodeIndex;
   embedder?: Embedder;
@@ -63,7 +71,7 @@ export class Container {
   readonly runBus: RunBus;
 
   private _git?: GitClient;
-  private _github?: GitHubClient;
+  private forgeCache = new Map<string, ForgeClient>();
   private _codeIndex?: CodeIndex;
   private _embedder?: Embedder;
   private llmCache = new Map<string, LLMProvider>();
@@ -156,13 +164,55 @@ export class Container {
     return this._priceBook;
   }
 
-  async github(): Promise<GitHubClient> {
-    if (this.overrides.github) return this.overrides.github;
-    if (this._github) return this._github;
-    const token = await this.secrets.get('GITHUB_TOKEN');
-    if (!token) throw new ConfigError('GITHUB_TOKEN is not configured');
-    this._github = new OctokitGitHubClient(token);
-    return this._github;
+  /**
+   * Resolve the forge client for a repo. Keyed by provider + instance, so one
+   * workspace can hold GitHub repos alongside two different self-managed
+   * GitLabs. A missing token throws ConfigError exactly as the old
+   * `github()` did — every caller already degrades on that.
+   */
+  async forge(ref?: {
+    provider?: ForgeProvider | null;
+    apiBase?: string | null;
+  }): Promise<ForgeClient> {
+    const provider: ForgeProvider = ref?.provider ?? 'github';
+    const apiBase = ref?.apiBase ?? null;
+
+    const injected = this.overrides.forge;
+    if (injected) {
+      // A ForgeClient has methods; a per-provider map does not.
+      if (typeof (injected as ForgeClient).listPullRequests === 'function') {
+        return injected as ForgeClient;
+      }
+      const byProvider = (injected as Partial<Record<ForgeProvider, ForgeClient>>)[provider];
+      if (byProvider) return byProvider;
+    }
+
+    const key = forgeCacheKey(provider, apiBase);
+    const cached = this.forgeCache.get(key);
+    if (cached) return cached;
+
+    const client = await this.buildForge(provider, apiBase);
+    this.forgeCache.set(key, client);
+    return client;
+  }
+
+  private async buildForge(
+    provider: ForgeProvider,
+    apiBase: string | null,
+  ): Promise<ForgeClient> {
+    // Per-instance secret first (`GITLAB_TOKEN@git.acme.com`), then the plain
+    // key. The per-instance form only ever resolves from the stored secrets
+    // file — '@' is not legal in an env var name, so the env lookup for it
+    // simply misses and falls through, which is the intended behaviour.
+    for (const secretKey of forgeTokenKeys(provider, apiBase)) {
+      const token = await this.secrets.get(secretKey);
+      if (!token) continue;
+      return provider === 'gitlab'
+        ? new GitLabRestClient(token, apiBase)
+        : new OctokitGitHubClient(token);
+    }
+    const [canonical] = forgeTokenKeys(provider, apiBase).slice(-1);
+    throw new ConfigError(`${canonical} is not configured`);
   }
 
   /** Resolve an LLM provider by id; constructs from the secret key, cached. */
@@ -219,7 +269,7 @@ export class Container {
    */
   invalidateSecretCaches(): void {
     this.llmCache.clear();
-    this._github = undefined;
+    this.forgeCache.clear();
     this._embedder = undefined;
   }
 }

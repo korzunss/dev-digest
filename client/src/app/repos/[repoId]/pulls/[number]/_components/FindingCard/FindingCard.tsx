@@ -20,7 +20,7 @@ import {
 import type { FindingRecord, FindingActionKind } from "@devdigest/shared";
 import { severityColor } from "@/lib/severity";
 import { lineLabel } from "./helpers";
-import { githubBlobUrl } from "../../../../../../../lib/github-urls";
+import { forgeBlobUrl, type ForgeRepoRef } from "../../../../../../../lib/forge-urls";
 import { s } from "./styles";
 
 export function FindingCard({
@@ -29,7 +29,7 @@ export function FindingCard({
   defaultExpanded,
   onAction,
   pending,
-  repoFullName,
+  repo,
   headSha,
 }: {
   f: FindingRecord;
@@ -37,15 +37,15 @@ export function FindingCard({
   defaultExpanded?: boolean;
   onAction?: (action: FindingActionKind, reply?: string) => void;
   pending?: boolean;
-  repoFullName?: string | null;
+  repo?: ForgeRepoRef | null;
   headSha?: string | null;
 }) {
   const t = useTranslations("prReview");
   const [expanded, setExpanded] = React.useState(defaultExpanded ?? false);
   const sevColor = severityColor(f.severity);
   const fileHref =
-    repoFullName && headSha
-      ? githubBlobUrl(repoFullName, headSha, f.file, f.start_line, f.end_line)
+    repo && headSha
+      ? forgeBlobUrl(repo, headSha, f.file, f.start_line, f.end_line)
       : undefined;
   const accepted = !!f.accepted_at;
   const dismissed = !!f.dismissed_at;

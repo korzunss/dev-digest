@@ -76,7 +76,7 @@ export function AddRepoView() {
 
         <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em" }}>Add a repository</h1>
         <p style={{ fontSize: 14, color: "var(--text-secondary)", marginTop: 8, marginBottom: 28, lineHeight: 1.5 }}>
-          Paste a GitHub repository URL — DevDigest clones it locally and imports open PRs.
+          Paste a GitHub or GitLab repository URL — DevDigest clones it locally and imports open PRs / merge requests.
           API keys aren’t needed here; set them once in{" "}
           <a
             href="/settings/api-keys"
@@ -91,7 +91,7 @@ export function AddRepoView() {
           .
         </p>
 
-        <FormField label="Repository URL" hint="e.g. https://github.com/acme/payments-api">
+        <FormField label="Repository URL" hint="e.g. https://github.com/acme/payments-api or https://gitlab.com/acme/backend/payments-api">
           <TextInput
             value={repoUrl}
             onChange={setRepoUrl}

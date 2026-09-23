@@ -11,19 +11,20 @@ import { useFindingAction } from "../../../../../../../lib/hooks/reviews";
 import { KEY_TO_ACTION } from "./constants";
 import { visibleFindings } from "./helpers";
 import { s } from "./styles";
+import type { ForgeRepoRef } from "@/lib/forge-urls";
 
 export function FindingsPanel({
   findings,
   prId,
   severity = null,
-  repoFullName,
+  repo,
   headSha,
 }: {
   findings: FindingRecord[];
   prId: string;
   /** Show only this level (spec 002). ANDed with the low-confidence toggle. */
   severity?: Severity | null;
-  repoFullName?: string | null;
+  repo?: ForgeRepoRef | null;
   headSha?: string | null;
 }) {
   const t = useTranslations("prReview");
@@ -71,7 +72,7 @@ export function FindingsPanel({
               focused={i === focusIdx}
               defaultExpanded={i === 0}
               pending={action.isPending}
-              repoFullName={repoFullName}
+              repo={repo}
               headSha={headSha}
               onAction={(act) => action.mutate({ findingId: f.id, action: act, prId })}
             />

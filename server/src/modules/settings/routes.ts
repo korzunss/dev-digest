@@ -9,7 +9,11 @@ import {
 } from '@devdigest/shared';
 import * as t from '../../db/schema.js';
 import { getContext } from '../_shared/context.js';
-import { GITHUB_PROVIDER, SECRET_KEY_BY_PROVIDER } from './constants.js';
+import {
+  isForgeProvider,
+  resolveTestApiBase,
+  SECRET_KEY_BY_PROVIDER,
+} from './constants.js';
 import { rowsToSettings } from './helpers.js';
 
 /**
@@ -83,10 +87,30 @@ export default async function settingsRoutes(appBase: FastifyInstance) {
         await container.secrets.set(SECRET_KEY_BY_PROVIDER[provider], key);
         container.invalidateSecretCaches();
       }
-      if (provider === GITHUB_PROVIDER) {
-        const gh = await container.github();
-        const login = await gh.currentLogin();
-        return { provider, ok: true, message: `Connected as @${login}` };
+      if (isForgeProvider(provider)) {
+        const apiBase = resolveTestApiBase(
+          provider,
+          req.body.api_base,
+          container.config.gitlabBases,
+        );
+        const forge = await container.forge({ provider, apiBase });
+        const login = await forge.currentLogin();
+        // A self-managed instance drifts, and which diff endpoint exists
+        // depends on its version — reporting it here turns a later "why
+        // doesn't X work" into a lookup instead of an investigation.
+        const version =
+          'instanceVersion' in forge
+            ? await (forge as { instanceVersion(): Promise<string | null> }).instanceVersion()
+            : null;
+        const label = provider === 'gitlab' ? 'GitLab' : 'GitHub';
+        const where = apiBase ? ` at ${apiBase}` : '';
+        return {
+          provider,
+          ok: true,
+          message: version
+            ? `Connected as @${login} · ${label} ${version}${where}`
+            : `Connected as @${login}${where}`,
+        };
       }
       const llm = await container.llm(provider);
       const models = await llm.listModels();

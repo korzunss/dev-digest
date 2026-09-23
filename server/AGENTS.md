@@ -15,8 +15,9 @@ Tests split by filename:
 
 ```
 src/modules/<name>/   routes.ts · service.ts · repository.ts — one feature, one plugin
-src/adapters/         ports: llm · github · git · astgrep · codeindex · embedder ·
-                      secrets · tokenizer · depgraph · auth  (+ mocks.ts)
+src/adapters/         ports: llm · github + gitlab (one ForgeClient) · git ·
+                      astgrep · codeindex · embedder · secrets · tokenizer ·
+                      depgraph · auth  (+ mocks.ts)
 src/platform/         container.ts (DI) · config.ts (env) · errors.ts · sse.ts
 src/db/               schema/ · migrations/
 src/prompts/          built-in agent system prompts
@@ -42,7 +43,17 @@ src/prompts/          built-in agent system prompts
 - **Secrets never touch the DB or `AppConfig`.** They live in
   `~/.devdigest/secrets.json` (mode 0600) with `process.env` as fallback; the one
   read chokepoint is `adapters/secrets/local.ts`. `GITHUB_TOKEN` is canonical,
-  `GITHUB_PAT` is a fallback.
+  `GITHUB_PAT` is a fallback. GitLab adds `GITLAB_TOKEN`, with an
+  instance-scoped `GITLAB_TOKEN@<host>` tried first (stored-file only).
+- **One forge port, resolved per repo.** `container.forge(repo)` picks GitHub or
+  GitLab from the repo row — never `new` an adapter, and never assume github.com
+  (`repos.api_base` may carry a self-managed origin *plus a path prefix*).
+- **An HTTP adapter without an SDK must throw an error carrying `status`**, or
+  `withRetry` silently never retries: `fetch` does not throw on 4xx/5xx and
+  `defaultIsRetryable` classifies by `err.status`.
+- **GitLab diff retrieval is version-gated.** `/changes` below 15.7, paginated
+  `/diffs` at and above it. Walk every page — stopping at page 1 silently
+  reviews only the first N files of a large MR.
 - **The DB schema already contains every table**, including ones no starter code
   writes to. An empty table is expected, not a bug.
 - **A FK column is not indexed.** Filtering on one (`WHERE child.parent_id = …`)

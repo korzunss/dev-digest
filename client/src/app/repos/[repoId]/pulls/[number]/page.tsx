@@ -20,7 +20,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { usePrReviews, useCancelRun, usePrActiveRuns, usePrRuns, useDeleteRun } from "../../../../../lib/hooks/reviews";
 import { useActiveRepo, useRepoNotFound } from "../../../../../lib/repo-context";
 import { ApiError } from "../../../../../lib/api";
-import { githubPrUrl } from "../../../../../lib/github-urls";
+import { forgePrUrl, FORGE_LABEL } from "../../../../../lib/forge-urls";
 import { parseSeverityParam } from "@/lib/severity";
 import type { FindingRecord, Severity } from "@devdigest/shared";
 
@@ -88,7 +88,7 @@ export default function PRDetailPage() {
   const repoName = activeRepo?.full_name ?? repoId;
   // The real "owner/repo" (null until the repo is loaded) — used to build
   // github.com deep-links for the header and finding file references.
-  const repoFullName = activeRepo?.full_name ?? null;
+  const repo = activeRepo ?? null;
   const crumb = [
     { label: repoName, mono: true, href: `/repos/${repoId}/pulls` },
     { label: "Pull Requests", href: `/repos/${repoId}/pulls` },
@@ -136,7 +136,8 @@ export default function PRDetailPage() {
         prId={prId}
         tab={tab}
         findingsCount={findingsCount}
-        githubUrl={repoFullName ? githubPrUrl(repoFullName, pr.number) : null}
+        forgeUrl={repo ? forgePrUrl(repo, pr.number) : null}
+        forgeLabel={repo ? FORGE_LABEL[repo.provider] : null}
         onSetTab={setTab}
         onRunStart={() => setTab("findings")}
         onRunsStarted={() => invalidateActiveRuns()}
@@ -154,7 +155,7 @@ export default function PRDetailPage() {
             runs={runs}
             prRuns={prRuns}
             prCommits={pr.commits}
-            repoFullName={repoFullName}
+            repo={repo}
             headSha={pr.head_sha}
             severity={severity}
             sevRun={sevRun}

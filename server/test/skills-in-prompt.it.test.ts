@@ -95,7 +95,7 @@ d('skills reach the prompt', () => {
     });
   }
 
-  /** A fresh repo+PR per run — MockGitHubClient only ever lists PR #482. */
+  /** A fresh repo+PR per run — MockForgeClient only ever lists PR #482. */
   async function setupPr() {
     const db = pg.handle.db;
     const name = `skills-repo-${prSeq++}`;

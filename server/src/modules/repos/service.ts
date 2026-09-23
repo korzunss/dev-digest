@@ -1,13 +1,10 @@
 import type { Container } from '../../platform/container.js';
-import { type Repo } from '@devdigest/shared';
+import { type Repo, type ForgeProvider } from '@devdigest/shared';
 import { NotFoundError } from '../../platform/errors.js';
 import { RepoRepository } from './repository.js';
-import { parseRepoUrl, withGitHubToken, toRepoDto } from './helpers.js';
-import {
-  CLONE_JOB_KIND,
-  CLONE_DEPTH,
-  GITHUB_TOKEN_SECRET,
-} from './constants.js';
+import { parseRepoUrl, withForgeToken, toRepoDto, cloneUrlFor } from './helpers.js';
+import { CLONE_JOB_KIND, CLONE_DEPTH } from './constants.js';
+import { forgeTokenKeys } from '../../platform/forge-resolve.js';
 import {
   INDEX_JOB_KIND,
   REFRESH_JOB_KIND,
@@ -28,6 +25,9 @@ export interface CloneJobPayload {
   owner: string;
   name: string;
   url: string;
+  /** Absent on jobs enqueued before GitLab support — treated as 'github'. */
+  provider?: ForgeProvider;
+  apiBase?: string | null;
 }
 
 export class RepoService {
@@ -50,8 +50,9 @@ export class RepoService {
 
   async runCloneJob(payload: CloneJobPayload): Promise<void> {
     const { repoId, owner, name, url } = payload;
-    const token = await this.container.secrets.get(GITHUB_TOKEN_SECRET);
-    const cloneUrl = token ? withGitHubToken(url, token) : url;
+    const provider: ForgeProvider = payload.provider ?? 'github';
+    const token = await this.resolveForgeToken(provider, payload.apiBase ?? null);
+    const cloneUrl = token ? withForgeToken(url, token, provider) : url;
     const { path } = await this.container.git.clone({ owner, name }, cloneUrl, {
       depth: CLONE_DEPTH,
     });
@@ -79,6 +80,22 @@ export class RepoService {
   }
 
   /**
+   * The first configured token for a forge instance: per-instance secret
+   * (`GITLAB_TOKEN@git.acme.com`) before the canonical one, so a workspace can
+   * point at two self-managed instances with two different PATs.
+   */
+  private async resolveForgeToken(
+    provider: ForgeProvider,
+    apiBase: string | null,
+  ): Promise<string | undefined> {
+    for (const key of forgeTokenKeys(provider, apiBase)) {
+      const token = await this.container.secrets.get(key);
+      if (token) return token;
+    }
+    return undefined;
+  }
+
+  /**
    * Add a repo: parse the URL, dedupe within the workspace, persist, and enqueue
    * the real clone (non-blocking). `created` is false when the repo already
    * existed (the caller returns 200 instead of 201).
@@ -87,19 +104,37 @@ export class RepoService {
     workspaceId: string,
     userId: string,
     url: string,
+    provider?: ForgeProvider,
   ): Promise<{ repo: Repo; created: boolean }> {
-    const { owner, name } = parseRepoUrl(url);
-    const fullName = `${owner}/${name}`;
+    const parsed = parseRepoUrl(url, {
+      provider,
+      gitlabBases: this.container.config.gitlabBases,
+    });
 
-    const existing = await this.repo.findByFullName(workspaceId, fullName);
+    const existing = await this.repo.findByFullName(
+      workspaceId,
+      parsed.provider,
+      parsed.apiBase,
+      parsed.fullName,
+    );
     if (existing) return { repo: toRepoDto(existing), created: false };
 
-    const row = await this.repo.insert({ workspaceId, owner, name, fullName, createdBy: userId });
+    const row = await this.repo.insert({
+      workspaceId,
+      provider: parsed.provider,
+      apiBase: parsed.apiBase,
+      owner: parsed.owner,
+      name: parsed.name,
+      fullName: parsed.fullName,
+      createdBy: userId,
+    });
     await this.container.jobs.enqueue(workspaceId, CLONE_JOB_KIND, {
       repoId: row.id,
-      owner,
-      name,
+      owner: parsed.owner,
+      name: parsed.name,
       url,
+      provider: parsed.provider,
+      apiBase: parsed.apiBase,
     } satisfies CloneJobPayload);
 
     return { repo: toRepoDto(row), created: true };
@@ -118,7 +153,11 @@ export class RepoService {
       repoId: repo.id,
       owner: repo.owner,
       name: repo.name,
-      url: `https://github.com/${repo.fullName}.git`,
+      // Rebuilt from the repo's own forge + instance. Hardcoding github.com
+      // here is how a GitLab repo would silently re-clone from the wrong host.
+      url: cloneUrlFor(repo),
+      provider: repo.provider as ForgeProvider,
+      apiBase: repo.apiBase,
     } satisfies CloneJobPayload);
     // T2.2 — also enqueue an incremental refresh. The two queue positions are
     // independent (p-queue doesn't FIFO across kinds), but `runIncremental` is

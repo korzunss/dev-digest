@@ -11,6 +11,7 @@ import type { ReviewRecord, Severity, Verdict } from "@devdigest/shared";
 import { FindingsPanel } from "../FindingsPanel";
 import { VerdictBanner } from "../VerdictBanner";
 import { useDeleteReview } from "../../../../../../../lib/hooks/reviews";
+import type { ForgeRepoRef } from "@/lib/forge-urls";
 
 const VERDICT_COLOR: Record<string, string> = {
   request_changes: "var(--crit)",
@@ -28,7 +29,7 @@ export function ReviewRunAccordion({
   prId,
   defaultOpen = false,
   severity = null,
-  repoFullName,
+  repo,
   headSha,
   targetRunId = null,
   targetNonce = 0,
@@ -38,7 +39,7 @@ export function ReviewRunAccordion({
   defaultOpen?: boolean;
   /** Show only this level inside the run (spec 002); null = everything. */
   severity?: Severity | null;
-  repoFullName?: string | null;
+  repo?: ForgeRepoRef | null;
   headSha?: string | null;
   /** When this matches review.run_id, the accordion opens and scrolls into view
    *  (driven from the Timeline: clicking an agent name navigates here). */
@@ -154,7 +155,7 @@ export function ReviewRunAccordion({
             findings={findings}
             prId={prId}
             severity={severity}
-            repoFullName={repoFullName}
+            repo={repo}
             headSha={headSha}
           />
         </div>

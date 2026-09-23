@@ -128,5 +128,6 @@
   "cost": {
     "tokens": "{tokens} tok",
     "estimateTooltip": "Estimated from token counts × the model price — this provider does not report a cost."
-  }
+  },
+  "viewOnForge": "View on {forge}"
 }

@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm';
 import { startPg, dockerAvailable, type PgFixture } from './helpers/pg.js';
 import { buildApp } from '../src/app.js';
 import { loadConfig } from '../src/platform/config.js';
-import { MockGitClient, MockGitHubClient } from '../src/adapters/mocks.js';
+import { MockGitClient, MockForgeClient } from '../src/adapters/mocks.js';
 import { seed } from '../src/db/seed.js';
 import * as t from '../src/db/schema.js';
 import { ReviewRepository } from '../src/modules/reviews/repository.js';
@@ -135,7 +135,7 @@ d('agent_runs cost columns', () => {
     const app = await buildApp({
       config,
       db: pg.handle.db,
-      overrides: { git: new MockGitClient(), github: new MockGitHubClient() },
+      overrides: { git: new MockGitClient(), forge: new MockForgeClient() },
     });
     const [pr] = await pg.handle.db.select().from(t.pullRequests).where(eq(t.pullRequests.id, prId));
 

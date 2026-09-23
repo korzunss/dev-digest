@@ -120,6 +120,13 @@
       "when": 1790080514914,
       "tag": "0016_majestic_korath",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1790174957360,
+      "tag": "0017_wild_scarlet_witch",
+      "breakpoints": true
     }
   ]
 }

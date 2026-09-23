@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import type { Db } from '../../db/client.js';
 import * as t from '../../db/schema.js';
 
@@ -11,6 +11,8 @@ export type RepoRow = typeof t.repos.$inferSelect;
 
 export interface InsertRepo {
   workspaceId: string;
+  provider: string;
+  apiBase: string | null;
   owner: string;
   name: string;
   fullName: string;
@@ -20,12 +22,29 @@ export interface InsertRepo {
 export class RepoRepository {
   constructor(private db: Db) {}
 
-  /** Find a repo in a workspace by its `owner/name` full name (dedupe on add). */
-  async findByFullName(workspaceId: string, fullName: string): Promise<RepoRow | undefined> {
+  /**
+   * Find a repo in a workspace by forge + instance + full name (dedupe on add).
+   * Mirrors `repos_ws_forge_fullname_uq` exactly, including its `coalesce`:
+   * `acme/api` can exist on GitHub AND GitLab, and `team/api` can exist on two
+   * different self-managed GitLabs — those are three distinct repos.
+   */
+  async findByFullName(
+    workspaceId: string,
+    provider: string,
+    apiBase: string | null,
+    fullName: string,
+  ): Promise<RepoRow | undefined> {
     const [row] = await this.db
       .select()
       .from(t.repos)
-      .where(and(eq(t.repos.workspaceId, workspaceId), eq(t.repos.fullName, fullName)));
+      .where(
+        and(
+          eq(t.repos.workspaceId, workspaceId),
+          eq(t.repos.provider, provider as 'github' | 'gitlab'),
+          sql`coalesce(${t.repos.apiBase}, '') = ${apiBase ?? ''}`,
+          eq(t.repos.fullName, fullName),
+        ),
+      );
     return row;
   }
 
@@ -46,6 +65,8 @@ export class RepoRepository {
       .insert(t.repos)
       .values({
         workspaceId: values.workspaceId,
+        provider: values.provider as 'github' | 'gitlab',
+        apiBase: values.apiBase,
         owner: values.owner,
         name: values.name,
         fullName: values.fullName,

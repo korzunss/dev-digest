@@ -4,6 +4,7 @@ import type {
   PrDetail,
   IssueMeta,
   PrReviewComment,
+  ForgeProvider,
 } from './contracts/platform.js';
 import type { CostSource } from './contracts/trace.js';
 
@@ -103,12 +104,38 @@ export interface Embedder {
   readonly dims: number;
 }
 
-// ---------- GitHub (Octokit REST, thin) ----------
+// ---------- Forge (GitHub / GitLab) ----------
+// `ForgeProvider` is declared in contracts/platform.ts (next to `Repo`, which
+// persists it) and imported here as a type. Declaring it in both files would
+// make the `export *` barrel ambiguous.
+
 export interface RepoRef {
+  /**
+   * Everything before the last '/' of the project path. For GitLab this may
+   * itself contain '/' (nested groups: `acme/backend`).
+   */
   owner: string;
   name: string;
+  /** Full project path (`acme/payments-api`, `acme/backend/payments-api`). */
+  path?: string;
+  /** Defaults to 'github' when absent, so existing call sites keep working. */
+  provider?: ForgeProvider;
+  /**
+   * Origin PLUS any path prefix of a self-managed instance
+   * (`https://git.acme.com`, or `https://acme.com/gitlab` for a relative-URL
+   * install). Undefined ⇒ the provider's public default. Not a bare host: the
+   * REST base is `${apiBase}/api/v4` and the prefix has to survive.
+   */
+  apiBase?: string;
 }
 
+/**
+ * Payload for `postReview`. Still named for GitHub because `reviewer-core`
+ * (which resolves this file through a tsconfig path alias, with no vendored
+ * copy of its own) builds it in `output/to-review.ts`. Renaming it would drag a
+ * third package into an otherwise adapter-local change; tracked as follow-up.
+ * On GitLab the mapping is: body → a note, `event: 'APPROVE'` → POST /approve.
+ */
 export interface GitHubReviewPayload {
   body: string;
   event: 'APPROVE' | 'REQUEST_CHANGES' | 'COMMENT';
@@ -123,8 +150,12 @@ export interface CreateReviewCommentInput {
   line: number;
   side?: 'LEFT' | 'RIGHT';
   body: string;
-  /** When set, post as a reply to that comment's thread instead of a new one. */
-  inReplyTo?: number;
+  /**
+   * When set, post as a reply to that comment's thread instead of a new one.
+   * GitHub addresses a thread by its numeric root-comment id; GitLab by a
+   * 40-char discussion id — hence the union.
+   */
+  inReplyTo?: number | string;
 }
 
 export interface OpenPrPayload {
@@ -149,7 +180,8 @@ export interface CommitFilesPayload {
   files: CommitFile[];
 }
 
-export interface GitHubClient {
+export interface ForgeClient {
+  readonly provider: ForgeProvider;
   listPullRequests(repo: RepoRef): Promise<PrMeta[]>;
   getPullRequest(repo: RepoRef, n: number): Promise<PrDetail>;
   postReview(repo: RepoRef, n: number, review: GitHubReviewPayload): Promise<{ id: string }>;
@@ -284,6 +316,7 @@ export type SecretKey =
   | 'OPENAI_API_KEY'
   | 'ANTHROPIC_API_KEY'
   | 'GITHUB_TOKEN'
+  | 'GITLAB_TOKEN'
   | 'DATABASE_URL'
   | (string & {});
 

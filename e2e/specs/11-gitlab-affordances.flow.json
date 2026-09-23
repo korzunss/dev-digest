@@ -1,0 +1,19 @@
+{
+  "name": "GitLab: the API Keys row and the add-repo copy that let a GitLab project in",
+  "description": "Covers the GitLab surface that is reachable WITHOUT credentials or a live instance: the GitLab PAT row in Settings → API Keys (its label and its scope hint), and the add-repository screen accepting a GitLab URL in its copy. DELIBERATELY NOT COVERED: importing a real GitLab project, listing merge requests, or posting a discussion — all three need a reachable GitLab instance and a PAT, and flows here run key-free against seeded read-only fixtures. Those paths are covered by server/test/gitlab.it.test.ts (routing, dedupe, degradation) and server/test/gitlab-adapter.test.ts (payload mapping) instead. Read-only: presses nothing that writes.",
+  "steps": [
+    { "cmd": ["open", "{BASE}/settings/api-keys"], "label": "load the API Keys settings section" },
+    { "cmd": ["wait", "--url", "/settings/api-keys"], "label": "api-keys route reached" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "settings + secrets-status fetches settle" },
+    { "cmd": ["wait", "--text", "API Keys"], "label": "the section renders" },
+    { "cmd": ["wait", "--text", "GitHub PAT"], "label": "the pre-existing GitHub row is still there" },
+    { "cmd": ["wait", "--text", "GitLab personal access token"], "label": "the GitLab row was added" },
+    { "cmd": ["wait", "--text", "read_api + write_repository"], "label": "the hint states the scopes a PAT needs" },
+    { "cmd": ["wait", "--text", "GITLAB_HOST"], "label": "the hint points self-managed users at the env var" },
+
+    { "cmd": ["open", "{BASE}/onboarding"], "label": "load the add-repository screen" },
+    { "cmd": ["wait", "--url", "/onboarding"], "label": "onboarding route reached" },
+    { "cmd": ["wait", "--text", "GitHub or GitLab repository URL"], "label": "the copy no longer says GitHub only" },
+    { "cmd": ["wait", "--text", "gitlab.com/acme/backend/payments-api"], "label": "the example shows a nested GitLab group" }
+  ]
+}

@@ -12,12 +12,13 @@ import { useTranslations } from "next-intl";
 import { Button } from "@devdigest/ui";
 import type { ConventionCandidate, ConventionStatus } from "@devdigest/shared";
 import { ConventionCard } from "../ConventionCard";
+import type { ForgeRepoRef } from "@/lib/forge-urls";
 import { acceptedCount, bulkAction } from "./helpers";
 import { s } from "./styles";
 
 export function ConventionList({
   candidates,
-  repoFullName,
+  repo,
   commitSha,
   onUpdate,
   savingId,
@@ -25,7 +26,7 @@ export function ConventionList({
   creatingSkill,
 }: {
   candidates: ConventionCandidate[];
-  repoFullName?: string | null;
+  repo?: ForgeRepoRef | null;
   commitSha?: string | null;
   onUpdate?: (id: string, patch: { rule?: string; status?: ConventionStatus }) => void;
   /** The candidate whose decision is currently in flight, if any. */
@@ -76,7 +77,7 @@ export function ConventionList({
           <ConventionCard
             key={c.id}
             candidate={c}
-            repoFullName={repoFullName}
+            repo={repo}
             commitSha={commitSha}
             saving={savingId === c.id}
             onUpdate={(patch) => onUpdate?.(c.id, patch)}

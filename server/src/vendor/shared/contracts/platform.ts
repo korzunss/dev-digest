@@ -11,6 +11,16 @@ import { CostSource } from './trace.js';
  *  - context (Project Context folder)
  */
 
+// ---- Forge (code-hosting provider) ----
+/**
+ * Which forge a repo lives on. Deliberately NOT named `Provider` — that name is
+ * taken by the LLM provider enum in contracts/knowledge.ts, and both are
+ * re-exported from the same barrel. Declared here rather than in adapters.ts
+ * because `Repo` persists it and adapters.ts already imports from this file.
+ */
+export const ForgeProvider = z.enum(['github', 'gitlab']);
+export type ForgeProvider = z.infer<typeof ForgeProvider>;
+
 // ---- Feature → model selection ----
 /** System LLM features whose model is selectable in Settings (per-workspace). */
 export const FeatureModelId = z.enum([
@@ -109,13 +119,25 @@ export const SettingsUpdate = Settings.partial();
 export type SettingsUpdate = z.infer<typeof SettingsUpdate>;
 
 // ---- Connection test ----
-export const ConnTestProvider = z.enum(['openai', 'anthropic', 'openrouter', 'github']);
+export const ConnTestProvider = z.enum([
+  'openai',
+  'anthropic',
+  'openrouter',
+  'github',
+  'gitlab',
+]);
 export type ConnTestProvider = z.infer<typeof ConnTestProvider>;
 
 export const ConnTestRequest = z.object({
   provider: ConnTestProvider,
   /** Optional API key/PAT to persist and then test (BYO key from the UI). */
   key: z.string().min(1).optional(),
+  /**
+   * Which forge instance to test against. Omitted ⇒ the first configured
+   * GITLAB_HOST, else the public host. Without it a self-managed PAT would be
+   * checked against gitlab.com and fail 401 for the wrong reason.
+   */
+  api_base: z.string().url().optional(),
 });
 export type ConnTestRequest = z.infer<typeof ConnTestRequest>;
 
@@ -134,18 +156,32 @@ export const SecretsStatus = z.object({
   anthropic: z.boolean(),
   openrouter: z.boolean(),
   github: z.boolean(),
+  gitlab: z.boolean(),
 });
 export type SecretsStatus = z.infer<typeof SecretsStatus>;
 
 // ---- Repos ----
 export const RepoInput = z.object({
   url: z.string().url(),
+  /**
+   * Forge to treat the URL as. Optional: inferred from the host for github.com
+   * and gitlab.com. Required only for a self-managed host that isn't listed in
+   * GITLAB_HOST, where the URL alone cannot tell the two apart.
+   */
+  provider: ForgeProvider.optional(),
 });
 export type RepoInput = z.infer<typeof RepoInput>;
 
 export const Repo = z.object({
   id: z.string(),
   workspace_id: z.string(),
+  provider: ForgeProvider,
+  /**
+   * Origin + any path prefix of a self-managed instance; null ⇒ the provider's
+   * public default. The client composes deep-links from this, so a
+   * relative-URL install (`https://acme.com/gitlab`) keeps its prefix.
+   */
+  api_base: z.string().nullable(),
   owner: z.string(),
   name: z.string(),
   full_name: z.string(),
@@ -237,7 +273,13 @@ export const PrReviewComment = z.object({
   created_at: z.string(),
   html_url: z.string(),
   in_reply_to_id: z.number().int().nullable(),
-  /** GitHub couldn't anchor it to the current diff (line == null). */
+  /**
+   * Opaque thread handle used to reply. GitHub addresses a thread by the
+   * numeric id of its root comment and leaves this null; GitLab needs its
+   * 40-char discussion id, which has no numeric form.
+   */
+  thread_id: z.string().nullish(),
+  /** The forge couldn't anchor it to the current diff (line == null). */
   is_outdated: z.boolean(),
 });
 export type PrReviewComment = z.infer<typeof PrReviewComment>;
@@ -248,8 +290,11 @@ export const PrCommentInput = z.object({
   line: z.number().int().positive(),
   side: z.enum(['LEFT', 'RIGHT']).optional(),
   body: z.string().min(1),
-  /** Reply to an existing review comment thread (its comment id). */
-  in_reply_to: z.number().int().optional(),
+  /**
+   * Reply to an existing thread. A number is a GitHub comment id; a string is a
+   * GitLab discussion id (`PrReviewComment.thread_id`).
+   */
+  in_reply_to: z.union([z.number().int(), z.string().min(1)]).optional(),
 });
 export type PrCommentInput = z.infer<typeof PrCommentInput>;
 

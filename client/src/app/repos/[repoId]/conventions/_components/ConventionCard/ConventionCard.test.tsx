@@ -31,7 +31,7 @@ function renderCard(props: Partial<React.ComponentProps<typeof ConventionCard>> 
     <NextIntlClientProvider locale="en" messages={{ conventions: messages }}>
       <ConventionCard
         candidate={CANDIDATE}
-        repoFullName="acme/payments-api"
+        repo={{ provider: "github", api_base: null, full_name: "acme/payments-api" }}
         commitSha={SHA}
         {...props}
       />
