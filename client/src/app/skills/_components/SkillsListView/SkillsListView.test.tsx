@@ -10,10 +10,11 @@
  * smoke test. No `@testing-library/user-event` in this package (client/INSIGHTS.md).
  */
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { render, screen, cleanup, fireEvent } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, within } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import type { Skill } from "@devdigest/shared";
 import messages from "../../../../../messages/en/skills.json";
+import common from "../../../../../messages/en/common.json";
 
 const routerPush = vi.fn();
 const updateMutate = vi.fn();
@@ -30,6 +31,7 @@ vi.mock("@/components/app-shell", () => ({
 // and error branches are reachable. `refetch` is shared rather than rebuilt per
 // call, or the retry button could not be asserted.
 const refetch = vi.fn();
+const deleteMutate = vi.fn();
 const skillsData: { data: Skill[] | undefined; isLoading: boolean; isError: boolean } = {
   data: [],
   isLoading: false,
@@ -38,6 +40,7 @@ const skillsData: { data: Skill[] | undefined; isLoading: boolean; isError: bool
 vi.mock("@/lib/hooks/skills", () => ({
   useSkills: () => ({ ...skillsData, refetch }),
   useUpdateSkill: () => ({ mutate: updateMutate, isPending: false }),
+  useDeleteSkill: () => ({ mutate: deleteMutate, isPending: false }),
   useCreateSkill: () => ({ mutate: vi.fn(), isPending: false }),
   useImportSkillPreview: () => ({ mutate: vi.fn(), isPending: false }),
 }));
@@ -70,6 +73,7 @@ afterEach(() => {
   cleanup();
   routerPush.mockReset();
   updateMutate.mockReset();
+  deleteMutate.mockReset();
   refetch.mockReset();
   skillsData.data = [];
   skillsData.isLoading = false;
@@ -79,7 +83,7 @@ afterEach(() => {
 function renderView(state: Partial<typeof skillsData> = {}) {
   Object.assign(skillsData, { data: SKILLS, isLoading: false, isError: false }, state);
   return render(
-    <NextIntlClientProvider locale="en" messages={{ skills: messages }}>
+    <NextIntlClientProvider locale="en" messages={{ skills: messages, common }}>
       <SkillsListView />
     </NextIntlClientProvider>,
   );
@@ -158,6 +162,41 @@ describe("SkillsListView", () => {
 
     fireEvent.click(screen.getByText("Retry"));
     expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
+  // `window.confirm` cannot be themed, carries no close affordance and cannot
+  // take its copy from next-intl — so the question is a real modal, and these
+  // two cases pin that it is asked before anything is destroyed.
+  it("asks before deleting, naming the skill it would remove", () => {
+    renderView();
+    fireEvent.click(screen.getAllByLabelText(messages.page.delete)[0]!);
+
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(
+        messages.page.deleteConfirm.replace("{name}", "secret-leakage-gate"),
+      ),
+    ).toBeInTheDocument();
+    expect(deleteMutate).not.toHaveBeenCalled();
+
+    fireEvent.click(within(dialog).getByText(messages.page.delete));
+    expect(deleteMutate).toHaveBeenCalledWith("sk1", expect.anything());
+  });
+
+  it("destroys nothing when the question is dismissed", () => {
+    renderView();
+    fireEvent.click(screen.getAllByLabelText(messages.page.delete)[0]!);
+    fireEvent.click(within(screen.getByRole("dialog")).getByText(common.actions.cancel));
+
+    expect(deleteMutate).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("does not navigate into the skill when Delete is pressed on its card", () => {
+    renderView();
+    fireEvent.click(screen.getAllByLabelText(messages.page.delete)[0]!);
+    expect(routerPush).not.toHaveBeenCalled();
   });
 
   it("resolves its copy, rather than rendering the key", () => {

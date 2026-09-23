@@ -8,10 +8,11 @@
  * with `fireEvent`, synchronously (client/INSIGHTS.md).
  */
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { render, screen, cleanup, fireEvent } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, within } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import type { Skill } from "@devdigest/shared";
 import messages from "../../../../../../../../messages/en/skills.json";
+import common from "../../../../../../../../messages/en/common.json";
 import { ToastProvider } from "../../../../../../../lib/toast";
 
 const updateMutate = vi.fn();
@@ -59,7 +60,7 @@ afterEach(() => {
 
 function renderTab(skill: Skill = SKILL) {
   return render(
-    <NextIntlClientProvider locale="en" messages={{ skills: messages }}>
+    <NextIntlClientProvider locale="en" messages={{ skills: messages, common }}>
       <ToastProvider>
         <ConfigTab skill={skill} />
       </ToastProvider>
@@ -179,21 +180,31 @@ describe("ConfigTab", () => {
     expect(updateMutate).not.toHaveBeenCalled();
   });
 
+  // The confirmation is a real modal, not `window.confirm`: it can be themed,
+  // it can be closed, and its copy comes from the message catalogue like the
+  // rest of the app's. Pressing Delete opens the question; it destroys nothing.
   it("keeps deletion in its own section, behind a confirm", () => {
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
     renderTab();
 
     expect(screen.getByText(messages.config.deleteTitle)).toBeInTheDocument();
     expect(screen.getByText(messages.config.deleteBody)).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByText(messages.config.deleteAction));
-    expect(confirm).toHaveBeenCalled();
+    const dialog = screen.getByRole("dialog");
     expect(deleteMutate).not.toHaveBeenCalled();
 
-    confirm.mockReturnValue(true);
-    fireEvent.click(screen.getByText(messages.config.deleteAction));
+    fireEvent.click(within(dialog).getByText(messages.page.delete));
     expect(deleteMutate).toHaveBeenCalledWith(SKILL.id, expect.anything());
-    confirm.mockRestore();
+  });
+
+  it("leaves the skill alone when the question is cancelled", () => {
+    renderTab();
+    fireEvent.click(screen.getByText(messages.config.deleteAction));
+    fireEvent.click(within(screen.getByRole("dialog")).getByText(common.actions.cancel));
+
+    expect(deleteMutate).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
 });
@@ -207,7 +218,7 @@ describe("ConfigTab and the world outside it", () => {
     expect(screen.getByRole("switch")).toHaveAttribute("aria-checked", "true");
 
     rerender(
-      <NextIntlClientProvider locale="en" messages={{ skills: messages }}>
+      <NextIntlClientProvider locale="en" messages={{ skills: messages, common }}>
         <ToastProvider>
           <ConfigTab skill={{ ...SKILL, enabled: false }} />
         </ToastProvider>
@@ -226,7 +237,7 @@ describe("ConfigTab and the world outside it", () => {
     fireEvent.change(screen.getByDisplayValue(SKILL.name), { target: { value: "renamed" } });
 
     rerender(
-      <NextIntlClientProvider locale="en" messages={{ skills: messages }}>
+      <NextIntlClientProvider locale="en" messages={{ skills: messages, common }}>
         <ToastProvider>
           <ConfigTab skill={{ ...SKILL }} />
         </ToastProvider>

@@ -52,9 +52,32 @@ export function ConventionsHeader({
             <p style={s.meta}>{t("page.subtitle")}</p>
           )}
         </div>
+        {/* Two buttons rather than one that renames itself. They run the same
+            endpoint, but they are not the same act: the first scan of a repo
+            costs a model call on a library that has never been read, while a
+            re-scan throws away nothing and keeps every accept/reject already
+            made. Whichever does not apply stays visible and disabled, so the
+            page says what it can do before you have done it once. */}
         <div style={s.actions}>
-          <Button kind="secondary" icon="RefreshCw" loading={scanning} onClick={onRescan}>
-            {scanning ? t("page.scanning") : scan ? t("page.rescan") : t("page.runExtraction")}
+          <Button
+            kind="primary"
+            icon="Sparkles"
+            loading={scanning && !scan}
+            disabled={scanning || !!scan}
+            title={scan ? t("page.runScanDoneTitle") : undefined}
+            onClick={onRescan}
+          >
+            {scanning && !scan ? t("page.scanning") : t("page.runScan")}
+          </Button>
+          <Button
+            kind="secondary"
+            icon="RefreshCw"
+            loading={scanning && !!scan}
+            disabled={scanning || !scan}
+            title={!scan ? t("page.rescanEmptyTitle") : undefined}
+            onClick={onRescan}
+          >
+            {scanning && scan ? t("page.scanning") : t("page.rescan")}
           </Button>
         </div>
       </div>

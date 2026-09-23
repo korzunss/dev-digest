@@ -6,6 +6,7 @@ import React from "react";
 import { useTranslations } from "next-intl";
 import { Icon, Badge, Toggle } from "@devdigest/ui";
 import type { Agent } from "@devdigest/shared";
+import { ConfirmModal } from "@/components/confirm-modal";
 import { useDeleteAgent } from "../../../../lib/hooks/agents";
 import { modelColor } from "./helpers";
 import { s } from "./styles";
@@ -26,8 +27,23 @@ export function AgentCard({
   const t = useTranslations("agents");
   const del = useDeleteAgent();
   const color = modelColor(ag.model);
+  const [confirming, setConfirming] = React.useState(false);
   return (
     <div onClick={onClick} style={s.card(!!active, ag.enabled)}>
+      {confirming && (
+        // Rendered from the card, but the Modal primitive is position:fixed over
+        // the whole viewport — it is not laid out inside this grid cell.
+        <div onClick={(e) => e.stopPropagation()}>
+          <ConfirmModal
+            title={t("list.deleteTitle")}
+            body={t("list.deleteConfirm", { name: ag.name })}
+            confirmLabel={t("list.delete")}
+            pending={del.isPending}
+            onClose={() => setConfirming(false)}
+            onConfirm={() => del.mutate(ag.id, { onSuccess: () => setConfirming(false) })}
+          />
+        </div>
+      )}
       <div style={s.headerRow}>
         <div style={s.iconBox}>
           <Icon.Cpu size={15} />
@@ -41,11 +57,11 @@ export function AgentCard({
         <button
           onClick={(e) => {
             e.stopPropagation();
-            if (window.confirm(`Delete agent "${ag.name}"? This cannot be undone.`)) del.mutate(ag.id);
+            setConfirming(true);
           }}
           disabled={del.isPending}
-          title="Delete agent"
-          aria-label="Delete agent"
+          title={t("list.delete")}
+          aria-label={t("list.delete")}
           style={{
             background: "none",
             border: "none",

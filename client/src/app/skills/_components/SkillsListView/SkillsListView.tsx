@@ -13,8 +13,10 @@ import React from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Button, Dropdown, EmptyState, ErrorState, Icon, Skeleton } from "@devdigest/ui";
+import type { Skill } from "@devdigest/shared";
 import { AppShell } from "@/components/app-shell";
-import { useSkills, useUpdateSkill } from "@/lib/hooks/skills";
+import { ConfirmModal } from "@/components/confirm-modal";
+import { useDeleteSkill, useSkills, useUpdateSkill } from "@/lib/hooks/skills";
 import { SkillCard } from "../SkillCard";
 import { CreateSkillModal } from "../CreateSkillModal";
 import { ImportSkillDrawer, type ImportTab } from "../ImportSkillDrawer";
@@ -31,10 +33,15 @@ export function SkillsListView() {
 
   const { data: skills, isLoading, isError, refetch } = useSkills();
   const update = useUpdateSkill();
+  const remove = useDeleteSkill();
 
   const [query, setQuery] = React.useState("");
   const [creating, setCreating] = React.useState(false);
   const [importTab, setImportTab] = React.useState<ImportTab | null>(null);
+  // The skill awaiting confirmation. One piece of state rather than a boolean
+  // plus an id, so there is no state where the modal is open and asking about
+  // nothing — and the name in the question always matches the row you pressed.
+  const [pendingDelete, setPendingDelete] = React.useState<Skill | null>(null);
 
   const list = filterSkills(skills ?? [], query);
   const open = (id: string) => router.push(skillHref(id, DEFAULT_TAB));
@@ -49,6 +56,20 @@ export function SkillsListView() {
           initialTab={importTab}
           onClose={() => setImportTab(null)}
           onImported={(sk) => open(sk.id)}
+        />
+      )}
+      {pendingDelete && (
+        <ConfirmModal
+          title={t("page.deleteTitle")}
+          body={t("page.deleteConfirm", { name: pendingDelete.name })}
+          confirmLabel={t("page.delete")}
+          pending={remove.isPending}
+          onClose={() => setPendingDelete(null)}
+          // Closing only on success keeps the question on screen when the
+          // delete fails; the global MutationCache.onError has already said why.
+          onConfirm={() =>
+            remove.mutate(pendingDelete.id, { onSuccess: () => setPendingDelete(null) })
+          }
         />
       )}
 
@@ -118,6 +139,7 @@ export function SkillsListView() {
                 skill={sk}
                 onClick={() => open(sk.id)}
                 onToggle={(enabled) => update.mutate({ id: sk.id, patch: { enabled } })}
+                onDelete={() => setPendingDelete(sk)}
               />
             ))}
           </div>

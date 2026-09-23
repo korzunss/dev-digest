@@ -23,7 +23,10 @@
     },
     "dropped": "{count, plural, one {# candidate was dropped} other {# candidates were dropped}} — the cited code was not in the sampled files.",
     "sampleCount": "{count, plural, one {# file sampled} other {# files sampled}}",
-    "lastScan": "last scan {when}"
+    "lastScan": "last scan {when}",
+    "runScan": "Run Scan",
+    "runScanDoneTitle": "This repo has been scanned — use Re-scan to run it again.",
+    "rescanEmptyTitle": "Nothing to re-scan yet — run the first scan."
   },
   "card": {
     "confidence": "Confidence",

@@ -24,7 +24,8 @@
     "noMatches": {
       "title": "No skills match that search",
       "body": "Try a different word, or clear the search to see the whole library."
-    }
+    },
+    "deleteTitle": "Delete this skill?"
   },
   "create": {
     "title": "Create skill",

@@ -89,12 +89,22 @@ describe("ConventionsHeader", () => {
     }
   });
 
-  it("offers a first extraction rather than a re-scan before any scan exists", () => {
+  // Two buttons, always both present. A single control that renames itself
+  // hides half of what the page can do until you have already done it once.
+  it("offers Run Scan and keeps Re-scan visible but inert before any scan", () => {
     renderHeader({ scan: null });
-    expect(screen.getByText("Run extraction")).toBeInTheDocument();
-    expect(screen.queryByText("Re-scan")).not.toBeInTheDocument();
+    const run = screen.getByText(messages.page.runScan).closest("button");
+    const rescan = screen.getByText(messages.page.rescan).closest("button");
+    expect(run).toBeEnabled();
+    expect(rescan).toBeDisabled();
     // Nothing has been sampled yet, so the meta line explains the feature.
     expect(screen.getByText(messages.page.subtitle)).toBeInTheDocument();
+  });
+
+  it("swaps which of the two is live once a scan exists", () => {
+    renderHeader({});
+    expect(screen.getByText(messages.page.runScan).closest("button")).toBeDisabled();
+    expect(screen.getByText(messages.page.rescan).closest("button")).toBeEnabled();
   });
 
   it("runs the extraction again from the header", () => {
