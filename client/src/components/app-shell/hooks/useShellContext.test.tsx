@@ -51,17 +51,36 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push }),
 }));
 vi.mock("../../../lib/theme", () => ({ useTheme: () => ({ theme: "dark", toggle: vi.fn() }) }));
+/**
+ * Mutable so a test can change which repo is active and which ones remain —
+ * the navigation on a successful delete branches on both. Reset in beforeEach.
+ */
+let shellState: { repoId: string; repos: Repo[] } = { repoId: "r1", repos };
+
 vi.mock("../../../lib/repo-context", () => ({
-  useActiveRepo: () => ({ repoId: "r1", repos, activeRepo: repos[0], setRepoId: vi.fn() }),
+  useActiveRepo: () => ({
+    repoId: shellState.repoId,
+    repos: shellState.repos,
+    activeRepo: shellState.repos.find((r) => r.id === shellState.repoId) ?? null,
+    setRepoId: vi.fn(),
+  }),
 }));
 vi.mock("../../../lib/hooks", () => ({
   usePulls: () => ({ data: [] }),
   useDeleteRepo: () => ({ mutate, isPending: false }),
 }));
 
+/** What `useDeleteRepo().mutate(id, opts)` is handed as its second argument. */
+type MutateOpts = { onSuccess?: () => void; onError?: () => void };
+
+/** A `mutate` that actually settles, so the callbacks under test run. */
+const settles = (outcome: "onSuccess" | "onError") => (_id: string, opts: MutateOpts) =>
+  opts[outcome]?.();
+
 beforeEach(() => {
   mutate.mockReset();
   push.mockReset();
+  shellState = { repoId: "r1", repos };
 });
 afterEach(cleanup);
 
@@ -114,6 +133,56 @@ describe("useShellContext — repo removal", () => {
     act(() => result.current.ctx.onRemoveRepo!("r1"));
     act(() => result.current.removal.confirm());
     expect(mutate).toHaveBeenCalledWith("r1", expect.anything());
+  });
+
+  it("moves off the deleted repo to the next one", () => {
+    // A bare vi.fn() for `mutate` never settles, so onSuccess never runs and
+    // every assertion below would pass against a hook that navigates nowhere.
+    mutate.mockImplementation(settles("onSuccess"));
+    const { result } = renderShellHook();
+
+    act(() => result.current.ctx.onRemoveRepo!("r1"));
+    act(() => result.current.removal.confirm());
+
+    expect(push).toHaveBeenCalledWith("/repos/r2/pulls");
+    expect(result.current.removal.repo).toBeNull();
+  });
+
+  it("sends the last repo's deletion to onboarding", () => {
+    shellState = { repoId: "r1", repos: [repos[0]!] };
+    mutate.mockImplementation(settles("onSuccess"));
+    const { result } = renderShellHook();
+
+    act(() => result.current.ctx.onRemoveRepo!("r1"));
+    act(() => result.current.removal.confirm());
+
+    expect(push).toHaveBeenCalledWith("/onboarding");
+  });
+
+  it("stays put when the deleted repo was not the active one", () => {
+    // Deleting r2 from the sidebar while viewing r1 must not move the user:
+    // the `repoId === id` guard is what keeps the current page under them.
+    mutate.mockImplementation(settles("onSuccess"));
+    const { result } = renderShellHook();
+
+    act(() => result.current.ctx.onRemoveRepo!("r2"));
+    act(() => result.current.removal.confirm());
+
+    expect(push).not.toHaveBeenCalled();
+    expect(result.current.removal.repo).toBeNull();
+  });
+
+  it("closes the dialog and navigates nowhere when the delete fails", () => {
+    // Without this the dialog would stay open over a repo that is still there,
+    // with no way to tell a slow delete from a failed one.
+    mutate.mockImplementation(settles("onError"));
+    const { result } = renderShellHook();
+
+    act(() => result.current.ctx.onRemoveRepo!("r1"));
+    act(() => result.current.removal.confirm());
+
+    expect(result.current.removal.repo).toBeNull();
+    expect(push).not.toHaveBeenCalled();
   });
 
   it("falls back to a translated name when the repo has already gone", () => {
