@@ -1,6 +1,6 @@
 /**
  * Inline PR review comments (Files changed tab) — GET/POST /pulls/:id/comments.
- * These proxy live to GitHub, so we drive them through a MockGitHubClient and
+ * These proxy live to GitHub, so we drive them through a MockForgeClient and
  * assert the route resolves the PR, reflects existing comments, and pins new
  * comments to the PR's head sha. Gated on Docker (needs Postgres to resolve the
  * PR + repo rows), matching the other integration tests.
@@ -10,7 +10,7 @@ import { startPg, dockerAvailable, type PgFixture } from './helpers/pg.js';
 import { buildApp } from '../src/app.js';
 import { loadConfig } from '../src/platform/config.js';
 import { seed } from '../src/db/seed.js';
-import { MockGitHubClient } from '../src/adapters/mocks.js';
+import { MockForgeClient } from '../src/adapters/mocks.js';
 import * as t from '../src/db/schema.js';
 import type { PrReviewComment } from '@devdigest/shared';
 
@@ -75,8 +75,8 @@ d('inline PR comments routes (Testcontainers pg)', () => {
   });
 
   it('GET reflects existing GitHub review comments', async () => {
-    const gh = new MockGitHubClient({ comments: [EXISTING] });
-    const app = await buildApp({ config: config(), db: pg.handle.db, overrides: { github: gh } });
+    const gh = new MockForgeClient({ comments: [EXISTING] });
+    const app = await buildApp({ config: config(), db: pg.handle.db, overrides: { forge: gh } });
     const { pr } = await setupRepoAndPr(pg.handle.db, workspaceId);
 
     const res = await app.inject({ method: 'GET', url: `/pulls/${pr.id}/comments` });
@@ -87,8 +87,8 @@ d('inline PR comments routes (Testcontainers pg)', () => {
   });
 
   it('POST creates a comment pinned to the PR head sha', async () => {
-    const gh = new MockGitHubClient();
-    const app = await buildApp({ config: config(), db: pg.handle.db, overrides: { github: gh } });
+    const gh = new MockForgeClient();
+    const app = await buildApp({ config: config(), db: pg.handle.db, overrides: { forge: gh } });
     const { pr } = await setupRepoAndPr(pg.handle.db, workspaceId);
 
     const res = await app.inject({
@@ -110,8 +110,8 @@ d('inline PR comments routes (Testcontainers pg)', () => {
   });
 
   it('POST forwards a reply as in_reply_to', async () => {
-    const gh = new MockGitHubClient();
-    const app = await buildApp({ config: config(), db: pg.handle.db, overrides: { github: gh } });
+    const gh = new MockForgeClient();
+    const app = await buildApp({ config: config(), db: pg.handle.db, overrides: { forge: gh } });
     const { pr } = await setupRepoAndPr(pg.handle.db, workspaceId);
 
     const res = await app.inject({
@@ -124,8 +124,8 @@ d('inline PR comments routes (Testcontainers pg)', () => {
   });
 
   it('POST rejects an empty body as a validation error', async () => {
-    const gh = new MockGitHubClient();
-    const app = await buildApp({ config: config(), db: pg.handle.db, overrides: { github: gh } });
+    const gh = new MockForgeClient();
+    const app = await buildApp({ config: config(), db: pg.handle.db, overrides: { forge: gh } });
     const { pr } = await setupRepoAndPr(pg.handle.db, workspaceId);
 
     const res = await app.inject({

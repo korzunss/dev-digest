@@ -8,7 +8,8 @@ import type {
   StructuredRequest,
   StructuredResult,
   Embedder,
-  GitHubClient,
+  ForgeClient,
+  ForgeProvider,
   RepoRef,
   PrMeta,
   PrDetail,
@@ -142,22 +143,28 @@ export class MockEmbedder implements Embedder {
   }
 }
 
-// ---------- Mock GitHub ----------
-export interface MockGitHubOptions {
+// ---------- Mock forge ----------
+export interface MockForgeOptions {
   pulls?: PrMeta[];
   detail?: Partial<PrDetail>;
   login?: string;
   /** Existing inline review comments returned by listReviewComments. */
   comments?: PrReviewComment[];
+  /** Which forge this mock stands in for (default 'github'). */
+  provider?: ForgeProvider;
 }
 
-export class MockGitHubClient implements GitHubClient {
+export class MockForgeClient implements ForgeClient {
   public posted: { n: number; review: GitHubReviewPayload }[] = [];
   public openedPrs: OpenPrPayload[] = [];
   public committed: CommitFilesPayload[] = [];
   public createdComments: CreateReviewCommentInput[] = [];
 
-  constructor(private opts: MockGitHubOptions = {}) {}
+  readonly provider: ForgeProvider;
+
+  constructor(private opts: MockForgeOptions = {}) {
+    this.provider = opts.provider ?? 'github';
+  }
 
   async listPullRequests(_repo: RepoRef): Promise<PrMeta[]> {
     return (
@@ -234,7 +241,9 @@ export class MockGitHubClient implements GitHubClient {
       user: this.opts.login ?? 'mock-user',
       created_at: '2026-06-01T00:00:00Z',
       html_url: `https://github.com/mock/mock/pull/1#discussion_r${this.createdComments.length}`,
-      in_reply_to_id: input.inReplyTo ?? null,
+      // A string reply target is a GitLab discussion id; it has no numeric form.
+      in_reply_to_id: typeof input.inReplyTo === 'number' ? input.inReplyTo : null,
+      thread_id: typeof input.inReplyTo === 'string' ? input.inReplyTo : null,
       is_outdated: false,
     };
   }

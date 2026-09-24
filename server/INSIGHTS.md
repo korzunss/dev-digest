@@ -21,9 +21,111 @@ _Nothing yet._
 
 ## What Doesn't Work
 
-_Nothing yet._
+### 2026-09-23 — an optional "disambiguation" field turned into an authorisation bypass
+
+**Symptom:** `parseRepoUrl` rejects an unknown forge host — unless the request
+body names a `provider`, which reads like a harmless hint for the case the URL
+cannot settle. It is not. `POST /repos` with
+`{url: 'https://evil.example.net/a/b', provider: 'gitlab'}` was accepted, and
+from then on the GitLab PAT went to that host: as a `PRIVATE-TOKEN` header on
+every `${origin}/api/v4` call, and embedded by `withForgeToken` into
+`https://oauth2:<token>@evil.example.net/a/b.git` for the clone.
+**Cause:** the guard and the escape hatch were written in the same breath. The
+`if (!opts.provider) throw` shape makes the *absence* of a hint the failure
+condition, so supplying one satisfies the check — the host is never validated
+at all. Two review findings circled this (one called it SSRF via `GITLAB_HOST`,
+one called it a misconfiguration risk) and neither named it: the env var is not
+the attacker-controlled input, the request body is.
+**Rule:** a field that selects *among* trusted values must never be able to
+*add* one. Validate the host against the allowlist first and let the hint only
+disambiguate what survives; an unlisted host stays rejected however the request
+is phrased. Applies to any outbound call that carries a credential — ask which
+host ends up receiving the token, not whether the URL parsed. Also reject
+non-http(s) schemes explicitly: `z.string().url()` passes `file:` and `ftp:`,
+and `new URL('file:///x').origin` is the string `'null'`, which flows onward as
+a perfectly ordinary-looking base.
+**Evidence:** `server/src/modules/repos/helpers.ts` → the unknown-host branch ·
+`server/test/repo-url.test.ts` → "rejects an unknown host even when the caller
+names a provider" · `server/test/gitlab.it.test.ts` → `unknown_forge_host` /
+`provider_mismatch`
+
+### 2026-09-23 — a `..` guard placed after `new URL()` never fires
+
+**Symptom:** widening `parseRepoUrl` from the old two-segment GitHub regex to
+arbitrary nested GitLab group paths removed an accidental traversal guard, so an
+explicit one was added — reject any path segment equal to `..`. A test asserting
+`parseRepoUrl('https://gitlab.com/acme/../../etc/passwd')` throws **failed**:
+nothing threw.
+**Cause:** the WHATWG URL parser normalises the path itself. `new URL(...)
+.pathname` for that input is already `/etc/passwd` — the `..` segments are gone
+before the guard looks at them. The input does not escape anywhere; it silently
+resolves to a *different, well-formed* project (`owner=etc`, `name=passwd`).
+The guard is only reachable on the branch that does NOT go through `new URL`:
+`stripBase()` matches a configured self-managed base against the raw string, so
+`https://acme.com/gitlab/../../evil/x` does reach `cleanProjectPath` with `..`
+intact.
+**Rule:** when a guard sits downstream of `new URL`, verify which spellings can
+actually reach it before trusting it — and keep the guard for the raw-string
+branches, which is where it earns its place. Assert the *normalising* behaviour
+too, so a later rewrite that drops `new URL` (e.g. moving to a regex for speed)
+fails loudly instead of quietly re-opening the hole.
+**Evidence:** `server/src/modules/repos/helpers.ts` → `cleanProjectPath` vs
+`stripBase` · `server/test/repo-url.test.ts` → "documents that WHATWG URL
+collapses '..' before the guard can see it" ·
+`node -e "new URL('https://gitlab.com/acme/../../etc/passwd').pathname"` →
+`/etc/passwd`
 
 ## Codebase Patterns
+
+### 2026-09-23 — adding a NULLABLE column to a unique index silently stops deduplicating
+
+**Symptom:** `repos` gained `api_base` (null for a hosted repo, set for a
+self-managed instance) and the unique key was widened to
+`(workspace_id, provider, full_name)`. An integration test then showed two
+*different* self-managed GitLabs hosting `team/api` collapsing into one repo —
+the second add returned 200 "already exists" instead of 201. The obvious fix,
+adding `api_base` to the index, is a trap in the other direction.
+**Cause:** Postgres treats NULLs as **distinct** in a unique index, so
+`(ws, 'github', NULL, 'acme/api')` never conflicts with itself. Putting a
+nullable column in the key would therefore have stopped deduplicating every
+*hosted* repo — the null case, i.e. almost all of them — turning a narrow bug
+into a wide one, and silently: a duplicate add just succeeds.
+**Rule:** when a nullable column becomes part of a uniqueness rule, index
+`coalesce(<col>, '')` rather than the bare column, and make the lookup query
+use the **same** expression (`sql\`coalesce(${t.repos.apiBase}, '') = ${v ?? ''}\``)
+— an index and a dedupe query that disagree produce a race that only shows up
+under concurrency. Drizzle accepts `sql\`\`` inside `uniqueIndex(...).on(...)`,
+so this stays a generated migration.
+**Evidence:** `server/src/db/schema/repos.ts` → `repos_ws_forge_fullname_uq` ·
+`server/src/db/migrations/0017_wild_scarlet_witch.sql` ·
+`server/src/modules/repos/repository.ts` → `findByFullName` ·
+`server/test/gitlab.it.test.ts` → "keeps the same full_name on two forges as two
+distinct repos"
+
+### 2026-09-23 — `withRetry` is a silent no-op for an adapter built on raw `fetch`
+
+**Symptom:** none observed yet — found while reading `resilience.ts` to plan a
+non-SDK adapter. An adapter that wraps every call in
+`withRetry(() => withTimeout(...))`, exactly like `adapters/github/octokit.ts`
+does, looks fully resilient and would in fact retry **nothing**: not a 429, not
+a 502.
+**Cause:** `defaultIsRetryable` decides from `err.status` / `err.statusCode` /
+`err.response.status`. Every adapter using `withRetry` today is SDK-based
+(`octokit`, `openai`, `anthropic`), and those SDKs throw error objects carrying
+`status`. `fetch` does not throw on 4xx/5xx at all — it resolves with
+`res.ok === false` — so a hand-rolled `request()` that does
+`if (!res.ok) throw new Error(await res.text())` produces an error with no
+`status` field, `defaultIsRetryable` falls through to the network-code branch,
+finds no `code`, and returns false on the first attempt.
+**Rule:** any adapter that talks HTTP without an SDK must throw an Error object
+with a numeric `status` property (`Object.assign(new Error(msg), { status:
+res.status })`) — or pass its own `opts.isRetryable`. Do not assume the
+`withRetry(() => withTimeout(...))` wrapper alone buys retry behaviour; it only
+does when the thrown error carries the status the predicate reads.
+**Evidence:** `server/src/platform/resilience.ts:35-44` (`defaultIsRetryable`) ·
+`grep -rln withRetry src/adapters/` → only `llm/anthropic.ts`, `llm/openai.ts`,
+`github/octokit.ts`, all SDK-based · `specs/005-gitlab-integration.md` § "The
+GitLab adapter"
 
 ### 2026-09-18 — a foreign-key column carries no index; every child-rows query scans
 

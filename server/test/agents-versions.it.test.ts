@@ -5,7 +5,7 @@ import { buildApp } from '../src/app.js';
 import { loadConfig } from '../src/platform/config.js';
 import { seed } from '../src/db/seed.js';
 import * as t from '../src/db/schema.js';
-import { MockGitClient, MockGitHubClient } from '../src/adapters/mocks.js';
+import { MockGitClient, MockForgeClient } from '../src/adapters/mocks.js';
 import { AgentsService } from '../src/modules/agents/service.js';
 import { AgentsRepository } from '../src/modules/agents/repository.js';
 import type { Container } from '../src/platform/container.js';
@@ -40,7 +40,7 @@ d('GET /agents/:id/versions', () => {
     return buildApp({
       config,
       db: pg.handle.db,
-      overrides: { git: new MockGitClient(), github: new MockGitHubClient() },
+      overrides: { git: new MockGitClient(), forge: new MockForgeClient() },
     });
   }
 

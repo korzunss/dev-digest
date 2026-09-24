@@ -26,6 +26,11 @@ const EnvSchema = z.object({
   // Note: even when on, sections only populate once the repo is indexed; an
   // unindexed repo degrades gracefully. Per-agent override: agents.repo_intel.
   REPO_INTEL_ENABLED: z.string().optional(),
+  // Self-managed GitLab instances, comma-separated. Entries may be a bare host
+  // (`git.acme.com`) or a full base URL including a path prefix
+  // (`https://acme.com/gitlab`) for a relative-URL install. The prefix form is
+  // what disambiguates such an install from a top-level group of that name.
+  GITLAB_HOST: z.string().optional(),
   API_PORT: z.coerce.number().int().default(3001),
   WEB_PORT: z.coerce.number().int().default(3000),
   DEVDIGEST_CLONE_DIR: z.string().optional(),
@@ -59,7 +64,20 @@ export type AppConfig = {
    * EXACTLY like the ripgrep-only baseline.
    */
   repoIntelEnabled: boolean;
+  /** Normalised self-managed GitLab bases (origin + optional path prefix). */
+  gitlabBases: string[];
 };
+
+/** `git.acme.com, https://acme.com/gitlab` → normalised, https-prefixed bases. */
+export function parseForgeBases(raw: string | undefined): string[] {
+  if (!raw) return [];
+  return raw
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((s) => (/^https?:\/\//.test(s) ? s : `https://${s}`))
+    .map((s) => s.replace(/\/+$/, ''));
+}
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const parsed = EnvSchema.parse(env);
@@ -77,5 +95,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     webOrigin: `http://localhost:${parsed.WEB_PORT}`,
     embeddingsEnabled: parsed.EMBEDDINGS_ENABLED === 'true',
     repoIntelEnabled: parsed.REPO_INTEL_ENABLED !== 'false',
+    gitlabBases: parseForgeBases(parsed.GITLAB_HOST),
   };
 }

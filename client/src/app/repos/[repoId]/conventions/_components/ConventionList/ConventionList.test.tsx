@@ -38,7 +38,7 @@ function renderList(props: Partial<React.ComponentProps<typeof ConventionList>> 
     <NextIntlClientProvider locale="en" messages={{ conventions: messages }}>
       <ConventionList
         candidates={MIXED}
-        repoFullName="acme/payments-api"
+        repo={{ provider: "github", api_base: null, full_name: "acme/payments-api" }}
         commitSha="9f2c1ab7e4d3"
         {...props}
       />

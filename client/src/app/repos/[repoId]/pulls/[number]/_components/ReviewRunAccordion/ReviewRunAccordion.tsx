@@ -6,11 +6,14 @@
 "use client";
 
 import React from "react";
+import { useTranslations } from "next-intl";
 import { Icon, Badge } from "@devdigest/ui";
+import { ConfirmModal } from "@/components/confirm-modal";
 import type { ReviewRecord, Severity, Verdict } from "@devdigest/shared";
 import { FindingsPanel } from "../FindingsPanel";
 import { VerdictBanner } from "../VerdictBanner";
 import { useDeleteReview } from "../../../../../../../lib/hooks/reviews";
+import type { ForgeRepoRef } from "@/lib/forge-urls";
 
 const VERDICT_COLOR: Record<string, string> = {
   request_changes: "var(--crit)",
@@ -28,7 +31,7 @@ export function ReviewRunAccordion({
   prId,
   defaultOpen = false,
   severity = null,
-  repoFullName,
+  repo,
   headSha,
   targetRunId = null,
   targetNonce = 0,
@@ -38,7 +41,7 @@ export function ReviewRunAccordion({
   defaultOpen?: boolean;
   /** Show only this level inside the run (spec 002); null = everything. */
   severity?: Severity | null;
-  repoFullName?: string | null;
+  repo?: ForgeRepoRef | null;
   headSha?: string | null;
   /** When this matches review.run_id, the accordion opens and scrolls into view
    *  (driven from the Timeline: clicking an agent name navigates here). */
@@ -55,6 +58,8 @@ export function ReviewRunAccordion({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [targetRunId, targetNonce, review.run_id]);
   const del = useDeleteReview(prId);
+  const t = useTranslations("prReview");
+  const [confirming, setConfirming] = React.useState(false);
   const findings = review.findings;
   const blockers = findings.filter((f) => f.severity === "CRITICAL" && !f.dismissed_at).length;
   const verdictColor = review.verdict ? VERDICT_COLOR[review.verdict] ?? "var(--text-muted)" : "var(--text-muted)";
@@ -72,6 +77,25 @@ export function ReviewRunAccordion({
         scrollMarginTop: 16,
       }}
     >
+      {confirming && (
+        // The header row toggles the accordion on click; the Modal renders
+        // position:fixed over the viewport, but its events still bubble through
+        // the React tree, so stop them reaching that toggle.
+        <div onClick={(e) => e.stopPropagation()}>
+          <ConfirmModal
+            title={t("deleteReview.title")}
+            body={t("deleteReview.body", {
+              agent: review.agent_name ?? t("deleteReview.fallbackAgent"),
+            })}
+            confirmLabel={t("deleteReview.action")}
+            pending={del.isPending}
+            onClose={() => setConfirming(false)}
+            onConfirm={() =>
+              del.mutate(review.id, { onSettled: () => setConfirming(false) })
+            }
+          />
+        </div>
+      )}
       <div
         role="button"
         tabIndex={0}
@@ -112,13 +136,11 @@ export function ReviewRunAccordion({
         <button
           onClick={(e) => {
             e.stopPropagation();
-            if (window.confirm(`Delete this "${review.agent_name ?? "agent"}" review run and its findings?`)) {
-              del.mutate(review.id);
-            }
+            setConfirming(true);
           }}
           disabled={del.isPending}
-          title="Delete this review run"
-          aria-label="Delete this review run"
+          title={t("deleteReview.label")}
+          aria-label={t("deleteReview.label")}
           style={{
             background: "none",
             border: "none",
@@ -154,7 +176,7 @@ export function ReviewRunAccordion({
             findings={findings}
             prId={prId}
             severity={severity}
-            repoFullName={repoFullName}
+            repo={repo}
             headSha={headSha}
           />
         </div>

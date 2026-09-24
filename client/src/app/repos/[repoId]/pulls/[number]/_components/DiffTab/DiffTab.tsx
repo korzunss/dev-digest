@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { useTranslations } from "next-intl";
 import { SectionLabel, Button } from "@devdigest/ui";
 import { DiffViewer, type DiffCommentApi } from "@/components/diff-viewer";
 import { usePrComments, useCreatePrComment } from "@/lib/hooks/reviews";
@@ -16,6 +17,7 @@ interface DiffTabProps {
 }
 
 export function DiffTab({ prId, filesCount, files, canComment }: DiffTabProps) {
+  const t = useTranslations("prReview");
   const { data: comments } = usePrComments(prId);
   const create = useCreatePrComment(prId);
   // Comments start hidden so the diff is clean by default — toggle to reveal.
@@ -34,7 +36,10 @@ export function DiffTab({ prId, filesCount, files, canComment }: DiffTabProps) {
         setShowComments(true); // a just-posted comment shouldn't stay hidden
         return res;
       } catch (err) {
-        notify.error(err instanceof Error ? err.message : "Couldn't post the comment to GitHub.");
+        // The fallback is forge-neutral on purpose: this tab serves GitLab
+        // merge requests too, and the API's own message already names the
+        // forge when it has one to name.
+        notify.error(err instanceof Error ? err.message : t("commentFailed"));
         throw err;
       }
     },

@@ -11,6 +11,7 @@
 export type {
   Settings,
   SettingsUpdate,
+  ForgeProvider,
   ConnTestProvider,
   ConnTestResult,
   SecretsStatus,

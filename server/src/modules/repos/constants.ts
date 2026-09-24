@@ -1,6 +1,7 @@
 /**
  * F1 — repos module constants (extracted from routes.ts; no behaviour change).
  */
+import type { ForgeProvider } from '@devdigest/shared';
 
 /** JobRunner kind for the asynchronous `git clone` job. */
 export const CLONE_JOB_KIND = 'clone';
@@ -8,17 +9,21 @@ export const CLONE_JOB_KIND = 'clone';
 /** Clone depth — shallow clone (latest commit only) keeps imports fast. */
 export const CLONE_DEPTH = 1;
 
-/** Secret name (via the Secrets adapter) holding the GitHub PAT for private clones. */
-export const GITHUB_TOKEN_SECRET = 'GITHUB_TOKEN';
+/** Public host per forge, used to rebuild a clone URL for a hosted repo. */
+export const FORGE_PUBLIC_HOST: Record<ForgeProvider, string> = {
+  github: 'github.com',
+  gitlab: 'gitlab.com',
+};
 
 /**
- * Parse `owner`/`repo` from a GitHub URL — supports both
- * `https://github.com/owner/repo(.git)` and `git@github.com:owner/repo.git`.
+ * Username embedded into an authenticated https clone URL. GitHub wants
+ * `x-access-token`; GitLab only accepts `oauth2` (or `gitlab-ci-token`) — using
+ * GitHub's here fails authentication on GitLab with a misleading 403.
  */
-export const GITHUB_URL_REGEX = /github\.com[/:]([^/]+)\/([^/.]+)(?:\.git)?\/?$/;
+export const GIT_TOKEN_USERNAME: Record<ForgeProvider, string> = {
+  github: 'x-access-token',
+  gitlab: 'oauth2',
+};
 
-/** Username embedded into an authenticated https github.com clone URL. */
-export const GIT_TOKEN_USERNAME = 'x-access-token';
-
-/** Host for which a token is embedded into an https clone URL. */
-export const GITHUB_HTTPS_HOST = 'github.com';
+/** Path segments we refuse outright — they escape the clone directory. */
+export const FORBIDDEN_PATH_SEGMENTS = new Set(['.', '..', '']);

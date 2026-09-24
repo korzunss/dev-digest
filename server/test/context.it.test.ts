@@ -9,7 +9,7 @@ import { buildApp } from '../src/app.js';
 import { loadConfig } from '../src/platform/config.js';
 import { seed } from '../src/db/seed.js';
 import * as t from '../src/db/schema.js';
-import { MockGitClient, MockGitHubClient } from '../src/adapters/mocks.js';
+import { MockGitClient, MockForgeClient } from '../src/adapters/mocks.js';
 
 const hasDocker = await dockerAvailable();
 const d = hasDocker ? describe : describe.skip;
@@ -97,7 +97,7 @@ d('/repos/:id/context', () => {
     return buildApp({
       config,
       db: pg.handle.db,
-      overrides: { git: new TempCloneGitClient(root), github: new MockGitHubClient() },
+      overrides: { git: new TempCloneGitClient(root), forge: new MockForgeClient() },
     });
   }
 

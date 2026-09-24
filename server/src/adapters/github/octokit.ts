@@ -1,6 +1,7 @@
 import { Octokit } from 'octokit';
 import type {
-  GitHubClient,
+  ForgeClient,
+  ForgeProvider,
   RepoRef,
   PrMeta,
   PrDetail,
@@ -23,10 +24,11 @@ function mapStatus(state: string, merged: boolean | undefined): PrStatus {
 }
 
 /**
- * GitHubClient over Octokit REST — thin. PAT auth (fine-grained).
+ * ForgeClient over Octokit REST — thin. PAT auth (fine-grained).
  * Reads PR list/detail/files/commits/issue; posts reviews; opens PRs.
  */
-export class OctokitGitHubClient implements GitHubClient {
+export class OctokitGitHubClient implements ForgeClient {
+  readonly provider: ForgeProvider = 'github';
   private octokit: Octokit;
 
   constructor(token: string) {
@@ -185,6 +187,9 @@ export class OctokitGitHubClient implements GitHubClient {
       created_at: c.created_at,
       html_url: c.html_url,
       in_reply_to_id: c.in_reply_to_id ?? null,
+      // GitHub addresses a thread by its root comment's numeric id, so it has
+      // no separate thread handle — the field exists for GitLab's sake.
+      thread_id: null,
       // GitHub drops `line` when the comment can no longer be placed on the diff.
       is_outdated: c.line == null,
     };
@@ -216,11 +221,17 @@ export class OctokitGitHubClient implements GitHubClient {
       withTimeout(
         (async () => {
           if (input.inReplyTo != null) {
+            // `inReplyTo` is widened to number|string for GitLab's 40-char
+            // discussion ids; GitHub's are always numeric.
+            const commentId = Number(input.inReplyTo);
+            if (!Number.isInteger(commentId)) {
+              throw new Error(`GitHub reply target must be a numeric comment id, got '${input.inReplyTo}'`);
+            }
             const res = await this.octokit.rest.pulls.createReplyForReviewComment({
               owner: repo.owner,
               repo: repo.name,
               pull_number: n,
-              comment_id: input.inReplyTo,
+              comment_id: commentId,
               body: input.body,
             });
             return this.mapReviewComment(res.data);

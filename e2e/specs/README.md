@@ -26,3 +26,4 @@ read-only fixtures so no run can trigger a model call.
 | `05-pr-diff` | PR #482 → Files changed tab → seeded file in the diff viewer |
 | `06-onboarding` | `/onboarding` → add-repository form renders (no submit) |
 | `07-settings` | `/settings/api-keys` + `/settings/models` → section titles render |
+| `11-gitlab-affordances` | API Keys → GitLab PAT row + scopes hint; onboarding copy accepts a GitLab URL |

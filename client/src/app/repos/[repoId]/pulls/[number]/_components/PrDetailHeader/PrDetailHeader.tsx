@@ -5,14 +5,17 @@ import { Icon, Avatar, Badge, Button, Tabs } from "@devdigest/ui";
 import { RunReviewDropdown } from "../RunReviewDropdown";
 import { s } from "./styles";
 import type { PrDetail } from "@/lib/types";
+import { useTranslations } from "next-intl";
 
 interface PrDetailHeaderProps {
   pr: PrDetail;
   prId: string | null;
   tab: string;
   findingsCount: number;
-  /** github.com PR URL; null when the repo's full_name isn't known yet. */
-  githubUrl?: string | null;
+  /** Forge PR/MR URL; null until the repo (and so its instance) is known. */
+  forgeUrl?: string | null;
+  /** "GitHub" / "GitLab" — labels the external-link button. */
+  forgeLabel?: string | null;
   onSetTab: (tab: string) => void;
   onRunStart: () => void;
   onRunsStarted: () => void;
@@ -23,11 +26,13 @@ export function PrDetailHeader({
   prId,
   tab,
   findingsCount,
-  githubUrl,
+  forgeUrl,
+  forgeLabel,
   onSetTab,
   onRunStart,
   onRunsStarted,
 }: PrDetailHeaderProps) {
+  const t = useTranslations("prReview");
   const handleRunStart = useCallback(() => {
     onRunStart();
   }, [onRunStart]);
@@ -82,12 +87,12 @@ export function PrDetailHeader({
             kind="ghost"
             size="sm"
             icon="ExternalLink"
-            disabled={!githubUrl}
+            disabled={!forgeUrl}
             onClick={() =>
-              githubUrl && window.open(githubUrl, "_blank", "noopener,noreferrer")
+              forgeUrl && window.open(forgeUrl, "_blank", "noopener,noreferrer")
             }
           >
-            View on GitHub
+            {t("viewOnForge", { forge: forgeLabel ?? "GitHub" })}
           </Button>
           {prId && (
             <RunReviewDropdown

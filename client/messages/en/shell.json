@@ -11,7 +11,9 @@
     "light": "light"
   },
   "removeRepo": {
-    "confirm": "Remove {name} from DevDigest?\n\nThis only removes it from DevDigest (and its imported PRs). Nothing is deleted on GitHub, and your local clone on disk is left untouched.",
+    "title": "Remove this repository?",
+    "body": "Remove {name} from DevDigest? This only removes it here, along with its imported pull requests. Nothing is deleted on {forge}, and your local clone on disk is left untouched.",
+    "action": "Remove repository",
     "fallbackName": "this repository"
   },
   "nav": {

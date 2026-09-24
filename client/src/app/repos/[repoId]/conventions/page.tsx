@@ -94,7 +94,7 @@ export default function ConventionsPage() {
         ) : (
           <ConventionList
             candidates={candidates}
-            repoFullName={activeRepo?.full_name ?? null}
+            repo={activeRepo ?? null}
             commitSha={scan?.commit_sha ?? null}
             savingId={update.isPending ? update.variables?.id : null}
             onUpdate={(id, patch) => update.mutate({ id, patch })}

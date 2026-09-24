@@ -110,6 +110,28 @@ client/package.json` before reaching for it out of habit.
 
 ## Recurring Errors & Fixes
 
+### 2026-09-23 — `vi.mock` of a hooks barrel breaks children, and the error names the child
+
+**Symptom:** a test for `ReviewRunAccordion` mocked one hook —
+`vi.mock('.../lib/hooks/reviews', () => ({ useDeleteReview: … }))` — and four
+of six cases passed. The two that expanded the accordion failed with a stack
+pointing at `FindingsPanel.tsx:31` and `useFindingAction()`, a component and a
+hook the test never mentions. It reads like a bug in `FindingsPanel`.
+**Cause:** the factory form of `vi.mock` REPLACES the whole module. Everything
+the barrel exported and the factory did not list becomes undefined, so any
+child rendered in the same subtree that imports a sibling hook from that barrel
+gets `undefined()` at render. `lib/hooks/reviews` is exactly such a barrel —
+`useDeleteReview`, `useFindingAction`, `usePrReviews` and more all live there —
+and the failure only appears in the cases that render deep enough to reach one.
+**Rule:** when overriding ONE export of a shared barrel, spread the real module
+first: `vi.mock(path, async (importActual) => ({ ...(await
+importActual<Record<string, unknown>>()), useX: … }))`. Reach for the bare
+factory form only for a module with a single export. And when a component test
+fails inside a component it never named, suspect the mock before the component.
+**Evidence:** `src/app/repos/[repoId]/pulls/[number]/_components/ReviewRunAccordion/ReviewRunAccordion.test.tsx`
+→ the `importActual` spread · `FindingsPanel.tsx:31` → `useFindingAction()` ·
+`src/lib/hooks/reviews.ts` (one barrel, many hooks)
+
 ### 2026-09-22 — `getByText` finding "multiple elements" is usually a copy bug, not a query bug
 
 **Symptom:** a new component test failed with RTL's

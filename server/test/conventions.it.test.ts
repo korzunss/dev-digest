@@ -9,7 +9,7 @@ import { buildApp } from '../src/app.js';
 import { loadConfig } from '../src/platform/config.js';
 import { seed } from '../src/db/seed.js';
 import * as t from '../src/db/schema.js';
-import { MockGitClient, MockGitHubClient, MockLLMProvider } from '../src/adapters/mocks.js';
+import { MockGitClient, MockForgeClient, MockLLMProvider } from '../src/adapters/mocks.js';
 import { EXTRACTION_SCHEMA_NAME } from '../src/modules/conventions/constants.js';
 
 const hasDocker = await dockerAvailable();
@@ -158,7 +158,7 @@ d('/repos/:id/conventions', () => {
       db: pg.handle.db,
       overrides: {
         git: new TempCloneGitClient(root),
-        github: new MockGitHubClient(),
+        forge: new MockForgeClient(),
         llm: {
           openrouter: new MockLLMProvider('openai', {
             structuredBySchema: { [EXTRACTION_SCHEMA_NAME]: EXTRACTION_FIXTURE },

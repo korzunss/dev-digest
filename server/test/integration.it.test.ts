@@ -6,7 +6,7 @@ import { buildApp } from '../src/app.js';
 import { loadConfig } from '../src/platform/config.js';
 import { seed } from '../src/db/seed.js';
 import * as t from '../src/db/schema.js';
-import { MockGitClient, MockGitHubClient } from '../src/adapters/mocks.js';
+import { MockGitClient, MockForgeClient } from '../src/adapters/mocks.js';
 
 const hasDocker = await dockerAvailable();
 const d = hasDocker ? describe : describe.skip;
@@ -91,7 +91,7 @@ d('Testcontainers: DB-backed routes via app.inject', () => {
     const app = await buildApp({
       config,
       db: pg.handle.db,
-      overrides: { git, github: new MockGitHubClient() },
+      overrides: { git, forge: new MockForgeClient() },
     });
 
     const create = await app.inject({
@@ -117,7 +117,7 @@ d('Testcontainers: DB-backed routes via app.inject', () => {
     const app = await buildApp({
       config,
       db: pg.handle.db,
-      overrides: { git: new MockGitClient(), github: new MockGitHubClient() },
+      overrides: { git: new MockGitClient(), forge: new MockForgeClient() },
     });
     const repos = await app.inject({ method: 'GET', url: '/repos' });
     const repoId = repos.json()[0]!.id;
@@ -136,7 +136,7 @@ d('Testcontainers: DB-backed routes via app.inject', () => {
     const app = await buildApp({
       config,
       db: pg.handle.db,
-      overrides: { git: new MockGitClient(), github: new MockGitHubClient() },
+      overrides: { git: new MockGitClient(), forge: new MockForgeClient() },
     });
     const { workspaceId } = await seed(pg.handle.db);
     const repos = await app.inject({ method: 'GET', url: '/repos' });
@@ -211,7 +211,7 @@ d('Testcontainers: DB-backed routes via app.inject', () => {
     const app = await buildApp({
       config,
       db: pg.handle.db,
-      overrides: { git: new MockGitClient(), github: new MockGitHubClient() },
+      overrides: { git: new MockGitClient(), forge: new MockForgeClient() },
     });
     const repoId = (await app.inject({ method: 'GET', url: '/repos' })).json()[0]!.id;
     const poll = await app.inject({ method: 'POST', url: `/repos/${repoId}/poll` });

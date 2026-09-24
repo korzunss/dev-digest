@@ -13,20 +13,20 @@ import React from "react";
 import { useTranslations } from "next-intl";
 import { Button, Icon, IconBtn, MonoLink, ProgressBar, TextInput } from "@devdigest/ui";
 import type { ConventionCandidate, ConventionStatus } from "@devdigest/shared";
-import { githubBlobUrl } from "@/lib/github-urls";
+import { forgeBlobUrl, type ForgeRepoRef } from "@/lib/forge-urls";
 import { CATEGORY_COLOR } from "./constants";
 import { confidenceColor, confidencePct, evidenceLabel } from "./helpers";
 import { s } from "./styles";
 
 export function ConventionCard({
   candidate,
-  repoFullName,
+  repo,
   commitSha,
   onUpdate,
   saving,
 }: {
   candidate: ConventionCandidate;
-  repoFullName?: string | null;
+  repo?: ForgeRepoRef | null;
   /** The commit the scan read. Without it there is no honest link to build. */
   commitSha?: string | null;
   onUpdate?: (patch: { rule?: string; status?: ConventionStatus }) => void;
@@ -44,9 +44,9 @@ export function ConventionCard({
   const pct = confidencePct(candidate.confidence);
   const label = evidenceLabel(candidate);
   const href =
-    repoFullName && commitSha
-      ? githubBlobUrl(
-          repoFullName,
+    repo && commitSha
+      ? forgeBlobUrl(
+          repo,
           commitSha,
           candidate.evidence_path,
           candidate.evidence_line,

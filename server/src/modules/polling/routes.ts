@@ -5,6 +5,7 @@ import * as t from '../../db/schema.js';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
 import { NotFoundError } from '../../platform/errors.js';
+import { toRepoRef } from '../repos/helpers.js';
 
 /**
  * F1 — polling module. MANUAL refresh that ONLY syncs the PR list
@@ -25,8 +26,8 @@ export default async function pollingRoutes(appBase: FastifyInstance) {
       .where(and(eq(t.repos.workspaceId, workspaceId), eq(t.repos.id, req.params.id)));
     if (!repo) throw new NotFoundError('Repo not found');
 
-    const gh = await container.github();
-    const pulls = await gh.listPullRequests({ owner: repo.owner, name: repo.name });
+    const forge = await container.forge(repo);
+    const pulls = await forge.listPullRequests(toRepoRef(repo));
     let synced = 0;
     for (const pr of pulls) {
       await container.db

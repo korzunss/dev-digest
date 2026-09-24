@@ -4,6 +4,7 @@ import type {
   PrDetail,
   IssueMeta,
   PrReviewComment,
+  ForgeProvider,
 } from './contracts/platform.js';
 import type { CostSource } from './contracts/trace.js';
 
@@ -101,6 +102,11 @@ export interface Embedder {
 export interface RepoRef {
   owner: string;
   name: string;
+  /** Full project path (GitLab nested groups keep their '/'). */
+  path?: string;
+  provider?: ForgeProvider;
+  /** Origin + any path prefix of a self-managed instance. */
+  apiBase?: string;
 }
 
 export interface GitHubReviewPayload {
@@ -118,7 +124,7 @@ export interface CreateReviewCommentInput {
   side?: 'LEFT' | 'RIGHT';
   body: string;
   /** When set, post as a reply to that comment's thread instead of a new one. */
-  inReplyTo?: number;
+  inReplyTo?: number | string;
 }
 
 export interface OpenPrPayload {
@@ -128,7 +134,8 @@ export interface OpenPrPayload {
   body: string;
 }
 
-export interface GitHubClient {
+export interface ForgeClient {
+  readonly provider: ForgeProvider;
   listPullRequests(repo: RepoRef): Promise<PrMeta[]>;
   getPullRequest(repo: RepoRef, n: number): Promise<PrDetail>;
   postReview(repo: RepoRef, n: number, review: GitHubReviewPayload): Promise<{ id: string }>;
@@ -241,6 +248,7 @@ export type SecretKey =
   | 'OPENAI_API_KEY'
   | 'ANTHROPIC_API_KEY'
   | 'GITHUB_TOKEN'
+  | 'GITLAB_TOKEN'
   | 'DATABASE_URL'
   | (string & {});
 

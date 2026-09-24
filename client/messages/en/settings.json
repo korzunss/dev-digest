@@ -13,6 +13,8 @@
     "openrouterHint": "One key, many cheap models (DeepSeek/GLM/MiniMax). Used by CI reviewers + openrouter agents.",
     "githubLabel": "GitHub PAT (fine-grained)",
     "githubHint": "Contents (read), Pull requests (read+write), Metadata (read), Actions (read).",
+    "gitlabLabel": "GitLab personal access token",
+    "gitlabHint": "Scope: api (or read_api + write_repository). For a self-managed instance, set GITLAB_HOST so its URLs are recognised.",
     "placeholder": "•••• stored via SecretsProvider (.env)",
     "testConnection": "Test connection",
     "testing": "Testing…",

@@ -3,7 +3,7 @@ import { Review } from '@devdigest/shared';
 import {
   MockLLMProvider,
   MockGitClient,
-  MockGitHubClient,
+  MockForgeClient,
   MockCodeIndex,
   MockEmbedder,
 } from '../src/adapters/mocks.js';
@@ -19,8 +19,8 @@ describe('mock adapters (no network)', () => {
     expect(diff.files[0]!.hunks[0]!.newLineNumbers.length).toBeGreaterThan(0);
   });
 
-  it('MockGitHubClient records posted reviews and opened PRs', async () => {
-    const gh = new MockGitHubClient();
+  it('MockForgeClient records posted reviews and opened PRs', async () => {
+    const gh = new MockForgeClient();
     await gh.postReview({ owner: 'a', name: 'b' }, 482, { body: 'x', event: 'COMMENT' });
     expect(gh.posted).toHaveLength(1);
     const { url } = await gh.openPullRequest({ owner: 'a', name: 'b' }, {

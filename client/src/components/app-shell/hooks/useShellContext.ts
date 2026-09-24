@@ -14,12 +14,29 @@ interface ShellContextOptions {
   onOpenCommandPalette: () => void;
 }
 
+/** The repo a removal has been requested for, plus the two ways out. */
+export interface RepoRemoval {
+  /** Non-null while the confirmation is open. */
+  repo: { id: string; fullName: string; forge: string } | null;
+  pending: boolean;
+  confirm: () => void;
+  cancel: () => void;
+}
+
 /**
  * Assembles the `ShellContext` consumed by AppFrame: active nav key, the repo
  * list/active repo (mapped to the shell shape), theme, PR count, and the repo
  * selection / add / removal actions.
+ *
+ * Removal is returned ALONGSIDE the context rather than handled inside it:
+ * `ctx.onRemoveRepo` now only *asks*, and AppShell renders the confirmation.
+ * A hook cannot render, and `window.confirm` — which could be called from one —
+ * is what we are replacing.
  */
-export function useShellContext({ onOpenCommandPalette }: ShellContextOptions): ShellContext {
+export function useShellContext({ onOpenCommandPalette }: ShellContextOptions): {
+  ctx: ShellContext;
+  removal: RepoRemoval;
+} {
   const t = useTranslations("shell");
   const pathname = usePathname() ?? "/";
   const router = useRouter();
@@ -38,26 +55,48 @@ export function useShellContext({ onOpenCommandPalette }: ShellContextOptions): 
 
   const onAddRepo = React.useCallback(() => router.push("/onboarding"), [router]);
 
-  const onRemoveRepo = React.useCallback(
-    (id: string) => {
-      const target = repos.find((r) => r.id === id);
-      const ok = window.confirm(
-        t("removeRepo.confirm", { name: target?.full_name ?? t("removeRepo.fallbackName") }),
-      );
-      if (!ok) return;
-      deleteRepo.mutate(id, {
-        onSuccess: () => {
-          if (repoId === id) {
-            const next = repos.find((r) => r.id !== id);
-            router.push(next ? `/repos/${next.id}/pulls` : "/onboarding");
+  const [removingId, setRemovingId] = React.useState<string | null>(null);
+
+  // Only asks. The answer is collected by the ConfirmModal AppShell renders.
+  const onRemoveRepo = React.useCallback((id: string) => setRemovingId(id), []);
+
+  const cancelRemoval = React.useCallback(() => setRemovingId(null), []);
+
+  const confirmRemoval = React.useCallback(() => {
+    const id = removingId;
+    if (!id) return;
+    deleteRepo.mutate(id, {
+      onSuccess: () => {
+        setRemovingId(null);
+        if (repoId === id) {
+          const next = repos.find((r) => r.id !== id);
+          router.push(next ? `/repos/${next.id}/pulls` : "/onboarding");
+        }
+      },
+      onError: () => setRemovingId(null),
+    });
+  }, [removingId, repos, repoId, deleteRepo, router]);
+
+  const removalTarget = removingId ? repos.find((r) => r.id === removingId) : undefined;
+  const removal = React.useMemo<RepoRemoval>(
+    () => ({
+      repo: removingId
+        ? {
+            id: removingId,
+            fullName: removalTarget?.full_name ?? t("removeRepo.fallbackName"),
+            // The old copy said "GitHub" unconditionally, which is wrong the
+            // moment the repo lives on a GitLab instance.
+            forge: removalTarget?.provider === "gitlab" ? "GitLab" : "GitHub",
           }
-        },
-      });
-    },
-    [repos, repoId, t, deleteRepo, router],
+        : null,
+      pending: deleteRepo.isPending,
+      confirm: confirmRemoval,
+      cancel: cancelRemoval,
+    }),
+    [removingId, removalTarget, t, deleteRepo.isPending, confirmRemoval, cancelRemoval],
   );
 
-  return React.useMemo<ShellContext>(
+  const ctx = React.useMemo<ShellContext>(
     () => ({
       Link,
       activeKey: activeKeyFor(pathname),
@@ -88,4 +127,6 @@ export function useShellContext({ onOpenCommandPalette }: ShellContextOptions): 
       pulls,
     ],
   );
+
+  return { ctx, removal };
 }
