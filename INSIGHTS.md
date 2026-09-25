@@ -102,32 +102,27 @@ that path; it's runtime data, and the next resync overwrites it.
 
 ## Tool & Library Notes
 
-### 2026-09-25 — correction: new agents do show up mid-session, and frontmatter `hooks:` do fire
+### 2026-09-25 — correction: new agents do show up mid-session
 **Symptom:** the entry below says a new agent needs a session restart. Later in
 the same session, with no restart, the harness announced "New agent types are
-now available: implementer, planner". A probe run of `implementer` then had all
-three calls blocked by its frontmatter hooks (`PreToolUse:Write hook error: …
-guard-protected-paths.sh`).
+now available: implementer, planner".
 **Cause:** agent definitions are picked up again during the session, but with
 a delay. The failure below came from spawning too soon after writing the file.
 **Rule:** after creating an agent, wait for the "new agent types" notice before
-spawning it. Restart only if the notice never comes. Subagent-scoped
-`hooks:` in the frontmatter are enforced (verified 2026-09-25). A probe
+spawning it. Restart only if the notice never comes. A probe
 subagent asked to list its "preloaded skills" also names every skill in the
 session's listing, so that answer can't show that `skills:` injection worked.
-**Evidence:** `.claude/agents/implementer.md` frontmatter `hooks:` · probe
-results: Write to `client/src/vendor/ui/__hook_probe.ts`, `git commit
---dry-run`, and `pnpm db:migrate --help` were all blocked
+**Evidence:** harness notice "New agent types are now available" after
+creating `.claude/agents/implementer.md`, with no restart
 
 ### 2026-09-25 — a new `.claude/agents/*.md` can't be spawned in the session that created it
 **Symptom:** right after writing `.claude/agents/implementer.md`, the Agent
 tool returned `Agent type 'implementer' not found. Available agents: … researcher …`.
 The listed agents were the ones that existed when the session started.
 **Cause:** Claude Code reads agent definitions only at session start.
-**Rule:** to test a new or edited agent, especially its frontmatter `hooks:` and
-`permissionMode`, start a new session. Test hook scripts on their own first by
-piping hook JSON into them (`jq -nc '{tool_input:{file_path:"…"}}' | script; echo $?`).
-**Evidence:** `.claude/agents/implementer.md` · `.claude/hooks/guard-*.sh`
+**Rule:** to test a new or edited agent, especially its `permissionMode`,
+start a new session.
+**Evidence:** `.claude/agents/implementer.md`
 
 ### 2026-09-21 — `TESTING.md`'s "`server/package.json` is skip-worktree" is not true here
 
