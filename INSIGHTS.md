@@ -48,6 +48,25 @@ _Nothing yet._
 
 ## What Doesn't Work
 
+### 2026-09-25 — `pr-self-review`'s skill map is not a reliable source for which skills exist or how contracts change
+**Symptom:** copying the skill map from `pr-self-review/routing.md` into the
+`planner` agent would have told the implementer to load
+`vercel-react-best-practices` and `nodejs-best-practices`. Neither is in
+`.claude/skills/`, so loading them fails. The same file's §4 also says the
+`vendor/shared` contracts are "do-not-touch by hand" and that drift "means a
+regeneration step was missed". That contradicts `CLAUDE.md` ("Contracts change
+in `shared` first") and the 2026-09-17 entry below (mirror the edit by hand;
+there is no regeneration step).
+**Cause:** `routing.md` and `SKILL.md` were written against a larger, generic
+skill set and an assumed codegen step. Neither the skills nor the codegen step
+exists in this repo.
+**Rule:** take the list of available skills from `ls .claude/skills/`, never
+from a skill's own references. For contract changes, follow `CLAUDE.md` and the
+entry below, not `routing.md` §4. A drift CRITICAL from the gate means the hand
+mirror was missed, not that a regeneration was skipped.
+**Evidence:** `.claude/skills/pr-self-review/routing.md:46,54,81` ·
+`.claude/skills/pr-self-review/SKILL.md:59,61` · `ls .claude/skills/`
+
 ### 2026-09-17 — the two vendored `shared` copies are not actually in sync
 
 **Symptom:** on a clean checkout, `diff -r server/src/vendor/shared
@@ -82,6 +101,33 @@ that path; it's runtime data, and the next resync overwrites it.
 **Evidence:** `CLAUDE.md` → "Do not touch"; `.gitignore` → `clones/`
 
 ## Tool & Library Notes
+
+### 2026-09-25 — correction: new agents do show up mid-session, and frontmatter `hooks:` do fire
+**Symptom:** the entry below says a new agent needs a session restart. Later in
+the same session, with no restart, the harness announced "New agent types are
+now available: implementer, planner". A probe run of `implementer` then had all
+three calls blocked by its frontmatter hooks (`PreToolUse:Write hook error: …
+guard-protected-paths.sh`).
+**Cause:** agent definitions are picked up again during the session, but with
+a delay. The failure below came from spawning too soon after writing the file.
+**Rule:** after creating an agent, wait for the "new agent types" notice before
+spawning it. Restart only if the notice never comes. Subagent-scoped
+`hooks:` in the frontmatter are enforced (verified 2026-09-25). A probe
+subagent asked to list its "preloaded skills" also names every skill in the
+session's listing, so that answer can't show that `skills:` injection worked.
+**Evidence:** `.claude/agents/implementer.md` frontmatter `hooks:` · probe
+results: Write to `client/src/vendor/ui/__hook_probe.ts`, `git commit
+--dry-run`, and `pnpm db:migrate --help` were all blocked
+
+### 2026-09-25 — a new `.claude/agents/*.md` can't be spawned in the session that created it
+**Symptom:** right after writing `.claude/agents/implementer.md`, the Agent
+tool returned `Agent type 'implementer' not found. Available agents: … researcher …`.
+The listed agents were the ones that existed when the session started.
+**Cause:** Claude Code reads agent definitions only at session start.
+**Rule:** to test a new or edited agent, especially its frontmatter `hooks:` and
+`permissionMode`, start a new session. Test hook scripts on their own first by
+piping hook JSON into them (`jq -nc '{tool_input:{file_path:"…"}}' | script; echo $?`).
+**Evidence:** `.claude/agents/implementer.md` · `.claude/hooks/guard-*.sh`
 
 ### 2026-09-21 — `TESTING.md`'s "`server/package.json` is skip-worktree" is not true here
 
