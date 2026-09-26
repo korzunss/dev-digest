@@ -40,13 +40,32 @@ Spec: <specs/NNN-name.md or "none">
 | `draft` | Written by the planner; may still carry open decisions. **Not executable.** |
 | `approved` | The user explicitly approved it (a correction to a draft is not an approval) and every open decision is resolved. |
 | `in-progress` | An implementer is working on it. |
-| `done` | Implemented and verified by the `plan-verifier`. |
+| `done` | Verified by the `plan-verifier` with result `complete` — or `complete — needs sign-off` **and** the user has accepted every item on its *Needs sign-off* list. |
 | `abandoned` | Stopped. Say why in one line under the status. |
 
 **Who writes the file.** The `planner` is read-only: it returns the plan and
-proposes a `Save as:` name. The main session saves it here and keeps the
-`Status:` line and the index below current. User decisions that change the plan
-are written into the plan itself, not left in the conversation.
+proposes a `Save as:` name. The main session saves it here right away, as
+`draft`, and keeps the `Status:` line and the index below current. User
+decisions (the plan's *Decisions needed* table) and corrections are written
+into the plan itself, not left in the conversation.
+
+**Who reads it.** The `implementer` and the `plan-verifier` get this file's
+**path**, never a pasted copy, and both refuse a `draft`. The implementer runs
+once per step group (`G1`, `G2`, …); neither agent edits the file.
+
+**Changing an approved plan.** A change that adds files or steps, or changes a
+recorded decision, sends the plan back to `draft`: the planner returns the
+changed sections, the main session applies them to the file, and the user
+approves again. A clarification that stays inside the approved steps' *Files*
+and decisions does not. The same rule covers fix mode: a gap the implementer
+can close only by touching a file outside every step's *Files* comes back as a
+*Suggested plan change*, not as a fix.
+
+**Full integration run.** Implementers run only the `.it.test.ts` files related
+to their group. After the last group, and before the `plan-verifier`, the main
+session runs the full server integration suite once
+(`cd server && pnpm exec vitest run .it.test`, Postgres up) and passes the
+result to the verifier.
 
 ## Index
 
