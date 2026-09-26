@@ -45,3 +45,4 @@ Observable checks. What must be true for this to be done.
 | [003 — Skills](003-skills.md) | active | server, client |
 | [004 — Conventions extractor](004-conventions-extractor.md) | draft | server, client |
 | [005 — GitLab integration](005-gitlab-integration.md) | active | server, client |
+| [006 — Intent layer](006-intent-layer.md) | draft | shared, reviewer-core, server, client |

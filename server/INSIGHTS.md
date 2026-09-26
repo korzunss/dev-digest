@@ -77,6 +77,22 @@ collapses '..' before the guard can see it" ·
 
 ## Codebase Patterns
 
+### 2026-09-26 — `runLog.info(msg, data)`: only `msg` reaches the stored run log
+**Symptom:** the intent classifier logged `runLog.info('intent: classified',
+{ model, tokensIn, tokensOut, costUsd })`, yet the run log in the UI showed
+only "intent: classified" — no model, no tokens, no cost. The call looks fully
+instrumented.
+**Cause:** `RunLogger.logFor` maps the event buffer to `{ t, kind, msg }` and
+drops `data`; `LiveLogStream` renders only the message. `data` goes to pino
+and nowhere a user can see it.
+**Rule:** anything a user must see in a run's log (model, token counts, cost,
+source counts) goes into the message **string**; keep `data` for structured
+server logs only. Apply the same no-secrets/no-content rule to the string as to
+`data` — it is persisted.
+**Evidence:** `server/src/platform/run-logger.ts:94-95` · spec 006 fix V2 in
+`docs/plans/01-intent-layer.md` · `server/test/intent-review.it.test.ts` (V2
+asserts the values in the message text)
+
 ### 2026-09-23 — adding a NULLABLE column to a unique index silently stops deduplicating
 
 **Symptom:** `repos` gained `api_base` (null for a hosted repo, set for a
@@ -233,6 +249,33 @@ list-endpoint test that several PRs were exercised — one was.
 rollup test inserts PR #999 for exactly this reason
 
 ## Recurring Errors & Fixes
+
+### 2026-09-26 — `.it` tests read the developer's real secrets and make live LLM calls
+**Symptom:** after spec 006 added intent classification to review pre-work,
+`reviews.it` and `skills-in-prompt.it` failed 4/16 on one machine: the review
+was never persisted (`expected [] to have a length of 1`) or the trace
+"never appeared". With `HOME=<temp dir>` the same files passed 16/16. That reads
+like flakiness in the feature, but it is the test environment.
+**Cause:** `buildApp({ config: … })` in tests kept `loadConfig()`'s default
+`secretsPath` (`~/.devdigest/secrets.json`), and `LocalSecretsProvider.get`
+falls back to `process.env` when the file has no key. The tests mock only the
+`openai`/`anthropic` providers, so the first code path that resolves
+`container.llm('openrouter')` built a real `OpenRouterProvider` from the
+developer's key: a paid network call with a 90 s timeout and 2 retries, racing
+the helpers' 10 s waits.
+**Rule:** a hermetic `.it` test must not be able to reach a real key. Build its
+config with `isolatedTestConfig()` (a throwaway `secretsPath`), and inject a
+`MockLLMProvider` under `overrides.llm.<id>` for **every** provider id the code
+path can resolve — including ones the test "doesn't use". A temp `secretsPath`
+alone is not enough: an exported `OPENROUTER_API_KEY` (shell or CI) still leaks
+in through the `process.env` fallback; stub `overrides.secrets` to close that.
+When a new feature adds an LLM or forge call to an existing flow, re-run the
+`.it` lane with a real `~/.devdigest/secrets.json` present, not just in CI.
+**Evidence:** `server/src/platform/config.ts:92` (default `secretsPath`) ·
+`server/src/adapters/secrets/local.ts:40-41` (`process.env` fallback) ·
+`server/test/helpers/config.ts` (`isolatedTestConfig`) · `HOME=$tmp pnpm exec
+vitest run test/reviews.it.test.ts test/skills-in-prompt.it.test.ts` → 16/16 vs
+4 failed with the normal HOME
 
 ### 2026-09-21 — `waitForPrRuns` returns before the run trace exists
 

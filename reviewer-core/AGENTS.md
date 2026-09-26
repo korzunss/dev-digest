@@ -49,4 +49,5 @@ src/index.ts           the public surface — if it isn't exported here, it's in
 - Pipeline diagram and the exported API → `README.md`
 - Deep topics (prompt design, structured output, scoring) → `docs/README.md`
 - Feature specs — read the spec before implementing the feature → `specs/README.md`
-- Solved bugs and surprises → `INSIGHTS.md`
+- The diff → prompt → LLM → grounding → review pipeline, step by step → `docs/pipeline.md`
+- Rules in force (read first) → `insights/gotchas.md`; solved bugs and surprises, in full → `INSIGHTS.md`

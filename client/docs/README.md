@@ -5,9 +5,8 @@ inlining it. One line per document, enough to decide whether to open it.
 
 | Document | Read it when |
 |----------|--------------|
+| [`ui-architecture.md`](./ui-architecture.md) | Adding a route, a data hook, or a UI test — RSC/client split, code placement, TanStack Query + SSE, i18n, styling, and how tests here are written |
 | [`../src/vendor/ui/README.md`](../src/vendor/ui/README.md) | Using or extending the vendored `@devdigest/ui` primitives |
-
-_No other client docs yet — add a row above when you add one._
 
 ## What belongs here
 

@@ -18,27 +18,18 @@ dashboard screens.)
 
 ## UI route map
 
-Routes (`src/app/**/page.tsx`) and the API surface each leans on (via
-`src/lib/hooks/*` → `src/lib/api.ts`):
+Routes (`src/app/**/page.tsx`) cover the repo/PR flow (`/`, `/onboarding`,
+`/repos/:repoId/pulls`, `/pulls/:number`, `/repos/:repoId/conventions`),
+agent and skill management (`/agents`, `/agents/:id`, `/skills`, `/skills/:id`),
+and `/settings/:section`. Each talks to the Fastify API only through
+`src/lib/hooks/*` → `src/lib/api.ts`. Cross-cutting chrome lives in
+`src/components/app-shell` (nav, breadcrumbs, `g`-then-key shortcuts). Pages
+are thin; feature logic sits in colocated `_components/<Name>/` folders, each
+with its own `*.test.tsx`.
 
-```mermaid
-flowchart TD
-  ROOT["/"] -->|"useRepos → GET /repos"| PULLS["/repos/:repoId/pulls<br/>PR list"]
-  ONB["/onboarding<br/>add repo"] -->|"POST /repos"| API[("Fastify API")]
-  PULLS --> PR["/pulls/:number<br/>review detail<br/>(overview · diff · findings)"]
-
-  AGENTS["/agents"] --> AGENT["/agents/:id<br/>editor (config)"]
-  SETTINGS["/settings/:section<br/>API keys · models"]
-
-  PULLS -->|"GET /repos/:id/pulls · /repos/:id/index-state"| API
-  PR -->|"GET /pulls/:id · /reviews · /pulls/:id/comments<br/>POST /pulls/:id/review · /findings/:id/(accept|dismiss)"| API
-  AGENTS -->|"/agents · /agents/:id"| API
-  SETTINGS -->|"/settings · /providers"| API
-```
-
-Cross-cutting chrome lives in `src/components/app-shell` (nav, breadcrumbs,
-`g`-then-key shortcuts). Pages are thin; feature logic sits in colocated
-`_components/<Name>/` folders, each with its own `*.test.tsx`.
+For the full route-by-route RSC/client breakdown, the data-hook and SSE
+details, i18n and styling conventions, and how UI tests are written here, see
+[`docs/ui-architecture.md`](docs/ui-architecture.md).
 
 ## Testing
 

@@ -13,6 +13,52 @@ export const Intent = z.object({
 });
 export type Intent = z.infer<typeof Intent>;
 
+/** Confidence the classifier has in its own output (spec 006). */
+export const IntentConfidence = z.enum(['high', 'medium', 'low']);
+export type IntentConfidence = z.infer<typeof IntentConfidence>;
+
+/** What kind of source fed the intent classifier. */
+export const IntentSourceKind = z.enum([
+  'pr_title',
+  'pr_description',
+  'linked_issue',
+  'linked_doc',
+  'external_link',
+  'file_list',
+]);
+export type IntentSourceKind = z.infer<typeof IntentSourceKind>;
+
+/** Whether a source was actually read (`ok`), attempted and failed
+ * (`failed`), or deliberately not fetched (`unsupported`, e.g. non-forge
+ * links per spec 006 D3). */
+export const IntentSourceStatus = z.enum(['ok', 'failed', 'unsupported']);
+export type IntentSourceStatus = z.infer<typeof IntentSourceStatus>;
+
+/** One source the classifier drew on (or tried to). `ref` is redacted —
+ * never a raw URL with credentials/query. */
+export const IntentSource = z.object({
+  kind: IntentSourceKind,
+  ref: z.string(),
+  status: IntentSourceStatus,
+  reason: z.string().nullish(),
+  chars: z.number().int().nullish(),
+});
+export type IntentSource = z.infer<typeof IntentSource>;
+
+/** A source that could not be read, surfaced to the user as a warning. */
+export const MissingContext = z.object({
+  kind: IntentSourceKind,
+  ref: z.string(),
+  reason: z.string(),
+});
+export type MissingContext = z.infer<typeof MissingContext>;
+
+/** The classifier's structured output: Intent plus its own confidence. */
+export const IntentClassification = Intent.extend({
+  confidence: IntentConfidence,
+});
+export type IntentClassification = z.infer<typeof IntentClassification>;
+
 // ---- Blast radius ----
 export const ChangedSymbol = z.object({
   name: z.string(),

@@ -35,6 +35,37 @@ export {
 // Map-reduce helpers (reduce partials, slice a file's diff).
 export { reduceReviews, sliceDiff } from './review/reduce.js';
 
+// Out-of-scope filter (spec 006 D6) — runs after grounding, wired into
+// reviewPullRequest when ReviewInput.intent is set.
+export {
+  applyScopeFilter,
+  ScopedFinding,
+  ScopedReview,
+  type ScopeFilterResult,
+} from './review/scope.js';
+
+// PR intent classification (spec 006) — pure prompt build + structured call.
+export {
+  buildIntentPrompt,
+  classifyIntent,
+  INTENT_MAX_DESCRIPTION_CHARS,
+  INTENT_MAX_ISSUE_BODY_CHARS,
+  INTENT_MAX_DOC_CHARS,
+  INTENT_MAX_ISSUES,
+  INTENT_MAX_DOCS,
+  INTENT_MAX_FILES,
+  INTENT_MAX_HEADERS_PER_FILE,
+  type IntentPromptInput,
+  type IntentPromptIssue,
+  type IntentPromptDoc,
+  type IntentUnavailableSource,
+  type IntentPromptResult,
+  type BuildIntentPromptOptions,
+  type ClassifyIntentInput,
+  type ClassifyIntentResult,
+} from './intent/classify.js';
+export { fileSummariesFromDiff, type FileSummary } from './intent/file-summaries.js';
+
 // The engine entry point: given (diff + resolved agent inputs + LLM) → grounded Review.
 export {
   reviewPullRequest,
