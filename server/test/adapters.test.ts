@@ -10,6 +10,7 @@ import {
 import { assemblePrompt } from '../src/platform/prompt.js';
 import { groundFindings } from '../src/platform/grounding.js';
 import { estimateCost } from '../src/adapters/llm/pricing.js';
+import { SimpleGitClient } from '../src/adapters/git/simple-git.js';
 
 describe('mock adapters (no network)', () => {
   it('MockGitClient.diff parses into hunks with new line numbers', async () => {
@@ -96,6 +97,45 @@ describe('structured review pipeline (mock LLM → grounding)', () => {
     expect(grounded.kept[0]!.id).toBe('f1');
     expect(grounded.dropped[0]!.finding.id).toBe('f-hallucinated');
     expect(llm.calls.find((c) => c.method === 'completeStructured')).toBeTruthy();
+  });
+});
+
+describe('SimpleGitClient.readFileAt — argument guards (spec 006 S7)', () => {
+  // Both guards run BEFORE any git call, so no real clone is needed — an
+  // invalid ref/path never reaches `git show`.
+  const git = new SimpleGitClient('/mock/clones');
+  const repo = { owner: 'acme', name: 'api' };
+
+  it('rejects a path containing a ".." segment (traversal)', async () => {
+    await expect(git.readFileAt(repo, 'a1b2c3d', '../x.md')).rejects.toThrow(/invalid path/);
+  });
+
+  it('rejects a path starting with "-" (would be read as a git-show option)', async () => {
+    await expect(git.readFileAt(repo, 'a1b2c3d', '-p')).rejects.toThrow(/invalid path/);
+  });
+
+  it('rejects a non-hex / malformed ref', async () => {
+    await expect(git.readFileAt(repo, 'not-a-sha', 'docs/plan.md')).rejects.toThrow(/invalid ref/);
+  });
+
+  it('rejects an absolute path', async () => {
+    await expect(git.readFileAt(repo, 'a1b2c3d', '/etc/passwd')).rejects.toThrow(/invalid path/);
+  });
+});
+
+describe('MockGitClient.readFileAt — filesAt fixtures (spec 006 S7)', () => {
+  it('resolves content keyed by "<ref>:<path>"', async () => {
+    const git = new MockGitClient({ filesAt: { 'a1b2c3d:docs/plan.md': '# Plan' } });
+    await expect(git.readFileAt({ owner: 'a', name: 'b' }, 'a1b2c3d', 'docs/plan.md')).resolves.toBe(
+      '# Plan',
+    );
+  });
+
+  it('throws "not found" for a path/ref not in the fixture', async () => {
+    const git = new MockGitClient({ filesAt: { 'a1b2c3d:docs/plan.md': '# Plan' } });
+    await expect(
+      git.readFileAt({ owner: 'a', name: 'b' }, 'a1b2c3d', 'docs/missing.md'),
+    ).rejects.toThrow('not found');
   });
 });
 

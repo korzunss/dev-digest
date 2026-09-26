@@ -31,6 +31,9 @@ import { SkillsRepository } from '../modules/skills/repository.js';
 import { ReviewRepository } from '../modules/reviews/repository.js';
 import type { RepoIntel } from '../modules/repo-intel/types.js';
 import { RepoIntelService } from '../modules/repo-intel/service.js';
+import { IntentService } from '../modules/intent/service.js';
+import { IntentRepository } from '../modules/intent/repository.js';
+import { resolveFeatureModel } from '../modules/settings/feature-models.js';
 import { type DepGraph, DepCruiseGraph } from '../adapters/depgraph/index.js';
 import { type Tokenizer, TiktokenTokenizer } from '../adapters/tokenizer/index.js';
 
@@ -86,6 +89,7 @@ export class Container {
   private _depgraph?: DepGraph;
   private _tokenizer?: Tokenizer;
   private _priceBook?: PriceBook;
+  private _intent?: IntentService;
 
   constructor(config: AppConfig, db: Db, private overrides: ContainerOverrides = {}) {
     this.config = config;
@@ -143,6 +147,24 @@ export class Container {
     if (this.overrides.tokenizer) return this.overrides.tokenizer;
     this._tokenizer ??= new TiktokenTokenizer();
     return this._tokenizer;
+  }
+
+  /**
+   * PR intent classification + persistence facade (spec 006). Reached as
+   * `container.intent` by `run-executor.ts` and `modules/intent/routes.ts`,
+   * same pattern as `container.repoIntel`. Built from narrow `IntentServiceDeps`
+   * (D10-A) — this getter is the ONLY place that knows both `IntentService`
+   * and `Container`, which is what breaks the constructor-level DI cycle.
+   */
+  get intent(): IntentService {
+    return (this._intent ??= new IntentService({
+      repo: new IntentRepository(this.db),
+      git: this.git,
+      forge: (ref) => this.forge(ref),
+      llm: (id) => this.llm(id),
+      tokenizer: this.tokenizer,
+      resolveModel: (workspaceId, id) => resolveFeatureModel(this, workspaceId, id),
+    }));
   }
 
   /**

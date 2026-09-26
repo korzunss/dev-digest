@@ -71,6 +71,25 @@ export const prIntent = pgTable('pr_intent', {
   intent: text('intent').notNull(),
   inScope: jsonb('in_scope').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
   outOfScope: jsonb('out_of_scope').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  // spec 006 — classifier confidence + provenance, staleness inputs and
+  // observability. `stale`/`stale_reason` are derived at read time from
+  // head_sha/description_hash against the PR row, never stored.
+  confidence: text('confidence', { enum: ['high', 'medium', 'low'] }).notNull().default('low'),
+  sources: jsonb('sources').notNull().default(sql`'[]'::jsonb`),
+  missingContext: jsonb('missing_context').notNull().default(sql`'[]'::jsonb`),
+  composition: jsonb('composition').notNull().default(sql`'[]'::jsonb`),
+  /** Head sha the classification was computed at; null before the first classify. */
+  headSha: text('head_sha'),
+  /** sha256 of title+body at classification time; null before the first classify. */
+  descriptionHash: text('description_hash'),
+  provider: text('provider'),
+  model: text('model'),
+  tokensIn: integer('tokens_in'),
+  tokensOut: integer('tokens_out'),
+  costUsd: doublePrecision('cost_usd'),
+  costSource: text('cost_source', { enum: ['api', 'estimate'] }),
+  durationMs: integer('duration_ms'),
+  classifiedAt: timestamp('classified_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
 export const prBrief = pgTable('pr_brief', {

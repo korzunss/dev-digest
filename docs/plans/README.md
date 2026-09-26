@@ -71,4 +71,4 @@ result to the verifier.
 
 | Plan | Status | Spec | Packages |
 |------|--------|------|----------|
-| — | — | — | — |
+| [01-intent-layer](01-intent-layer.md) | done | [006](../../specs/006-intent-layer.md) | shared, reviewer-core, server, client |

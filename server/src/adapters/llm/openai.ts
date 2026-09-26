@@ -96,17 +96,23 @@ export class OpenAIProvider implements LLMProvider {
     let lastRaw = '';
 
     for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
+      req.signal?.throwIfAborted();
       const res = await withRetry(() =>
         withTimeout(
-          this.client.chat.completions.create({
-            model: req.model,
-            messages,
-            ...tuningParams(req.model, req.temperature, req.maxTokens),
-            response_format: {
-              type: 'json_schema',
-              json_schema: { name: req.schemaName, schema: jsonSchema.schema, strict: true },
+          this.client.chat.completions.create(
+            {
+              model: req.model,
+              messages,
+              ...tuningParams(req.model, req.temperature, req.maxTokens),
+              response_format: {
+                type: 'json_schema',
+                json_schema: { name: req.schemaName, schema: jsonSchema.schema, strict: true },
+              },
             },
-          }),
+            // Caller-owned cancellation — passed as request options, never into
+            // the body, so it never reaches the wire.
+            req.signal ? { signal: req.signal } : undefined,
+          ),
           req.timeoutMs ?? DEFAULT_TIMEOUT,
         ),
       );

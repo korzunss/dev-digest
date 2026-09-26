@@ -48,6 +48,28 @@ _Nothing yet._
 
 ## What Doesn't Work
 
+### 2026-09-26 — the onion skill's `depcruise` gate and its baseline are not real
+**Symptom:** the planner and architecture-reviewer both reached for
+`npm run depcruise` to check the new intent module's edges. The
+`onion-architecture` skill says the gate was "validated against the real graph:
+**0 errors, 15 warnings**" and lists **2** cross-module edges as the
+burn-down baseline. The command doesn't exist, and the reviewer then counted at
+least 4 pre-existing cross-module edges the baseline doesn't list — close to
+flagging old drift as new.
+**Cause:** there is no `server/.dependency-cruiser.cjs` and no `depcruise`
+script in `server/package.json` (only the `dependency-cruiser` dependency). The
+numbers in the skill were never reproducible here.
+**Rule:** until the config and script exist, check layering with explicit `rg`
+edge checks (e.g. `rg -n "platform/container|\.\./settings/|\.\./repos/"
+server/src/modules/<mod>`) and a manual import walk; don't compare against the
+skill's counts. Treat a "pre-existing" edge as pre-existing only after checking
+`git show HEAD:<file>`. Re-baselining the skill belongs with adding the config.
+**Evidence:** `.claude/skills/onion-architecture/SKILL.md:109,127` ·
+`.claude/skills/onion-architecture/enforcement.md:120,130` ·
+`ls server/.dependency-cruiser*` → no such file · unlisted edges:
+`conventions/service.ts:15`, `polling/routes.ts:8`, `pulls/routes.ts:16`,
+`settings/constants.ts:4`
+
 ### 2026-09-25 — `pr-self-review`'s skill map is not a reliable source for which skills exist or how contracts change
 **Symptom:** copying the skill map from `pr-self-review/routing.md` into the
 `planner` agent would have told the implementer to load
@@ -88,6 +110,19 @@ whole-file equality — that check is red today and will stay red.
 `'openai' | 'anthropic'` where the server's is `… | 'openrouter'`
 
 ## Codebase Patterns
+
+### 2026-09-26 — a feature model's default lives in three places, not two
+**Symptom:** changing `review_intent`'s default model (spec 006, D2-B) in
+`server/src/vendor/shared` and its client mirror still left Settings → Models
+showing the old default.
+**Cause:** the Settings page doesn't read the vendored contract. It renders its
+own non-vendored copy, `FEATURE_MODELS` in `client/src/lib/feature-models.ts`.
+**Rule:** a change to `FEATURE_MODELS` (default provider/model, description, a
+new feature id) touches **three** files: `server/src/vendor/shared/contracts/platform.ts`,
+its client vendored mirror, and `client/src/lib/feature-models.ts`. Grep the
+feature id across `client/src` before calling it done.
+**Evidence:** `client/src/lib/feature-models.ts:13,22` ·
+`client/src/app/settings/[section]/_components/SettingsView/_components/SettingsModels/SettingsModels.tsx:9`
 
 ### 2026-09-17 — searches return duplicate hits from `server/clones/`
 

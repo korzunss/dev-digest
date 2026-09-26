@@ -1,6 +1,6 @@
 import { readFile, stat } from 'node:fs/promises';
 import type { Container } from '../../platform/container.js';
-import type { Provider, Review, RunTrace, UnifiedDiff } from '@devdigest/shared';
+import type { Intent, Provider, Review, RunTrace, UnifiedDiff } from '@devdigest/shared';
 import { reviewPullRequest, countBlockers } from '@devdigest/reviewer-core';
 import { RunLogger } from '../../platform/run-logger.js';
 import * as schema from '../../db/schema.js';
@@ -55,9 +55,12 @@ export type RunOutcome = {
 
 /**
  * Owns the background execution of queued agent runs (extracted from
- * ReviewService; behaviour unchanged). Loads the diff + intent once, then
+ * ReviewService; behaviour unchanged). Loads the diff, then resolves the PR's
+ * intent (spec 006 D4-A) — both ONCE, shared by every queued agent job — then
  * map-reduces each agent, streaming events over the runBus and persisting each
- * review. Per-agent failures are isolated.
+ * review. A diff-load failure fails every queued run; an intent-resolution
+ * failure never does (the review proceeds without intent). Per-agent failures
+ * are isolated.
  */
 export class ReviewRunExecutor {
   constructor(
@@ -68,8 +71,9 @@ export class ReviewRunExecutor {
 
   /**
    * Background execution of the queued agent runs (NOT awaited by the route).
-   * Loads the diff + intent once, then map-reduces each agent, streaming events
-   * over the runBus and persisting each review. Per-agent failures are isolated.
+   * Loads the diff, then resolves the PR's intent — both ONCE, shared by every
+   * queued agent job — then map-reduces each agent, streaming events over the
+   * runBus and persisting each review. Per-agent failures are isolated.
    */
   async executeRuns(
     workspaceId: string,
@@ -123,6 +127,21 @@ export class ReviewRunExecutor {
     }
     runLog.info(`Diff ready — ${diff.files.length} changed file(s); starting ${jobs.length} agent run(s)`);
 
+    // Resolve the PR's intent ONCE, shared by every queued agent job (spec 006
+    // D4-A). `ensureForReview` never throws — a classification failure means
+    // every agent below reviews without intent, not that the run fails; it
+    // already logs its own "intent: sources"/"intent: classified"/"intent
+    // unavailable" lines via `onLog`, fanned out to every target run.
+    const intent = await runLog.step(
+      'Resolving PR intent',
+      () =>
+        this.container.intent.ensureForReview(workspaceId, pull, repo, diff, {
+          logger,
+          onLog: (msg, data) => runLog.info(msg, data),
+        }),
+      { kind: 'tool' },
+    );
+
     for (const { agent, runId } of jobs) {
       const agentStart = Date.now();
       logger?.info(
@@ -130,7 +149,7 @@ export class ReviewRunExecutor {
         `review: agent "${agent.name}" started (${agent.provider}/${agent.model})`,
       );
       try {
-        const outcome = await this.runOneAgent(workspaceId, pull, repo, diff, agent, runId, runLog);
+        const outcome = await this.runOneAgent(workspaceId, pull, repo, diff, intent, agent, runId, runLog);
         logger?.info(
           {
             runId,
@@ -159,6 +178,7 @@ export class ReviewRunExecutor {
     pull: PullRow,
     repo: typeof schema.repos.$inferSelect,
     diff: UnifiedDiff,
+    intent: Intent | undefined,
     agent: AgentRow,
     runId: string,
     parentLog: RunLogger,
@@ -243,6 +263,10 @@ export class ReviewRunExecutor {
         // PR author's description/body — untrusted; assemblePrompt wraps +
         // truncates it. Omitted when the PR has no body.
         ...(pull.body ? { prDescription: pull.body } : {}),
+        // Structured PR intent (spec 006), resolved once for all jobs above.
+        // Absent ⇒ identical prompt/schema to today's (AC12).
+        ...(intent ? { intent } : {}),
+        countTokens: (s) => this.container.tokenizer.count(s),
         task,
         sessionId: `${repo.owner}/${repo.name}#${pull.number}:${agent.name}`,
         onEvent: (e) => runLog.event(e.kind, e.msg, e.data),

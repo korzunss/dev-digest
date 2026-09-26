@@ -5,8 +5,8 @@ import path from 'node:path';
 import { eq } from 'drizzle-orm';
 import { startPg, dockerAvailable, type PgFixture } from './helpers/pg.js';
 import { waitForPrRuns } from './helpers/runs.js';
+import { isolatedTestConfig } from './helpers/config.js';
 import { buildApp } from '../src/app.js';
-import { loadConfig } from '../src/platform/config.js';
 import { seed } from '../src/db/seed.js';
 import { MockLLMProvider, MockEmbedder, MockGitClient } from '../src/adapters/mocks.js';
 import * as t from '../src/db/schema.js';
@@ -85,7 +85,9 @@ d('skills reach the prompt', () => {
 
   function makeApp(opts: { withClone?: boolean } = {}) {
     return buildApp({
-      config: loadConfig({ ...process.env, NODE_ENV: 'test' } as NodeJS.ProcessEnv),
+      // Isolated from the developer's real secrets.json (spec 006 Option B) —
+      // see server/test/helpers/config.ts.
+      config: isolatedTestConfig(),
       db: pg.handle.db,
       overrides: {
         embedder: new MockEmbedder(),
