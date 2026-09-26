@@ -6,6 +6,7 @@ enough to decide whether to open it.
 
 | Document | Read it when |
 |----------|--------------|
+| [`architecture.md`](./architecture.md) | Placing new code in the right layer, adding an adapter/module, or tracing a request (or a background review run) from route to database |
 | [`../src/modules/repo-intel/README.md`](../src/modules/repo-intel/README.md) | Working on repo indexing, the symbol/import graph, or the repo map fed into review prompts |
 
 _No other server docs yet — add a row above when you add one._

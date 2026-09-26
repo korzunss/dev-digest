@@ -57,8 +57,9 @@ A `.ts`/`.tsx` file is always *also* in the full-stack pass (TS / Zod / security
 - `typescript-expert` · `zod` · `security`.
 
 ### Always feed
-- The touched package's `INSIGHTS.md` (`client/`, `server/`, `reviewer-core/`, `e2e/`) — known
-  gotchas for that code become extra review criteria.
+- The touched package's `insights/gotchas.md` (`client/`, `server/`, `reviewer-core/`, `e2e/`) —
+  the rules in force for that code become extra review criteria. Open the linked
+  `INSIGHTS.md` entry only when a finding needs its reasoning.
 
 ## 4. Contract-drift check (project-specific CRITICAL)
 

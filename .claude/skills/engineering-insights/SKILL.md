@@ -1,6 +1,6 @@
 ---
 name: engineering-insights
-description: "Reads and writes the per-package INSIGHTS.md files of this repo — the accumulated session knowledge. Use it at the START of any task, before planning or editing, to load what previous sessions learned about the module in question; and again at the END, to append a non-obvious finding. Trigger on: a symptom that took real effort to explain, an approach abandoned, a repo convention or dependency quirk discovered, a wrap-up request. Covers routing a finding to the right INSIGHTS.md, the fixed section layout, the duplicate check, and the quality gate that keeps entries specific."
+description: "Reads and writes the per-package INSIGHTS.md files of this repo — the accumulated session knowledge — and keeps each package's insights/gotchas.md (the current rules distilled from it) in step. Use it at the START of any task, before planning or editing, to load what previous sessions learned about the module in question; and again at the END, to append a non-obvious finding. Trigger on: a symptom that took real effort to explain, an approach abandoned, a repo convention or dependency quirk discovered, a wrap-up request. Covers routing a finding to the right INSIGHTS.md, the fixed section layout, the duplicate check, the quality gate that keeps entries specific, and updating gotchas.md."
 ---
 
 # Engineering Insights
@@ -8,18 +8,33 @@ description: "Reads and writes the per-package INSIGHTS.md files of this repo �
 `INSIGHTS.md` is what previous sessions left for this one. **Read it before the
 work, write to it after.** Append-only: add entries, never rewrite or delete.
 
-See `entry-quality.md` for the entry template, good/bad pairs from this repo, and
-the pruning rules.
+See `entry-quality.md` for the entry template, good/bad pairs from this repo, the
+gotchas item format, and the pruning rules.
+
+## Three files, three jobs
+
+| File | What it is | How it changes |
+|---|---|---|
+| `<pkg>/INSIGHTS.md` (+ root `INSIGHTS.md`) | **The log.** Full write-ups: symptom → cause → rule → evidence | Append-only (Step 5). Never rewritten |
+| `<pkg>/insights/gotchas.md` | **The current rules.** One item per rule still in force, grouped by topic, each linking to its log entry | Edited in place (Step 5b): items are added, corrected, removed |
+| `<pkg>/AGENTS.md` → `Gotchas` | **The every-session minimum.** A few one-liners loaded into every session | Promotion only (Step 6) |
+
+A rule flows one way: log → gotchas → `AGENTS.md`. Nothing appears in
+`gotchas.md` without a log entry behind it, and nothing is promoted to
+`AGENTS.md` without being in `gotchas.md` first. There is no root `gotchas.md`:
+cross-package rules stay in the root `INSIGHTS.md`.
 
 ## Step 0 — Read, before anything else
 
 As soon as the user's request names a module or a file — and **before** planning,
-searching, or editing — read in full:
+searching, or editing — read, in this order:
 
-1. the `INSIGHTS.md` of the package the work lands in (routing table in Step 2),
-2. the root `INSIGHTS.md`.
+1. `insights/gotchas.md` of the package the work lands in (routing table in
+   Step 2) — the short list of rules in force;
+2. that package's `INSIGHTS.md`, in full — the reasoning and the history;
+3. the root `INSIGHTS.md`, in full.
 
-If the request touches two packages, read both files. Then state in one or two
+If the request touches two packages, read both packages' files. Then state in one or two
 lines the entries that bear on this task, or say plainly that none do. Naming
 them is the proof the file was actually read; treat them as high-confidence
 guidance unless the code says otherwise.
@@ -66,7 +81,8 @@ The target follows the files the task touched — check with `git diff --name-on
 | two or more packages, `*/src/vendor/shared`, `scripts/`, `docker-compose.yml`, CI | `INSIGHTS.md` (repo root) |
 
 One finding goes in **one** file. If it feels like it belongs in two, it's a
-cross-package finding — root.
+cross-package finding — root. The same row also names the `insights/gotchas.md`
+that Step 5b updates (`client/insights/gotchas.md`, …); a root entry has none.
 
 Never read or write anything under `server/clones/**`: it holds checkouts of
 imported repos, including a copy of this one.
@@ -149,16 +165,37 @@ of a damaged file is worse than the original mistake.
 Editing an existing entry is allowed in exactly one place: Step 4's "extend".
 Even then you add lines to it — you never delete or reword what is already there.
 
+## Step 5b — Bring `insights/gotchas.md` in step
+
+Run this after every append to a **package** `INSIGHTS.md` whose entry carries a
+`**Rule:**` line, and after every dated correction. (Root entries have no
+gotchas file — skip.) Item format and topics: `entry-quality.md` → *The gotchas
+file*.
+
+- **New rule** → add one item under its topic heading, linking to the new entry.
+- **Correction of an older entry** → edit the item that links to the old entry:
+  reword the rule to what holds now and point the link at the correction. Never
+  keep two items that contradict each other.
+- **Rule no longer holds** (the correction says so) → delete the item. The
+  history stays in `INSIGHTS.md`; that is what the log is for.
+- **Already covered** by an item → leave it, or tighten its wording.
+
+Then update the `Last reconciled with ../INSIGHTS.md:` date at the top. Unlike
+`INSIGHTS.md`, this file *is* edited in place — use Edit anchored on the item or
+the heading, never Write over the whole file. If the file does not exist yet,
+create it from the template in `entry-quality.md`.
+
 ## Step 6 — Promote a standing rule
 
-When an entry has been hit a third time, or has hardened into a rule everyone
+When a rule has been hit a third time, or has hardened into something everyone
 must follow, add a **one-line** version under `Gotchas` in that package's
-`AGENTS.md` and leave the full write-up in `INSIGHTS.md`. That keeps `AGENTS.md`
-short without losing the reasoning.
+`AGENTS.md`. The rule must already be an item in `insights/gotchas.md`; the full
+write-up stays in `INSIGHTS.md`. That keeps `AGENTS.md` short without losing the
+reasoning.
 
 ## The two halves are not optional in the same way
 
 Step 0 runs on **every** task in a package — the cost of reading is a few hundred
-tokens, the cost of skipping it is repeating a solved problem. Steps 1–6 run only
-when the session produced something that clears the gate, which is the minority
-of sessions.
+tokens, the cost of skipping it is repeating a solved problem. Steps 1–6 (with
+5b) run only when the session produced something that clears the gate, which is
+the minority of sessions.

@@ -10,6 +10,7 @@ open it. A doc nobody can find from here is a doc nobody reads.
 |----------|--------------|
 | [`agent-prompts/`](agent-prompts/README.md) | Writing or changing a reviewer agent's `system_prompt` — assembly, the injection guard, scoring conventions |
 | [`agent-prompts/choosing-a-model.md`](agent-prompts/choosing-a-model.md) | Picking a model for an agent or a feature slot |
+| [`plans/`](plans/README.md) | Saving, executing or verifying a Development Plan — naming, the `draft → approved → done` lifecycle, plan vs spec |
 
 ## What belongs here
 

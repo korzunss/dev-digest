@@ -67,4 +67,5 @@ src/prompts/          built-in agent system prompts
 - The repo indexer → `src/modules/repo-intel/README.md`
 - Deep topics (indexing, migrations, performance) → `docs/README.md`
 - Feature specs — read the spec before implementing the feature → `specs/README.md`
-- Solved bugs and surprises → `INSIGHTS.md`
+- Layers, module anatomy, DI, platform, request lifecycle → `docs/architecture.md`
+- Rules in force (read first) → `insights/gotchas.md`; solved bugs and surprises, in full → `INSIGHTS.md`

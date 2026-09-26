@@ -50,11 +50,13 @@ that package's `AGENTS.md`, which loads automatically when you work in its folde
 ## Session protocol
 
 - **First step of any task**, before planning, searching or editing: read the
-  `INSIGHTS.md` of the package the request concerns, plus the root one, and name
-  the entries that bear on the task (or say none do). They are accumulated session
-  knowledge — treat them as high-confidence guidance unless the code says otherwise.
+  `insights/gotchas.md` and `INSIGHTS.md` of the package the request concerns,
+  plus the root `INSIGHTS.md`, and name the entries that bear on the task (or say
+  none do). They are accumulated session knowledge — treat them as
+  high-confidence guidance unless the code says otherwise.
 - **When wrapping up**, run the `engineering-insights` skill: re-read that file,
-  and append only what is genuinely new and non-obvious. If the session produced
+  and append only what is genuinely new and non-obvious; the skill then brings
+  the package's `insights/gotchas.md` in step. If the session produced
   nothing that qualifies, or the lesson is already recorded there, write nothing
   and say so — an empty wrap-up is the normal case, padding the file is the failure.
 
@@ -84,3 +86,7 @@ that package's `AGENTS.md`, which loads automatically when you work in its folde
 - Built-in agent prompts → `docs/README.md`
 - Cross-package feature specs → `specs/README.md`
 - Hard-won gotchas: cross-package → `INSIGHTS.md`, package-local → `<pkg>/INSIGHTS.md`
+  (the log) and `<pkg>/insights/gotchas.md` (the rules in force)
+- Package deep-dives → `server/docs/architecture.md`, `client/docs/ui-architecture.md`,
+  `reviewer-core/docs/pipeline.md`, `e2e/docs/flows.md`
+- Approved Development Plans → `docs/plans/README.md`
