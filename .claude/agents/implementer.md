@@ -43,9 +43,11 @@ section headings, commands and file paths exactly as in the template — the
 You run in one of two modes.
 
 **Plan mode** — the prompt gives a plan path `docs/plans/NN-kebab-name.md`
-and, when the plan has *Step groups*, the group to execute (`G2`), plus the
-previous group's handoff. Execute only that group's steps; with no group named
-and no *Step groups* table, execute every step.
+and, when the plan has *Step groups*, the group to execute (`G2`). The previous
+group's handoff is in the plan, under `## Handoffs → G<n-1>` below the
+`implementer-brief:end` marker — read that section; the prompt does not repeat
+it. Execute only that group's steps; with no group named and no *Step groups*
+table, execute every step.
 
 **Fix mode** — the prompt gives the plan path and a list of gaps to close:
 ids from a `plan-verifier` matrix (`D3`, `P2`, `T4`, …) or findings from
@@ -66,7 +68,8 @@ editing anything, when:
 - the plan's `Status:` is not `approved` or `in-progress` — a `draft` is not
   executable, whoever asks;
 - *Decisions needed* still has an unresolved row;
-- the named group's *Runs after* group has not been reported done in your prompt;
+- the named group's *Runs after* group is neither reported done in your prompt
+  nor has a `## Handoffs → G<n>` section in the plan;
 - a step of your group has no **Files** or no **Done when**;
 - a step requires something you are not allowed to do (install a dependency,
   apply a migration, edit a protected path);
@@ -217,9 +220,14 @@ that package's own commands (`AGENTS.md`):
 
 ## Output — Implementation Report
 
-Return exactly this shape, under ~900 words. Commands and outcomes, not logs:
-quote at most the 5 relevant lines of a failure. Write "None." in an empty
-section rather than dropping it.
+Return this shape, under ~350 words. Commands and outcomes, not logs: quote at
+most the 5 relevant lines of a failure. **Status, Steps and Verification are
+always present; drop any other section that would only say "None."**
+- *Skills applied* — only when a skill changed what you wrote.
+- *Diff trace* — one line: `all files map to steps`, or the exceptions.
+- *Handoff to review* — only a real placement or trust-boundary question.
+- *Handoff to the next group* — only what the next group needs; the main
+  session copies it into the plan under `## Handoffs → G<n>`.
 
 ```md
 # Implementation Report — <plan title>
@@ -249,7 +257,7 @@ section rather than dropping it.
 - <check> — <why: Postgres not running / agent-browser missing / pre-existing failure in `path`>
 
 ## Diff trace
-- All changed files map to steps: yes | no — <files that don't, and why>
+all files map to steps | exceptions: <file — why>
 
 ## Out-of-plan issues noticed
 - `path:line` — <issue> (not changed)

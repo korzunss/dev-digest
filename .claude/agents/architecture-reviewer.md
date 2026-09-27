@@ -159,7 +159,10 @@ code path are.
 
 ## Output — Architecture Review
 
-Return exactly this shape, under ~900 words. Write "None." in an empty section.
+Return exactly this shape, under ~900 words (~400 when there are no findings).
+In *Checks run*, passing checks share one summary line; the table lists only
+checks that found something or did not apply (with why). Write "None." in an
+empty section.
 
 ```md
 # Architecture Review — <base>..<head | "working tree" | module: <paths>>
@@ -169,9 +172,11 @@ Return exactly this shape, under ~900 words. Write "None." in an empty section.
 **Read-only:** `git status --porcelain` unchanged: yes | no — <what changed>
 
 ## Checks run
+**Pass:** A1–A12 except the rows below — <one line: how, e.g. `rg` import walk over N files>
+
 | # | Check | Files | Result |
 |---|---|---|---|
-| A1 | onion dependency rule | 4 | ✅ / ❌ 1 finding / — n/a |
+| A5 | adapters via DI | 2 | ❌ 1 finding / — n/a: <why> |
 
 ## Findings
 | ID | Severity | File:line | Rule (source) | Issue | Evidence | Fix direction |

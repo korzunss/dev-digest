@@ -60,6 +60,16 @@ When only some step groups are implemented, verify the steps of those groups
 and mark every step of the remaining groups
 `not-verifiable — group not implemented yet` rather than `missing`.
 
+**Delta mode.** When the prompt names a previous verification (its date in the
+plan's *Verification log*) and the gap ids it left open, verify only:
+1. those gap ids;
+2. every item whose files changed since that verification
+   (`git diff --name-only`, `find <paths> -newer <file changed at that time>`);
+3. the package checks those files belong to (typecheck + the related tests).
+Every other item keeps its previous status: report it as
+`unchanged since <date>` by ID range, not row by row. Use delta mode for
+re-verification after fix mode; a full pass runs once per implementation wave.
+
 Once the inputs are there, read — once, only what the plan touches — the root
 `INSIGHTS.md`, plus the `insights/gotchas.md`, `INSIGHTS.md` and `AGENTS.md` of
 every package the plan touches, and the package deep-dive section you need to
@@ -94,8 +104,10 @@ the touched fields must match).
    - `R1…n`: the process rules below (*Process rules*);
    - `SP1…n`: each *Acceptance* line of the spec, when one is given.
 
-   The matrix must have exactly one row per enumerated item. Skipping an item
-   is not allowed; `not-verifiable` is.
+   Every enumerated item is checked and accounted for: a row in the matrix when
+   its status is not `met`, otherwise inside the `met:` (or, in delta mode,
+   `unchanged since`) ID-range line. Skipping an item is not allowed;
+   `not-verifiable` is.
 2. **Get the diff.** Base ref → `git diff <base>...HEAD --name-status`.
    Working tree → `git diff HEAD --name-status` plus
    `git ls-files --others --exclude-standard`. Read the hunks module by module
@@ -190,9 +202,12 @@ is `in-progress`; say so in the result line.
 
 ## Output — Plan Verification
 
-Return exactly this shape, under ~1,000 words. Put rows for `met` items in the
-matrix too: the matrix is the proof that every item was checked. Write "None."
-in an empty section.
+Return exactly this shape. List in the matrix **only items whose status is not
+`met`**. Summarise the `met` items on one line as ID ranges with how they were
+sought (e.g. `met: AC2–AC9, S1–S14 — read + re-run checks; D1–D21 — re-run`);
+together with *Checks re-run*, which stays complete, that line is the proof
+every item was checked. Under ~500 words when nothing is open, ~1,000 at most.
+Write "None." in an empty section.
 
 ```md
 # Plan Verification — <plan title>
@@ -202,10 +217,10 @@ in an empty section.
 **Read-only:** `git status --porcelain` unchanged: yes | no — <what changed>
 
 ## Traceability matrix
+**met:** <ID ranges — how sought> · **unchanged since <date>** (delta mode): <ID ranges>
+
 | ID | Item (short) | How sought | Status | Evidence | Report claimed |
 |---|---|---|---|---|---|
-| AC1 | `GET /runs/:id` returns `cost_usd` | `rg "cost_usd" server/src/modules/runs` → read routes.ts | met | `server/src/modules/runs/routes.ts:41` · `runs.it.test.ts` › "returns cost" ✅ (full .it run) | done |
-| D3 | `cd client && pnpm typecheck` | re-run | met | exit 0 | ✅ |
 | S4 | `useRunCost` hook | `rg useRunCost` → `Glob client/src/lib/hooks/*` → none | missing | not found in `client/src/lib/hooks/` | done |
 | R1 | no weakened tests/types | `git diff -U0 \| rg …` | met | no matches | — |
 | O1 | no change to `reviewer-core` | `--name-status` | contradicted | `reviewer-core/src/prompt.ts` in diff | — |

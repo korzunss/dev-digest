@@ -9,7 +9,7 @@ set. For exact rules and output templates, open the agent file.
 | Agent | Responsibility | Tools | Model | Permission mode | `maxTurns` |
 |---|---|---|---|---|---|
 | [`researcher`](researcher.md) | Answers questions with sourced evidence, about this repo or external libraries and APIs | `Read, Grep, Glob, Bash, WebSearch, WebFetch` | `sonnet` | default | 40 |
-| [`planner`](planner.md) | Turns a request into a Development Plan (`Status: draft`) before any code is written | `Read, Grep, Glob, Bash` | `opus` | default | 60 |
+| [`planner`](planner.md) | Turns a request into a Development Plan (`Status: draft`) before any code is written; writes only that plan file and its index row | `Read, Grep, Glob, Bash, Write, Edit` | `opus` | default | 60 |
 | [`implementer`](implementer.md) | Executes an approved plan one step group per run across `server/`, `reviewer-core/`, `client/`, `e2e/` and verifies its own changes; closes gaps in fix mode | `Read, Grep, Glob, Edit, Write, Bash` | `sonnet` | `acceptEdits` | 100 |
 | [`test-writer`](test-writer.md) | Writes and runs UI and backend tests in the right tier, including negative tests at trust boundaries, and proves each new test can fail | `Read, Grep, Glob, Edit, Write, Bash` | `sonnet` | `acceptEdits` | 60 |
 | [`architecture-reviewer`](architecture-reviewer.md) | Checks a diff or a module against the architectural boundaries (A1–A12), returns evidence-backed findings with fix-mode ids and PASS/BLOCK | `Read, Grep, Glob, Bash` | `opus` | default | 40 |
@@ -19,9 +19,10 @@ set. For exact rules and output templates, open the agent file.
 None of them has the `Agent` tool. Only the main session delegates, so there is
 no nested spawning.
 
-**What enforces the limits.** `researcher`, `planner`, `architecture-reviewer`
-and `plan-verifier` have no `Edit`/`Write` in `tools`, so they cannot write
-files through those tools. Everything else is a **prompt rule only**:
+**What enforces the limits.** `researcher`, `architecture-reviewer` and
+`plan-verifier` have no `Edit`/`Write` in `tools`, so they cannot write files
+through those tools. `planner` has `Write`/`Edit`, but only for its own plan
+file and index row — a **prompt rule**, like everything else below:
 
 - `Bash` is limited by an explicit command allowlist in `researcher`,
   `planner`, `architecture-reviewer`, `plan-verifier` and `doc-writer`, and by
@@ -59,13 +60,18 @@ flowchart LR
 
 The main session drives every hop:
 
-1. The planner is read-only. The main session saves its plan as
-   `docs/plans/NN-kebab-name.md` (`Status: draft`), writes the user's decisions
-   and corrections into that file, and sets `Status: approved` only on the
-   user's explicit final approval.
-2. From then on every agent gets the **file path**, not pasted text. The
+1. Research before planning is repo-mode only; external research runs later,
+   only for the planner's *Risks & open questions*.
+2. The planner writes its plan itself as `docs/plans/NN-kebab-name.md`
+   (`Status: draft`) plus the index row, and returns a summary; in a
+   correction round it edits the file and lists the changed sections. The main
+   session writes the user's decisions into the file and sets
+   `Status: approved` only on the user's explicit final approval.
+3. From then on every agent gets the **file path**, not pasted text. The
    implementer runs once per step group (`G1`, `G2`, …) and runs only the
    integration tests related to its group; the status moves to `in-progress`.
+   Hand-offs between groups are appended by the main session under
+   `## Handoffs → G<n>` in the plan, not pasted into prompts.
 3. After the last group, the main session runs the full server integration
    suite once and passes its result, with the same plan path, to the
    `plan-verifier`. The `architecture-reviewer` runs in parallel. Both work in
@@ -74,7 +80,11 @@ The main session drives every hop:
 4. Gaps go back to the implementer in **fix mode** (plan path + gap ids). A gap
    that needs a file outside every step's *Files*, or any change that adds
    files or steps or alters a recorded decision, is a **plan change**: the plan
-   returns to `draft` and needs the user's approval again.
+   returns to `draft` and needs the user's approval again. A trivial fix
+   (≤1 file, ≤10 lines, file already in a step's *Files*, not a contract,
+   migration, vendor or lock-file edit) is applied by the main session and
+   logged as `main-session fix: <id>`. Re-verification after fixes runs the
+   `plan-verifier` in **delta mode**.
 5. The plan becomes `done` after a `complete` verification, or after
    `complete — needs sign-off` once the user has accepted every listed
    unverified item. Then the `doc-writer` documents what was delivered.
@@ -83,8 +93,8 @@ The lifecycle and its rules are in `docs/plans/README.md`.
 
 ## Plan status per agent
 
-Only the main session changes a plan's `Status:` line; no agent edits the plan
-file.
+Only the main session changes a plan's `Status:` line. The planner is the only
+agent that edits a plan file, and only its own draft or correction round.
 
 | Agent | Accepts a plan in status | Refuses |
 |---|---|---|

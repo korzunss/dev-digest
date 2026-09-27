@@ -43,20 +43,21 @@ Spec: <specs/NNN-name.md or "none">
 | `done` | Verified by the `plan-verifier` with result `complete` — or `complete — needs sign-off` **and** the user has accepted every item on its *Needs sign-off* list. |
 | `abandoned` | Stopped. Say why in one line under the status. |
 
-**Who writes the file.** The `planner` is read-only: it returns the plan and
-proposes a `Save as:` name. The main session saves it here right away, as
-`draft`, and keeps the `Status:` line and the index below current. User
-decisions (the plan's *Decisions needed* table) and corrections are written
-into the plan itself, not left in the conversation.
+**Who writes the file.** The `planner` writes its own draft here, as `draft`,
+adds its row to the index below, and returns only a summary. It writes no other
+file. The main session keeps the `Status:` line and the index current and
+writes user decisions (*Decisions recorded*) and corrections into the plan
+itself, not left in the conversation.
 
 **Who reads it.** The `implementer` and the `plan-verifier` get this file's
 **path**, never a pasted copy, and both refuse a `draft`. The implementer runs
-once per step group (`G1`, `G2`, …); neither agent edits the file.
+once per step group (`G1`, `G2`, …); neither agent edits the file. Hand-offs
+between groups live in the plan under `## Handoffs → G<n>` (below
+`<!-- implementer-brief:end -->`), appended by the main session.
 
 **Changing an approved plan.** A change that adds files or steps, or changes a
-recorded decision, sends the plan back to `draft`: the planner returns the
-changed sections, the main session applies them to the file, and the user
-approves again. A clarification that stays inside the approved steps' *Files*
+recorded decision, sends the plan back to `draft`: the planner edits the
+changed sections in the file and lists them, and the user approves again. A clarification that stays inside the approved steps' *Files*
 and decisions does not. The same rule covers fix mode: a gap the implementer
 can close only by touching a file outside every step's *Files* comes back as a
 *Suggested plan change*, not as a fix.
