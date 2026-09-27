@@ -68,14 +68,41 @@
     "blockers": " · {count} blockers"
   },
   "smartDiff": {
-    "coreLabel": "Core",
+    "coreLabel": "Core logic",
+    "testsLabel": "Tests",
     "wiringLabel": "Wiring",
+    "docsLabel": "Docs",
     "boilerplateLabel": "Boilerplate",
+    "coreHint": "The substance of the change — review closely",
+    "testsHint": "Proves the change works — check what's covered",
+    "wiringHint": "Hooks the core into the app",
+    "docsHint": "Explains the change — skim",
+    "boilerplateHint": "Generated / mechanical — skim",
     "largeTitle": "This PR is large ({lines} changed lines)",
     "largeBody": "Consider splitting it into smaller, focused PRs for easier review:",
     "filesCount": "{count} files",
     "findingLines": "{count} finding-lines",
-    "groupedByRole": "Smart Diff · grouped by role"
+    "groupedByRole": "Smart Diff · grouped by role",
+    "header": "Reviewer-ordered diff",
+    "summary": "{count} files · +{additions} −{deletions}",
+    "orderLabel": "Diff order",
+    "smartOrder": "Smart order",
+    "originalOrder": "Original order",
+    "filesWithFindings": "{count} files with findings",
+    "hasFindings": "Has findings",
+    "lineLabel": {
+      "CRITICAL": "blocker",
+      "WARNING": "warning",
+      "SUGGESTION": "suggestion"
+    },
+    "unanchoredFindings": "Findings outside the shown diff",
+    "closeFinding": "Close finding",
+    "lineRange": "line {range}",
+    "loading": "Ordering files…",
+    "unavailable": "Smart order unavailable — showing original order",
+    "showComments": "Show comments ({count})",
+    "hideComments": "Hide comments ({count})",
+    "reviewNotRun": "Review not run yet — findings will appear here after Run Review"
   },
   "list": {
     "breadcrumb": "Pull Requests",

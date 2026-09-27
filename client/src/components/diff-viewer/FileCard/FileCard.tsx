@@ -15,6 +15,7 @@ import {
   type CommentThread,
   type DiffCommentApi,
 } from "../comments";
+import { partitionAnnotations, annotationsForLine, type DiffAnnotationApi, type DiffLineAnnotation } from "../annotations";
 import { s, chevronFor } from "../styles";
 import { CodeLine } from "../CodeLine";
 import { OutdatedComments } from "../OutdatedComments";
@@ -30,7 +31,15 @@ function threadsForLine(ln: Line, matched: Map<string, CommentThread[]>): Commen
   return out;
 }
 
-export function FileCard({ file, commenting }: { file: PrFile; commenting?: DiffCommentApi }) {
+export function FileCard({
+  file,
+  commenting,
+  annotations,
+}: {
+  file: PrFile;
+  commenting?: DiffCommentApi;
+  annotations?: DiffAnnotationApi;
+}) {
   const t = useTranslations("shell");
   const [open, setOpen] = React.useState(
     (file.additions ?? 0) + (file.deletions ?? 0) <= AUTO_EXPAND_MAX_LINES
@@ -48,15 +57,37 @@ export function FileCard({ file, commenting }: { file: PrFile; commenting?: Diff
     return partitionThreads(fileThreads, renderedKeys);
   }, [comments, file.path, lines]);
 
+  // Same split for finding-agnostic annotations (S12/S26): per-line markers
+  // (bar + label pill) vs. content (anchored under the last marked line of a
+  // range) vs. "unanchored" (no line of the range is rendered).
+  const {
+    markers: matchedMarkers,
+    content: matchedContent,
+    unanchored: unanchoredAnnotations,
+  }: {
+    markers: Map<string, DiffLineAnnotation[]>;
+    content: Map<string, DiffLineAnnotation[]>;
+    unanchored: DiffLineAnnotation[];
+  } = React.useMemo(() => {
+    const fileItems = annotations?.items.filter((a) => a.path === file.path) ?? [];
+    if (fileItems.length === 0) return { markers: new Map(), content: new Map(), unanchored: [] };
+    return partitionAnnotations(fileItems, lines);
+  }, [annotations, file.path, lines]);
+
   const commentCount = commenting
     ? commenting.comments.filter((c) => c.path === file.path).length
     : 0;
+  const hasMarker = !!annotations?.markedPaths.has(file.path);
+  // S19: the toggle hides injected content (cards, the unanchored block) but
+  // never the header dot or the per-line bar/label.
+  const showContent = annotations?.showContent ?? true;
 
   return (
     <div style={s.fileCard}>
       <div onClick={() => setOpen((o) => !o)} style={s.fileHeader}>
         <Icon.ChevronRight size={13} style={chevronFor(open)} />
         <Icon.FileText size={14} style={s.fileIcon} />
+        {hasMarker && <span style={s.markerDot} aria-label={annotations!.markerLabel} />}
         <span className="mono" style={s.filePath}>
           {file.path}
         </span>
@@ -85,10 +116,21 @@ export function FileCard({ file, commenting }: { file: PrFile; commenting?: Diff
                 path={file.path}
                 threads={threadsForLine(ln, matched)}
                 commenting={commenting}
+                markers={annotationsForLine(ln, matchedMarkers)}
+                contents={annotationsForLine(ln, matchedContent)}
+                showAnnotationContent={showContent}
               />
             ))
           )}
           {commenting && commenting.showComments && <OutdatedComments threads={outdated} />}
+          {annotations && showContent && unanchoredAnnotations.length > 0 && (
+            <div style={s.unanchoredWrap}>
+              <span style={s.unanchoredTitle}>{annotations.unanchoredTitle}</span>
+              {unanchoredAnnotations.map((a) => (
+                <React.Fragment key={a.id}>{a.content}</React.Fragment>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

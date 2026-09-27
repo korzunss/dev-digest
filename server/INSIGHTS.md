@@ -77,6 +77,21 @@ collapses '..' before the guard can see it" ·
 
 ## Codebase Patterns
 
+### 2026-09-27 — correction: `findings.review_id` IS indexed now
+**Symptom:** the 2026-09-18 FK-index entry below still says
+`findings.reviewId` "still has no callback at all". For the Smart Diff
+latest-review findings query that read as an open gap; only opening the schema
+showed the index was already there.
+**Cause:** the index was added later (spec 002) and the old entry was never
+corrected; its evidence line went stale, not its rule.
+**Rule:** the rule stands — a FK column gets no index of its own, add one when
+you add a read path. But `findings_review_idx` already exists: a query that
+filters `findings` by `review_id` needs no new migration. Check the table's
+callback in the schema before trusting a listed "still missing" index.
+**Evidence:** `server/src/db/schema/reviews.ts:59-64` →
+`index('findings_review_idx').on(t.reviewId)` · plan
+`docs/plans/02-smart-diff.md` S5 (no migration)
+
 ### 2026-09-26 — `runLog.info(msg, data)`: only `msg` reaches the stored run log
 **Symptom:** the intent classifier logged `runLog.info('intent: classified',
 { model, tokensIn, tokensOut, costUsd })`, yet the run log in the UI showed

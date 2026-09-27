@@ -33,6 +33,7 @@ export function PrDetailHeader({
   onRunsStarted,
 }: PrDetailHeaderProps) {
   const t = useTranslations("prReview");
+  const rootRef = React.useRef<HTMLDivElement>(null);
   const handleRunStart = useCallback(() => {
     onRunStart();
   }, [onRunStart]);
@@ -40,6 +41,27 @@ export function PrDetailHeader({
   const handleRunsStarted = useCallback(() => {
     onRunsStarted();
   }, [onRunsStarted]);
+
+  // Publish this header's measured height as `--pr-header-h` on its parent
+  // element (D17-A′) — the parent is the common ancestor of the header and
+  // the tab content, so the variable reaches the sticky SmartDiffGroup header
+  // (spec 007, S25). Measured, not hard-coded, because the height varies
+  // (title wrap, the merged/closed banner).
+  React.useEffect(() => {
+    const root = rootRef.current;
+    const parent = root?.parentElement;
+    if (!root || !parent || typeof ResizeObserver === "undefined") return;
+
+    const publish = () => parent.style.setProperty("--pr-header-h", `${root.offsetHeight}px`);
+    publish();
+    const observer = new ResizeObserver(publish);
+    observer.observe(root);
+
+    return () => {
+      observer.disconnect();
+      parent.style.removeProperty("--pr-header-h");
+    };
+  }, []);
 
   const statusColor =
     pr.status === "merged"
@@ -49,7 +71,7 @@ export function PrDetailHeader({
         : "var(--warn)";
 
   return (
-    <div style={s.root}>
+    <div ref={rootRef} style={s.root}>
       <div style={s.titleRow}>
         <div style={s.titleCol}>
           <h1 style={s.h1}>

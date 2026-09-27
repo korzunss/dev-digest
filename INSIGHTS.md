@@ -137,6 +137,26 @@ that path; it's runtime data, and the next resync overwrites it.
 
 ## Tool & Library Notes
 
+### 2026-09-27 — `rg` edge checks catch comments and prose, and `rg` is not a binary here
+**Symptom:** a plan Done-when "`rg -n "_components|FindingCard|FindingRecord"
+client/src/components/diff-viewer` returns nothing" failed on a *comment* in a
+test file (plan 02 gap D20), and a process check `rg ': any\b'` flagged
+"(D8: any depth)" in plan and spec prose. Separately, a verifier's
+`… | xargs rg …` died with `xargs: rg: No such file or directory`.
+**Cause:** these checks are plain text searches, so words in comments, test
+fixtures and Markdown count as hits. And in the agent shell `rg` is a shell
+function from the Claude Code snapshot, not an executable on `PATH`, so
+anything that execs it (`xargs`, `find -exec`, a script) cannot find it.
+**Rule:** write layering/"no import" checks against import lines —
+`rg -n "^import .*(_components|FindingCard)" <dir>` or
+`rg -n "from ['\"].*_components" <dir>` — and scope process scans to code files
+(`-g '*.ts' -g '*.tsx'`), not `docs/` or `specs/`. When piping a file list, use
+`xargs grep -E`, not `xargs rg`.
+**Evidence:** `docs/plans/02-smart-diff.md` → Verification log, gap D20
+(`client/src/components/diff-viewer/FileCard/FileCard.test.tsx:4` comment) ·
+`type rg` → `rg is a shell function from ~/.claude/shell-snapshots/…` ·
+`echo x | xargs rg zzz` → `xargs: rg: No such file or directory`
+
 ### 2026-09-25 — correction: new agents do show up mid-session
 **Symptom:** the entry below says a new agent needs a session restart. Later in
 the same session, with no restart, the harness announced "New agent types are

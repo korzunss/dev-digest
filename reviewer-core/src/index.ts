@@ -89,3 +89,13 @@ export {
 // The single OpenAI-compatible structured provider (OpenRouter), shared by the
 // CI runner and the server's openrouter path. Owns session grouping + guards.
 export { OpenRouterProvider, type OpenRouterProviderOptions } from './llm/openrouter.js';
+
+// Smart Diff (L03) — pure path -> role classification for the reviewer-ordered
+// Files changed tab. No I/O; the rules are data so a later prompt filter can
+// reuse them.
+export { classifyFile } from './smart-diff/classify.js';
+export {
+  SMART_DIFF_ROLE_ORDER,
+  SMART_DIFF_RULES,
+  type SmartDiffRule,
+} from './smart-diff/constants.js';
