@@ -64,6 +64,13 @@ that package's `AGENTS.md`, which loads automatically when you work in its folde
 
 ## Plan → implement → verify
 
+- **Optional brainstorm stage** for a goal with no chosen approach: the
+  read-only `brainstormer` returns an idea brief, never a plan. The main
+  session saves **every** brief, `kill` included, verbatim to
+  `docs/ideas/NN-kebab-name.md` plus its index row, adding only `Status:` and
+  `## Choice recorded`. A correction re-runs `brainstormer` with the brief's
+  path; it returns only the changed sections. *Facts needed* seed the
+  researcher's ≤8 questions, and the planner gets the brief's path.
 - Research before planning is **repo-mode only** (≤8 questions to the
   `researcher`). External research runs only for the items the planner lists
   under *Risks & open questions*, as a separate researcher run.
@@ -134,3 +141,4 @@ that package's `AGENTS.md`, which loads automatically when you work in its folde
 - Package deep-dives → `server/docs/architecture.md`, `client/docs/ui-architecture.md`,
   `reviewer-core/docs/pipeline.md`, `e2e/docs/flows.md`
 - Approved Development Plans → `docs/plans/README.md`
+- Idea briefs → `docs/ideas/README.md`

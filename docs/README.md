@@ -11,6 +11,7 @@ open it. A doc nobody can find from here is a doc nobody reads.
 | [`agent-prompts/`](agent-prompts/README.md) | Writing or changing a reviewer agent's `system_prompt` — assembly, the injection guard, scoring conventions |
 | [`agent-prompts/choosing-a-model.md`](agent-prompts/choosing-a-model.md) | Picking a model for an agent or a feature slot |
 | [`plans/`](plans/README.md) | Saving, executing or verifying a Development Plan — naming, the `draft → approved → done` lifecycle, plan vs spec |
+| [`ideas/`](ideas/README.md) | Comparing approaches before a spec or plan exists — naming, the save rule, the `open → chosen/killed/dropped` lifecycle |
 
 ## What belongs here
 
@@ -24,4 +25,4 @@ line to justify.
 - **Anything an agent must know every session** → the relevant `AGENTS.md`,
   compressed to a line.
 - **A record of one incident** → `INSIGHTS.md`.
-- **Work not yet built** → `specs/`.
+- **Work not yet built** → `specs/` (an undecided idea → `ideas/`).

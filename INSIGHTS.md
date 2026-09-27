@@ -48,6 +48,28 @@ _Nothing yet._
 
 ## What Doesn't Work
 
+### 2026-09-27 — in an agent prompt, the output template beats the prose rules
+**Symptom:** `brainstormer` smoke runs broke two rules its Method section
+stated plainly. The status quo came out as `Opt1`, although the prompt said
+"not first or last". A narrow idea got a padding option instead of the "only
+one sane approach" line. A later run returned 6 options under "up to 5
+(plus the status quo)".
+**Cause:** the model followed the template and the description over the
+prose. The template heading read `### Opt1 — <name> (status quo, if
+applicable)`. The description said "3-5 approaches (plus the status quo)",
+which reads as 5 + 1. The escape hatch was a single sentence after the
+method, with no concrete check attached.
+**Rule:** when an agent prompt has an output template, write every
+placement or count rule into the template itself, not only into the prose.
+State limits inclusively ("at most 5, status quo included"). Turn an escape
+hatch into a named check with the exact line to write ("Padding check …
+write 'Only one sane approach: OptN.'"). Smoke-test with an input that
+should trigger the escape hatch. A realistic input with several sane
+approaches does not exercise it.
+**Evidence:** `docs/plans/03-brainstormer-agent.md` → Verification log (T5
+runs 2–3, T2 regression) · `.claude/agents/brainstormer.md` Method (b),
+*Padding check*, `## Options` heading
+
 ### 2026-09-26 — the onion skill's `depcruise` gate and its baseline are not real
 **Symptom:** the planner and architecture-reviewer both reached for
 `npm run depcruise` to check the new intent module's edges. The
@@ -169,6 +191,12 @@ subagent asked to list its "preloaded skills" also names every skill in the
 session's listing, so that answer can't show that `skills:` injection worked.
 **Evidence:** harness notice "New agent types are now available" after
 creating `.claude/agents/implementer.md`, with no restart
+**Extension (2026-09-27):** edits to an agent that already exists take effect
+on its next spawn in the same session, with no notice. This is not a
+guarantee. The brainstormer's T5 smoke run failed, its prompt was fixed
+mid-session, and the next spawn followed the new rule. Iterate on prompt
+fixes in-session, with no restart
+(`docs/plans/03-brainstormer-agent.md` → Verification log).
 
 ### 2026-09-25 — a new `.claude/agents/*.md` can't be spawned in the session that created it
 **Symptom:** right after writing `.claude/agents/implementer.md`, the Agent

@@ -74,3 +74,4 @@ result to the verifier.
 |------|--------|------|----------|
 | [01-intent-layer](01-intent-layer.md) | done | [006](../../specs/006-intent-layer.md) | shared, reviewer-core, server, client |
 | [02-smart-diff](02-smart-diff.md) | done | [007](../../specs/007-smart-diff.md) | shared, reviewer-core, server, client |
+| [03-brainstormer-agent](03-brainstormer-agent.md) | done | none | `.claude/agents`, repo docs |

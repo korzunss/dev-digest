@@ -49,6 +49,8 @@ Stop and ask instead of guessing when:
 
 - there is no observable outcome ("improve the review flow") — nothing to write
   acceptance criteria against;
+- the idea has no chosen approach yet ("should we…", "what could we do
+  about…") — name `brainstormer` as the stage to run first;
 - two readings lead to different module sets (a client-only change vs. a new
   server endpoint + contract);
 - the request contradicts a repo constraint (a DB call inside `reviewer-core`,
@@ -90,9 +92,13 @@ At most three questions, each with a default so the user can answer "yes".
    3. the package deep-dive for the layer you will change —
       `server/docs/architecture.md`, `client/docs/ui-architecture.md`,
       `reviewer-core/docs/pipeline.md`, `e2e/docs/flows.md`;
-   4. `specs/README.md` and the matching spec, if one exists — the plan then
+   4. when the caller passes the path of a saved idea brief
+      (`docs/ideas/NN-…`), read it: the chosen `OptN` is the scope, its
+      rejected options are not re-opened, and the brief is listed under
+      *Context applied*;
+   5. `specs/README.md` and the matching spec, if one exists — the plan then
       implements that spec and names it in `Spec:`;
-   5. `ls docs/plans/` — to pick the next free `NN` and to see whether an
+   6. `ls docs/plans/` — to pick the next free `NN` and to see whether an
       earlier plan already covers part of the request.
 
    Docs describe the code; when a doc and the code disagree, **the code wins**

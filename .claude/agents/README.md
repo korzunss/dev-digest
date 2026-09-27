@@ -8,6 +8,7 @@ set. For exact rules and output templates, open the agent file.
 
 | Agent | Responsibility | Tools | Model | Permission mode | `maxTurns` |
 |---|---|---|---|---|---|
+| [`brainstormer`](brainstormer.md) | Turns a vague idea into at most 5 substantively different approaches, including the status quo, with one recommendation and a go/needs-clarification/kill verdict; optional stage before `researcher`/`planner` | `Read, Grep, Glob` | `opus` | default | 25 |
 | [`researcher`](researcher.md) | Answers questions with sourced evidence, about this repo or external libraries and APIs | `Read, Grep, Glob, Bash, WebSearch, WebFetch` | `sonnet` | default | 40 |
 | [`planner`](planner.md) | Turns a request into a Development Plan (`Status: draft`) before any code is written; writes only that plan file and its index row | `Read, Grep, Glob, Bash, Write, Edit` | `opus` | default | 60 |
 | [`implementer`](implementer.md) | Executes an approved plan one step group per run across `server/`, `reviewer-core/`, `client/`, `e2e/` and verifies its own changes; closes gaps in fix mode | `Read, Grep, Glob, Edit, Write, Bash` | `sonnet` | `acceptEdits` | 100 |
@@ -19,14 +20,17 @@ set. For exact rules and output templates, open the agent file.
 None of them has the `Agent` tool. Only the main session delegates, so there is
 no nested spawning.
 
-**What enforces the limits.** `researcher`, `architecture-reviewer` and
-`plan-verifier` have no `Edit`/`Write` in `tools`, so they cannot write files
-through those tools. `planner` has `Write`/`Edit`, but only for its own plan
-file and index row — a **prompt rule**, like everything else below:
+**What enforces the limits.** `researcher`, `architecture-reviewer`,
+`plan-verifier` and `brainstormer` have no `Edit`/`Write` in `tools`, so they
+cannot write files through those tools. `planner` has `Write`/`Edit`, but only
+for its own plan file and index row — a **prompt rule**, like everything else
+below:
 
 - `Bash` is limited by an explicit command allowlist in `researcher`,
   `planner`, `architecture-reviewer`, `plan-verifier` and `doc-writer`, and by
   a list of forbidden commands in `implementer` and `test-writer`;
+- `brainstormer` has no `Bash` at all, unlike the others' allowlist, so its
+  read-only guarantee needs no prompt rule;
 - `test-writer` writes test files only — its one production touch is a
   temporary break-check mutation, reverted and verified by `shasum`;
 - `doc-writer` writes Markdown docs only, never `docs/plans/`, `INSIGHTS.md`
@@ -39,10 +43,15 @@ No hook enforces any of these yet. The security review of implemented code is
 
 ```mermaid
 flowchart LR
-  req([request]) --> planner
+  req([request]) -. vague idea .-> brainstormer
+  brainstormer --> idea[brief saved verbatim<br/>docs/ideas/NN]
+  idea --> pick{you pick OptN}
+  pick --> planner
+  pick -. facts needed .-> researcher
+  req --> planner
   planner --> plan[Development Plan S1…Sn<br/>Status: draft]
-  plan --> save[main session saves<br/>docs/plans/NN-name.md]
-  save --> ok{decisions resolved,<br/>you approve}
+  plan --> record[main session records<br/>decisions, sets Status]
+  record --> ok{decisions resolved,<br/>you approve}
   ok -- Status: approved --> implementer
   implementer -- next step group --> implementer
   implementer --> tw[test-writer]
@@ -52,7 +61,7 @@ flowchart LR
   AR --> gate{main session decides}
   PV --> gate
   gate -- gaps: fix mode --> implementer
-  gate -- plan change --> save
+  gate -- plan change --> record
   gate -- complete or signed off:<br/>Status: done --> dw[doc-writer]
   researcher -. on demand .-> planner
   researcher -. on demand .-> implementer
@@ -60,6 +69,13 @@ flowchart LR
 
 The main session drives every hop:
 
+0. An optional brainstorm stage: for a goal with no chosen approach,
+   `brainstormer` compares at most 5 options, including the status quo, and
+   returns a brief. It writes nothing; the brief is saved **verbatim** (`kill`
+   included) to `docs/ideas/NN-kebab-name.md` with its index row, by the main
+   session, which adds only `Status:` and `## Choice recorded`. The chosen
+   option becomes the planner's scope; *Facts needed* seeds the researcher's
+   questions.
 1. Research before planning is repo-mode only; external research runs later,
    only for the planner's *Risks & open questions*.
 2. The planner writes its plan itself as `docs/plans/NN-kebab-name.md`
@@ -72,12 +88,12 @@ The main session drives every hop:
    integration tests related to its group; the status moves to `in-progress`.
    Hand-offs between groups are appended by the main session under
    `## Handoffs → G<n>` in the plan, not pasted into prompts.
-3. After the last group, the main session runs the full server integration
+4. After the last group, the main session runs the full server integration
    suite once and passes its result, with the same plan path, to the
    `plan-verifier`. The `architecture-reviewer` runs in parallel. Both work in
    a fresh context and see the plan and the diff, not the implementer's
    reasoning.
-4. Gaps go back to the implementer in **fix mode** (plan path + gap ids). A gap
+5. Gaps go back to the implementer in **fix mode** (plan path + gap ids). A gap
    that needs a file outside every step's *Files*, or any change that adds
    files or steps or alters a recorded decision, is a **plan change**: the plan
    returns to `draft` and needs the user's approval again. A trivial fix
@@ -85,7 +101,7 @@ The main session drives every hop:
    migration, vendor or lock-file edit) is applied by the main session and
    logged as `main-session fix: <id>`. Re-verification after fixes runs the
    `plan-verifier` in **delta mode**.
-5. The plan becomes `done` after a `complete` verification, or after
+6. The plan becomes `done` after a `complete` verification, or after
    `complete — needs sign-off` once the user has accepted every listed
    unverified item. Then the `doc-writer` documents what was delivered.
 
@@ -98,6 +114,7 @@ agent that edits a plan file, and only its own draft or correction round.
 
 | Agent | Accepts a plan in status | Refuses |
 |---|---|---|
+| `brainstormer` | none — runs before a plan exists | — |
 | `planner` | writes a new one as `draft`; corrections keep it `draft` | — |
 | `implementer` | `approved`, `in-progress` | `draft`, `done`; any plan with an unresolved *Decisions needed* row |
 | `test-writer` | `approved`, `in-progress`, `done` | `draft` |
@@ -109,6 +126,7 @@ agent that edits a plan file, and only its own draft or correction round.
 
 | Agent | Input | Output | Stops early with |
 |---|---|---|---|
+| `brainstormer` | A vague idea, goal or "should we…" question, with no chosen approach yet | **Idea brief**: problem, decision drivers, appetite, an "already in the repo" check, at most 5 unranked options including the status quo (value, packages/contract/migration, per-run LLM cost, risk, kill criterion), a comparison table adding purity, no-go and confidence as columns, one recommendation with a go/needs-clarification/kill verdict, the cheapest experiment for the riskiest assumption, questions that would change the choice, facts needed for the researcher | *Clarification needed*: up to 3 blocking questions, each with a default; or a redirect naming `planner` when one approach is already chosen and the request asks "how" |
 | `researcher` | A concrete question, about the repo, external facts, or both | *Repo research* and/or *External research* report: answer, confidence, evidence table (`path:line` or URL), every claim labelled `fact`/`inference`, only sources actually fetched, mandatory **Not established** | *Clarification needed*: up to 3 blocking questions |
 | `planner` | A feature or change request, optionally a spec from `specs/`; later, corrections or decisions | **Development Plan** (`Status: draft`, `Save as: docs/plans/NN-…`): acceptance criteria, **Decisions needed**, **step groups** with handoffs, steps `S1…Sn` (files, layer, skills, practices, known gotchas, **Done when**), tests by tier, migrations and contracts, out of scope; below the brief marker: context, design notes, risks, handed off, insights to record, red-flags check. On corrections: only the changed sections | *Clarification needed*: up to 3 blocking questions, each with a default |
 | `implementer` | Plan mode: the path of an `approved` plan in `docs/plans/` + the step group to run. Fix mode: the plan path + gap ids from `plan-verifier` or findings from `architecture-reviewer` | **Implementation Report**: plan, mode and group, status, per-step (or per-gap) table, deviations (trivial / material with a suggested plan change), skills applied, verification commands with results, not verified, diff trace, out-of-plan issues, handoff to the next group, handoff to review (architecture / security), insight candidates | *Plan deviation*: no plan file, plan not `approved`, an unresolved decision, a step without Files or Done when, a step it is not allowed to do, a fix that needs a file outside the plan, or Node < 22 |
@@ -147,14 +165,14 @@ collected here so a change to one is made in all.
 - **Exclude `server/clones/**`** from every search.
 - **Budgets.** Every agent has a `maxTurns` cap (table above). `researcher`
   states about 15 searches + fetches per mode, `planner` about 40 reads or
-  searches. `implementer` follows "keep the run small": narrowest test per
-  step, full package suites once per group, related integration tests only, no
-  repeat runs "to confirm stability"; the main session runs the full
-  integration suite once after the last group.
+  searches, `brainstormer` about 10 reads. `implementer` follows "keep the run
+  small": narrowest test per step, full package suites once per group, related
+  integration tests only, no repeat runs "to confirm stability"; the main
+  session runs the full integration suite once after the last group.
 - **Report sizes.** Plan brief (above the marker) ≤ ~20,000 characters;
   reports ≤ ~700–1,000 words (implementer ~900, test-writer ~800,
-  architecture-reviewer ~900, plan-verifier ~1,000, doc-writer ~700).
-  Commands and outcomes, not logs.
+  architecture-reviewer ~900, plan-verifier ~1,000, doc-writer ~700,
+  brainstormer: the brief itself, ~90 lines). Commands and outcomes, not logs.
 
 ## Shared ids
 
@@ -163,6 +181,7 @@ verifier's matrix reuse them, and the implementer's fix mode accepts them.
 
 | Id | Defined by | Used by |
 |---|---|---|
+| `Opt1…` options · `Q1…` questions | idea brief | user's choice, planner |
 | `AC1…` acceptance criteria · `DC1…` decisions | plan | plan-verifier matrix |
 | `G1…` step groups | plan | implementer (one group per run), plan-verifier (groups verified) |
 | `S1…` steps with *Files*, *Practices*, *Done when* | plan | implementer report, plan-verifier (`S`, `P`, `D` rows), fix mode |
@@ -188,10 +207,11 @@ This costs about 28k tokens of context per spawn. Two skills are not preloaded:
 `researcher` preloads only `engineering-insights`, because its repo mode starts
 from the `INSIGHTS.md` files.
 
-The other four preload only what their job needs:
+The other five preload only what their job needs:
 
 | Agent | Preloaded skills | Why this set |
 |---|---|---|
+| `brainstormer` | `engineering-insights` | its grounding read starts from the root `INSIGHTS.md` headings, like `researcher`; it needs no other skill because it places nothing and writes no code |
 | `test-writer` | `engineering-insights` · `react-testing-library` · `fastify-best-practices` · `drizzle-orm-patterns` · `onion-architecture` · `zod` · `typescript-expert` · `security` | test idioms per layer. `security` picks the negative cases at trust boundaries. The production-code skills (`next-best-practices`, `react-best-practices`, `frontend-architecture`, `postgresql-table-design`) are left out because it writes no production code |
 | `architecture-reviewer` | `engineering-insights` · `onion-architecture` · `frontend-architecture` · `next-best-practices` · `fastify-best-practices` · `zod` · `typescript-expert` | the skills that define boundaries and placement. No `security`: security review is out of its scope |
 | `plan-verifier` | `engineering-insights` | the plan is its rulebook. Any other skill (`onion-architecture`, `frontend-architecture`, `typescript-expert`, …) is **read on demand**, only when a plan item names one of its rules as the criterion, and only for that item. Preloading review skills invites generic review in place of the matrix |
@@ -202,8 +222,10 @@ The other four preload only what their job needs:
 
 ## INSIGHTS.md and gotchas
 
-All seven agents **read** `<pkg>/insights/gotchas.md` first, then the root and
-package `INSIGHTS.md`. None of them **writes** `INSIGHTS.md`,
+All eight agents **read** `<pkg>/insights/gotchas.md` first, then the root and
+package `INSIGHTS.md`. `brainstormer` is the one exception: it reads only the
+root `INSIGHTS.md`'s `^### ` headings, never the full log, as part of its
+shallow grounding read. None of them **writes** `INSIGHTS.md`,
 `insights/gotchas.md` or `docs/plans/`. They return *Insight candidates*, and
 the main session records them during wrap-up with `engineering-insights`, as
 `CLAUDE.md` requires; that skill also brings `insights/gotchas.md` in step
@@ -299,6 +321,32 @@ silent).
 | Process rules R1–R4 (no weakened tests, protected paths, plan file, break checks reverted); unverifiable items need the user's sign-off | project decision (2026-09-26) · `docs/plans/README.md` |
 | Docs placement and index rows; `e2e/specs/` is executable; reviewer prompts are DB-synced | `docs/README.md` · `<pkg>/docs/README.md` · `specs/README.md` · `docs/agent-prompts/README.md` |
 | Docs describe only what the verifier marked `met`; no line numbers in doc prose; no ADR files — decisions live in the plan | project decision (2026-09-26) |
+
+### brainstormer: external practice
+
+Researcher runs, retrieved 2026-09-27 (plan `docs/plans/03-brainstormer-agent.md`
+→ *Sources*). Only the findings this agent's S1 actually applies.
+
+| Practice | Applied as | Source |
+|---|---|---|
+| Verbalized sampling: several options with a confidence in one call, diversity gains independent of temperature | each option carries a `confidence`, marked `inference` | [Verbalized Sampling](https://arxiv.org/abs/2510.01171) |
+| Sequential anchoring: later items in one call anchor on earlier ones | name every option in one line before detailing any | [arxiv.org/pdf/2605.30150](https://arxiv.org/pdf/2605.30150) |
+| Option-order bias swings results; keep key candidates off the edges | status quo not placed first or last in the list | [arxiv.org/abs/2308.11483](https://arxiv.org/abs/2308.11483) |
+| "Don't steer the session toward a yes"; `kill` is a legitimate outcome | `kill` is a first-class verdict, stated as a hard rule | [BMAD explore-and-validate](https://docs.bmad-method.org/plan/explore-and-validate-an-idea/) |
+| `go` / `needs-clarification` / `kill` verdict | adopted as is | [Spec Kit overview](https://github.github.io/spec-kit/reference/overview.html) |
+| Decision Drivers stated before the options | `## Problem as understood` → Decision drivers, before `## Options` | [MADR template](https://adr.github.io/madr/decisions/adr-template.html) |
+| Appetite and per-option No-gos | brief-level `Appetite`; per-option `No-go` | [Shape Up ch. 6](https://basecamp.com/shapeup/1.5-chapter-06) |
+| RAT: aim the cheapest experiment at the riskiest assumption | `## Cheapest experiment` section | [RAT](https://hackernoon.com/the-mvp-is-dead-long-live-the-rat-233d5d16ab02) |
+| Pre-mortem phrasing for a kill criterion | "if OptN was picked and failed, the likely reason is …" | [HBR pre-mortem](https://hbr.org/2007/09/performing-a-project-premortem) |
+
+### brainstormer: repo sources
+
+| Rule | Source |
+|---|---|
+| `reviewer-core` stays pure — no db, github or fs imports | root `AGENTS.md` |
+| A new or edited agent is picked up mid-session, with a delay; wait for the "new agent types are now available" notice before spawning it | root `INSIGHTS.md`, 2026-09-25 "correction: new agents do show up mid-session" |
+| A brand-new `.claude/agents/*.md` cannot be spawned in the session that created it | root `INSIGHTS.md`, 2026-09-25 "a new `.claude/agents/*.md` can't be spawned…" |
+| `rg` is a shell function here, not a binary; process scans use `grep`, not `xargs rg` | root `INSIGHTS.md`, 2026-09-27 "`rg` … is not a binary here" |
 
 ## Adding or changing an agent
 
