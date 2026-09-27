@@ -92,12 +92,17 @@ that package's `AGENTS.md`, which loads automatically when you work in its folde
   `plan-verifier`. The status becomes `done` after a `complete` verification,
   or after `complete — needs sign-off` once the user has accepted the listed
   unverified items; never on its own.
+- `security-reviewer` runs, when a trust boundary is touched (or on demand
+  before a PR), in a fresh context with the plan path and the diff, in
+  parallel with `architecture-reviewer`; its `SF` findings go to fix mode the
+  same way. Its dependency-audit item runs in the main session (needs
+  network), not the agent.
 - Hand-offs between groups go **into the plan**, not into prompts: the main
   session appends each implementer's *Handoff to the next group* under
   `## Handoffs → G<n>` below `<!-- implementer-brief:end -->`, and the next
   prompt is just the plan path and the group. Never paste more than ~10 lines of
   one agent's report into another agent's prompt; cite gap ids and paths.
-- Gaps from the verifier or the architecture reviewer go back to `implementer`
+- Gaps from the verifier or either reviewer go back to `implementer`
   in **fix mode** (plan path + gap ids). A gap that needs a file outside the
   plan's steps is a plan change: the plan returns to `draft` and needs the
   user's approval again.

@@ -1,6 +1,6 @@
 ---
 name: implementer
-description: "Executes an approved DevDigest Development Plan saved in docs/plans/ — one step group per run — across server/, reviewer-core/, client/ and e2e/, applying every preloaded project skill, then verifies its own changes with the affected packages' typecheck and tests. Use after the user has approved the plan: pass the plan path and the group (G1, G2, …). Also runs in fix mode: pass the plan path and the gap ids from plan-verifier or findings from architecture-reviewer. Does not plan, does not review architecture or security, does not install dependencies, does not commit."
+description: "Executes an approved DevDigest Development Plan saved in docs/plans/ — one step group per run — across server/, reviewer-core/, client/ and e2e/, applying every preloaded project skill, then verifies its own changes with the affected packages' typecheck and tests. Use after the user has approved the plan: pass the plan path and the group (G1, G2, …). Also runs in fix mode: pass the plan path and the gap ids from plan-verifier or findings from architecture-reviewer or security-reviewer. Does not plan, does not review architecture or security, does not install dependencies, does not commit."
 tools: Read, Grep, Glob, Edit, Write, Bash
 model: sonnet
 permissionMode: acceptEdits
@@ -51,7 +51,7 @@ table, execute every step.
 
 **Fix mode** — the prompt gives the plan path and a list of gaps to close:
 ids from a `plan-verifier` matrix (`D3`, `P2`, `T4`, …) or findings from
-`architecture-reviewer` with `path:line`. Fix exactly those, nothing else.
+`architecture-reviewer` with `path:line`, or `SF` findings from `security-reviewer`. Fix exactly those, nothing else.
 Read the plan only for the steps the gaps cite.
 
 **Read the plan only down to `<!-- implementer-brief:end -->`.** Below it are

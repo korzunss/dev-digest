@@ -48,6 +48,22 @@ _Nothing yet._
 
 ## What Doesn't Work
 
+### 2026-09-27 — seeding the working tree while other reviewer runs are in flight breaks their read-only proof
+**Symptom:** during plan 04's smoke tests, the T5 module audit reported
+`git status --porcelain unchanged: no`. A file it never touched had flipped
+from ` M` to clean mid-run.
+**Cause:** the main session reverted the T2 seed (`git checkout -- <file>`)
+while T5 was still running. Reviewer agents prove they are read-only by
+comparing two `git status` snapshots of the shared working tree, so any edit
+by the main session during their run shows up as a violation.
+**Rule:** when reviewer runs overlap, apply and revert seeds only while no
+other reviewer run is in flight. Run module audits first, or run all smoke
+tests one after another. Treat a snapshot mismatch that lines up with a
+main-session seed or revert as noise, not an agent write. The agent's report
+should name the file, as T5's did.
+**Evidence:** `docs/plans/04-security-reviewer-agent.md` → Verification log
+(T5, T6)
+
 ### 2026-09-27 — in an agent prompt, the output template beats the prose rules
 **Symptom:** `brainstormer` smoke runs broke two rules its Method section
 stated plainly. The status quo came out as `Opt1`, although the prompt said

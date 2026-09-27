@@ -331,4 +331,21 @@ _Nothing yet._
 
 ## Open Questions
 
-_Nothing yet._
+### 2026-09-27 — "no auth by design" is really "no auth for the whole LAN"
+**Symptom:** a `security-reviewer` module audit (plan 04, T8) showed that any
+peer on the same network can call every route. For example,
+`POST /settings/test-connection` with a `key` persists it through
+`container.secrets.set`, so a peer can overwrite the user's stored LLM or forge
+key. A web page can reach the same routes through DNS rebinding.
+**Cause:** `app.listen({ port, host: '0.0.0.0' })` binds all interfaces, while
+the log line says `http://localhost`. `server/src` has no Host-header or
+`onRequest` guard. CORS locked to `webOrigin` does not stop non-browser
+clients, and it does not stop rebinding. The local-first `LocalNoAuthProvider`
+design assumes a loopback-only API.
+**Rule:** until this is fixed, treat every route as reachable from the LAN.
+Never add a route that returns a secret or runs a side effect on the strength
+of "it's local". The candidate fix, a separate plan: bind `127.0.0.1` by
+default with an opt-in host, and add an `onRequest` Host/Origin allowlist.
+**Evidence:** `server/src/server.ts:28` · `server/src/modules/settings/routes.ts:78-86`
+· `grep -rn "headers.host\|onRequest" server/src` → none ·
+`docs/plans/04-security-reviewer-agent.md` → Verification log T8

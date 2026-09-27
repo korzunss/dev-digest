@@ -14,6 +14,7 @@ set. For exact rules and output templates, open the agent file.
 | [`implementer`](implementer.md) | Executes an approved plan one step group per run across `server/`, `reviewer-core/`, `client/`, `e2e/` and verifies its own changes; closes gaps in fix mode | `Read, Grep, Glob, Edit, Write, Bash` | `sonnet` | `acceptEdits` | 100 |
 | [`test-writer`](test-writer.md) | Writes and runs UI and backend tests in the right tier, including negative tests at trust boundaries, and proves each new test can fail | `Read, Grep, Glob, Edit, Write, Bash` | `sonnet` | `acceptEdits` | 60 |
 | [`architecture-reviewer`](architecture-reviewer.md) | Checks a diff or a module against the architectural boundaries (A1–A12), returns evidence-backed findings with fix-mode ids and PASS/BLOCK | `Read, Grep, Glob, Bash` | `opus` | default | 40 |
+| [`security-reviewer`](security-reviewer.md) | Traces untrusted data from a source to a sink across DevDigest's own trust boundaries (X1–X11), returns evidence-backed `SF` findings and PASS/BLOCK | `Read, Grep, Glob, Bash` | `opus` | default | 40 |
 | [`plan-verifier`](plan-verifier.md) | Verifies the code against every plan and spec item and the pipeline's process rules, as a traceability matrix; unverifiable items go to the user for sign-off | `Read, Grep, Glob, Bash` | `opus` | default | 60 |
 | [`doc-writer`](doc-writer.md) | Documents finished, verified features and turns notes into docs or specs with diagrams, filed in the right section with an index row | `Read, Grep, Glob, Edit, Write, Bash` | `sonnet` | `acceptEdits` | 40 |
 
@@ -21,14 +22,15 @@ None of them has the `Agent` tool. Only the main session delegates, so there is
 no nested spawning.
 
 **What enforces the limits.** `researcher`, `architecture-reviewer`,
-`plan-verifier` and `brainstormer` have no `Edit`/`Write` in `tools`, so they
-cannot write files through those tools. `planner` has `Write`/`Edit`, but only
-for its own plan file and index row — a **prompt rule**, like everything else
-below:
+`security-reviewer`, `plan-verifier` and `brainstormer` have no `Edit`/`Write`
+in `tools`, so they cannot write files through those tools. `planner` has
+`Write`/`Edit`, but only for its own plan file and index row — a **prompt
+rule**, like everything else below:
 
 - `Bash` is limited by an explicit command allowlist in `researcher`,
-  `planner`, `architecture-reviewer`, `plan-verifier` and `doc-writer`, and by
-  a list of forbidden commands in `implementer` and `test-writer`;
+  `planner`, `architecture-reviewer`, `security-reviewer`, `plan-verifier` and
+  `doc-writer`, and by a list of forbidden commands in `implementer` and
+  `test-writer`;
 - `brainstormer` has no `Bash` at all, unlike the others' allowlist, so its
   read-only guarantee needs no prompt rule;
 - `test-writer` writes test files only — its one production touch is a
@@ -36,8 +38,10 @@ below:
 - `doc-writer` writes Markdown docs only, never `docs/plans/`, `INSIGHTS.md`
   or `insights/gotchas.md`.
 
-No hook enforces any of these yet. The security review of implemented code is
-**not** part of this set.
+No hook enforces any of these yet. `security-reviewer` is the security review
+of DevDigest's own implemented code — distinct from
+`docs/agent-prompts/security-reviewer.md`, the studio's DB-seeded LLM prompt
+that reviews a *user's* pull request.
 
 ## How they fit together
 
@@ -58,7 +62,9 @@ flowchart LR
   tw --> it[main session:<br/>full .it suite once]
   it --> PV[plan-verifier]
   tw --> AR[architecture-reviewer]
+  tw --> SR[security-reviewer]
   AR --> gate{main session decides}
+  SR --> gate
   PV --> gate
   gate -- gaps: fix mode --> implementer
   gate -- plan change --> record
@@ -90,11 +96,12 @@ The main session drives every hop:
    `## Handoffs → G<n>` in the plan, not pasted into prompts.
 4. After the last group, the main session runs the full server integration
    suite once and passes its result, with the same plan path, to the
-   `plan-verifier`. The `architecture-reviewer` runs in parallel. Both work in
-   a fresh context and see the plan and the diff, not the implementer's
-   reasoning.
-5. Gaps go back to the implementer in **fix mode** (plan path + gap ids). A gap
-   that needs a file outside every step's *Files*, or any change that adds
+   `plan-verifier`. `architecture-reviewer` and, per D7, `security-reviewer`
+   run in parallel. All three work in a fresh context and see the plan and
+   the diff, not the implementer's reasoning.
+5. Gaps go back to the implementer in **fix mode** (plan path + gap ids), from
+   the verifier or either reviewer. A gap that needs a file outside every
+   step's *Files*, or any change that adds
    files or steps or alters a recorded decision, is a **plan change**: the plan
    returns to `draft` and needs the user's approval again. A trivial fix
    (≤1 file, ≤10 lines, file already in a step's *Files*, not a contract,
@@ -119,6 +126,7 @@ agent that edits a plan file, and only its own draft or correction round.
 | `implementer` | `approved`, `in-progress` | `draft`, `done`; any plan with an unresolved *Decisions needed* row |
 | `test-writer` | `approved`, `in-progress`, `done` | `draft` |
 | `architecture-reviewer` | any, or none — the plan is optional context | — |
+| `security-reviewer` | any, or none — the plan is optional context | — |
 | `plan-verifier` | `approved`, `in-progress` | `draft` |
 | `doc-writer` | `done` | anything else → *Clarification needed*: the feature is not finished |
 
@@ -132,6 +140,7 @@ agent that edits a plan file, and only its own draft or correction round.
 | `implementer` | Plan mode: the path of an `approved` plan in `docs/plans/` + the step group to run. Fix mode: the plan path + gap ids from `plan-verifier` or findings from `architecture-reviewer` | **Implementation Report**: plan, mode and group, status, per-step (or per-gap) table, deviations (trivial / material with a suggested plan change), skills applied, verification commands with results, not verified, diff trace, out-of-plan issues, handoff to the next group, handoff to review (architecture / security), insight candidates | *Plan deviation*: no plan file, plan not `approved`, an unresolved decision, a step without Files or Done when, a step it is not allowed to do, a fix that needs a file outside the plan, or Node < 22 |
 | `test-writer` | The path of an approved (or done) plan in `docs/plans/` + the Implementation Report(s), or named files and the behaviour to cover | **Test Report**: cases listed before writing, tests written (file, tier, kind, result), **proof** per new file (break check with `shasum` restored, 3-run stability), commands, **production defects found**, not verified, changed paths, coverage gaps | *Blocked* (no subject, no seam, or a `shasum` mismatch after a break check) or *Clarification needed* (no target, undecided expected behaviour) |
 | `architecture-reviewer` | Diff mode: a base ref or the working tree. Module mode: target paths. Optionally the plan path in `docs/plans/` | **Architecture Review**: mode, PASS/BLOCK, read-only proof (`git status` unchanged), checks run (A1…A12), findings `F1…` with `file:line` and evidence, *For fix mode* list, informational (module mode), downgraded, pre-existing, checks not run | *Clarification needed* (missing or ambiguous target) or `Status: blocked` (empty diff, unknown base ref) |
+| `security-reviewer` | Diff mode: a base ref or the working tree. Module mode: target paths. Optionally the plan path in `docs/plans/` | **Security Review**: mode, PASS/BLOCK, read-only proof (`git status` unchanged), trust boundaries touched, checks run (X1…X11), findings `SF1…` with quoted source → sink and evidence, *For fix mode* list, needs manual check, filtered out, downgraded, not reported by design, informational (module mode), pre-existing, checks not run | *Clarification needed* (missing or ambiguous target) or `Status: blocked` (empty diff, unknown base ref) |
 | `plan-verifier` | The path of the approved plan in `docs/plans/` + a diff source (+ which groups are done, the full integration run's result); optionally the spec and the reports | **Plan Verification**: result (`complete` · `complete — needs sign-off` · `incomplete` · `contradicted`), read-only proof, traceability matrix (AC/DC/S/P/D/T/M/O/R/SP → how sought → status → evidence → report claimed), gaps in fix-mode format (or *plan change*), needs sign-off, unplanned changes, checks re-run | `Status: blocked`: no plan file, a `draft` plan, no diff source, or empty diff · *Clarification needed* when the target is ambiguous |
 | `doc-writer` | A finished plan (`docs/plans/…`, `Status: done`) + its implementation and verification reports, or a spec, notes or a module | **Documentation Report**: files with Diátaxis type and index row, claims → evidence (`path:line`, kept out of doc prose), not documented (deviations, not met, awaiting sign-off), rationale gaps, diagrams, checks (links, anchors, citations, scope), suggested `AGENTS.md` lines | *Clarification needed* (plan not `done`, code absent, ambiguous kind or audience) or `Status: blocked` (a file it may not write) |
 
@@ -157,8 +166,9 @@ collected here so a change to one is made in all.
 - **Clarification before guessing.** When the target or the expected behaviour
   is ambiguous, an agent returns a *Clarification needed* report — at most three
   questions, each with a default the user can accept with "yes".
-- **Read-only proof.** `architecture-reviewer` and `plan-verifier` record
-  `git status --porcelain` at start and end and report whether it changed.
+- **Read-only proof.** `architecture-reviewer`, `security-reviewer` and
+  `plan-verifier` record `git status --porcelain` at start and end and report
+  whether it changed.
 - **No invented evidence.** Every `path:line` in a report was opened in that
   run; every command result is one the agent ran (or, for the verifier, the
   main session's integration run it was given, named as such).
@@ -171,8 +181,9 @@ collected here so a change to one is made in all.
   session runs the full integration suite once after the last group.
 - **Report sizes.** Plan brief (above the marker) ≤ ~20,000 characters;
   reports ≤ ~700–1,000 words (implementer ~900, test-writer ~800,
-  architecture-reviewer ~900, plan-verifier ~1,000, doc-writer ~700,
-  brainstormer: the brief itself, ~90 lines). Commands and outcomes, not logs.
+  architecture-reviewer ~900, security-reviewer ~900, plan-verifier ~1,000,
+  doc-writer ~700, brainstormer: the brief itself, ~90 lines). Commands and
+  outcomes, not logs.
 
 ## Shared ids
 
@@ -189,6 +200,7 @@ verifier's matrix reuse them, and the implementer's fix mode accepts them.
 | `R1…R4` process rules | `plan-verifier.md` | plan-verifier |
 | `SP1…` spec acceptance lines | spec | plan-verifier |
 | `A1…A12` checks · `F1…` findings | `architecture-reviewer.md` / its report | fix mode (*For fix mode* list) |
+| `X1…X11` checks · `SF1…` findings | `devdigest-appsec` skill / `security-reviewer.md` / its report | fix mode (*For fix mode* list) |
 
 ## Skills
 
@@ -204,16 +216,18 @@ starts, so every rule a plan relies on also binds the implementation:
 This costs about 28k tokens of context per spawn. Two skills are not preloaded:
 `mermaid-diagram`, which has nothing to do with implementation, and
 `pr-self-review`, the pre-PR gate, which the implementer does not run.
-`researcher` preloads only `engineering-insights`, because its repo mode starts
-from the `INSIGHTS.md` files.
+`devdigest-appsec` is also not preloaded here — it is review knowledge, used
+only by `security-reviewer`. `researcher` preloads only `engineering-insights`,
+because its repo mode starts from the `INSIGHTS.md` files.
 
-The other five preload only what their job needs:
+The other six preload only what their job needs:
 
 | Agent | Preloaded skills | Why this set |
 |---|---|---|
 | `brainstormer` | `engineering-insights` | its grounding read starts from the root `INSIGHTS.md` headings, like `researcher`; it needs no other skill because it places nothing and writes no code |
 | `test-writer` | `engineering-insights` · `react-testing-library` · `fastify-best-practices` · `drizzle-orm-patterns` · `onion-architecture` · `zod` · `typescript-expert` · `security` | test idioms per layer. `security` picks the negative cases at trust boundaries. The production-code skills (`next-best-practices`, `react-best-practices`, `frontend-architecture`, `postgresql-table-design`) are left out because it writes no production code |
 | `architecture-reviewer` | `engineering-insights` · `onion-architecture` · `frontend-architecture` · `next-best-practices` · `fastify-best-practices` · `zod` · `typescript-expert` | the skills that define boundaries and placement. No `security`: security review is out of its scope |
+| `security-reviewer` | `engineering-insights` · `devdigest-appsec` · `fastify-best-practices` · `zod` | knowledge (trust boundaries, `X1…X11`, LLM controls, never-report list) lives in `devdigest-appsec`; process (modes, severity, filter pass, template) lives in the agent. No `security`: it targets a different (Express/Mongo/JWT) stack |
 | `plan-verifier` | `engineering-insights` | the plan is its rulebook. Any other skill (`onion-architecture`, `frontend-architecture`, `typescript-expert`, …) is **read on demand**, only when a plan item names one of its rules as the criterion, and only for that item. Preloading review skills invites generic review in place of the matrix |
 | `doc-writer` | `engineering-insights` · `mermaid-diagram` | diagrams. Placement rules come from the `docs/README.md` indexes |
 
@@ -222,7 +236,7 @@ The other five preload only what their job needs:
 
 ## INSIGHTS.md and gotchas
 
-All eight agents **read** `<pkg>/insights/gotchas.md` first, then the root and
+All nine agents **read** `<pkg>/insights/gotchas.md` first, then the root and
 package `INSIGHTS.md`. `brainstormer` is the one exception: it reads only the
 root `INSIGHTS.md`'s `^### ` headings, never the full log, as part of its
 shallow grounding read. None of them **writes** `INSIGHTS.md`,
@@ -347,6 +361,33 @@ Researcher runs, retrieved 2026-09-27 (plan `docs/plans/03-brainstormer-agent.md
 | A new or edited agent is picked up mid-session, with a delay; wait for the "new agent types are now available" notice before spawning it | root `INSIGHTS.md`, 2026-09-25 "correction: new agents do show up mid-session" |
 | A brand-new `.claude/agents/*.md` cannot be spawned in the session that created it | root `INSIGHTS.md`, 2026-09-25 "a new `.claude/agents/*.md` can't be spawned…" |
 | `rg` is a shell function here, not a binary; process scans use `grep`, not `xargs rg` | root `INSIGHTS.md`, 2026-09-27 "`rg` … is not a binary here" |
+
+### security-reviewer: external practice
+
+Researcher runs, retrieved 2026-09-27 (`docs/plans/04-security-reviewer-agent.md`
+→ *Sources*). Only the findings S1 (the agent definition) actually applies —
+the threat-model and OWASP/ASVS/LLM sources feed `devdigest-appsec` instead
+(see that skill's `references/sources.md`).
+
+| Practice | Applied as | Source |
+|---|---|---|
+| Confidence bands; "only flag if >80% confident of actual exploitability" | Report only ≥ 0.8; 0.7–0.8 → *Needs manual check* | [claude-code-security-review `prompts.py`](https://raw.githubusercontent.com/anthropics/claude-code-security-review/main/claudecode/prompts.py) |
+| A separate per-finding filter; filtered findings kept with a reason, never dropped | Filter pass on every finding against `NR` ids; *Filtered out* section | [claude-code-security-review `findings_filter.py`](https://raw.githubusercontent.com/anthropics/claude-code-security-review/main/claudecode/findings_filter.py) |
+| Diff-only scope; per-finding file/line, severity, exploit, fix | Diff/module modes; `SF` finding row shape | [claude-code-security-review README](https://raw.githubusercontent.com/anthropics/claude-code-security-review/main/README.md) |
+| Exclusion list is customisable per repo | `devdigest-appsec/references/never-report.md` adapted for this repo, prompt injection removed | [custom-filtering-instructions.md](https://raw.githubusercontent.com/anthropics/claude-code-security-review/main/docs/custom-filtering-instructions.md) |
+| Models agree with researchers on true positives far more than on false positives (96% vs 41%) | "No self-clearing": a repo comment claiming safety never lowers confidence | [Semgrep: building an AppSec AI](https://semgrep.dev/blog/2025/building-an-appsec-ai-that-security-researchers-agree-with-96-of-the-time/) |
+| Lean `SKILL.md` + `references/`, decision tree to references | `devdigest-appsec` layout | [trailofbits/skills](https://github.com/trailofbits/skills) (CC-BY-SA-4.0, structure only) |
+
+### security-reviewer: repo sources
+
+| Rule | Source |
+|---|---|
+| Step 0 diff/module mechanics, *Read the diff economically*, read-only proof, Bash allowlist wording | `.claude/agents/architecture-reviewer.md` |
+| Severity scale and CRITICAL catalog mapped to `gate.md` §2–4 | `.claude/skills/pr-self-review/gate.md` |
+| Every count/placement/severity rule belongs in the output template, not only in prose | root `INSIGHTS.md`, 2026-09-27 "in an agent prompt, the output template beats the prose rules" |
+| `rg` is a shell function here, not a binary; the agent's own checks use `grep -E` | root `INSIGHTS.md`, 2026-09-27 "`rg` … is not a binary here" |
+| New agents are picked up mid-session, with a delay; wait for the notice before spawning | root `INSIGHTS.md`, 2026-09-25 "correction: new agents do show up mid-session" |
+| `git stash pop` un-stages a symlink — no stash in the smoke-test seed procedure | root `INSIGHTS.md`, 2026-09-21 |
 
 ## Adding or changing an agent
 

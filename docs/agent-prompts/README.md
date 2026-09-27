@@ -12,6 +12,11 @@ in the DB). The canonical, reviewable copies live next to this file:
 - [`test-quality-reviewer.md`](./test-quality-reviewer.md)
 - [`api-contract-reviewer.md`](./api-contract-reviewer.md)
 
+`security-reviewer.md` here is the studio's DB-seeded LLM reviewer prompt —
+it reviews a *user's* pull request. It is a different thing from the Claude
+Code subagent `.claude/agents/security-reviewer.md`, which reviews this
+repo's own implemented code.
+
 > The DB is the source of truth at run time. These files are the human-readable
 > originals — when you change a prompt, edit the file here **and** push it to the
 > agent (`PUT /agents/:id`, which versions the change into `agent_versions`).
