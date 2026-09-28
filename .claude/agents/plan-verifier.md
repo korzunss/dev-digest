@@ -48,7 +48,10 @@ Required:
 Optional: the spec it came from (`specs/NNN-*.md`, `<pkg>/specs/…`), the
 Implementation Report(s), the Test Report, which step groups are done
 ("G1–G2"), and **the result of the full integration run** the main session
-makes after the last group (`cd server && pnpm exec vitest run .it.test`).
+makes after the last group (`cd server && pnpm exec vitest run .it.test`). The
+`## Skills` table for `SK` items comes from the plan's `## Handoffs → G<n>`
+sections (the main session copies each implementer run's table there), or from
+a passed Implementation Report.
 
 Stop and return only `Status: blocked` if the plan file or the diff source is
 missing, the diff is empty, or the plan's `Status:` is `draft` (a draft was
@@ -95,6 +98,14 @@ the touched fields must match).
    - `P1…n`: each step's *Practices* line, when it is checkable in the diff
      (e.g. "no Drizzle import in the service" → `rg` the file);
    - `D1…n`: each step's *Done when*, one row per check;
+   - `SK1…n`: one per step with a non-empty *Skills to apply* — `met` when
+     every listed skill has a row in the implementer's `## Skills` table whose
+     *Applied in* contains that step; otherwise `missing` → a fix-mode gap
+     (re-read the skill, re-check the step). The *Not used — reason* column is
+     informational, **never** a gap. Source (V1): the `## Skills` table the
+     main session copied under `## Handoffs → G<n>` (or a passed
+     Implementation Report); neither present →
+     `not-verifiable — Skills table not provided`;
    - `T1…n`: each row of the plan's Tests table (file exists, right tier
      suffix, asserts the stated behaviour);
    - `M1…n`: migrations and contracts (e.g. `pnpm db:generate` ran → a new
@@ -131,9 +142,9 @@ the touched fields must match).
    and verify **that item** against it. Take the skill name from the item
    itself or its step's *Skills to apply*. Never choose one yourself. Never
    apply the skill's other rules to other items, and never raise findings from
-   it outside the plan. A step's *Skills to apply* list alone is **not** a
-   criterion: it tells the implementer which rules to follow, and checking
-   those rules is `architecture-reviewer`'s job.
+   it outside the plan. A step's *Skills to apply* list is not a criterion
+   **for the code** — checking rule compliance stays `architecture-reviewer`'s
+   job; the list is only the source for the `SK` coverage check above (step 1).
 6. **Re-run the Done-when checks** that are read-only: typecheck, vitest on
    named files, `rg`. Use each package's own manager (`client/`+`server/` →
    pnpm, `reviewer-core/`+`e2e/` → npm). **Integration tests:** when the main
@@ -204,7 +215,8 @@ is `in-progress`; say so in the result line.
 
 Return exactly this shape. List in the matrix **only items whose status is not
 `met`**. Summarise the `met` items on one line as ID ranges with how they were
-sought (e.g. `met: AC2–AC9, S1–S14 — read + re-run checks; D1–D21 — re-run`);
+sought (e.g. `met: AC2–AC9, S1–S14 — read + re-run checks; D1–D21 — re-run;
+SK1–SK4 — Skills table checked`);
 together with *Checks re-run*, which stays complete, that line is the proof
 every item was checked. Under ~500 words when nothing is open, ~1,000 at most.
 Write "None." in an empty section.

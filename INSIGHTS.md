@@ -85,6 +85,11 @@ approaches does not exercise it.
 **Evidence:** `docs/plans/03-brainstormer-agent.md` → Verification log (T5
 runs 2–3, T2 regression) · `.claude/agents/brainstormer.md` Method (b),
 *Padding check*, `## Options` heading
+**Extension (2026-09-28):** "in the template" means inside the fenced block.
+Plan 05's pass-1 size cap was an HTML comment one line **after** the closing
+fence in `planner.md`, so the copied template never carried it; plan-verifier
+flagged it as partial (S1/P1). Place such rules as comments inside the fence,
+before its last line.
 
 ### 2026-09-26 — the onion skill's `depcruise` gate and its baseline are not real
 **Symptom:** the planner and architecture-reviewer both reached for
@@ -174,6 +179,21 @@ that path; it's runtime data, and the next resync overwrites it.
 **Evidence:** `CLAUDE.md` → "Do not touch"; `.gitignore` → `clones/`
 
 ## Tool & Library Notes
+
+### 2026-09-28 — a Done-when `grep` for a phrase fails when Markdown wraps that phrase across two lines
+**Symptom:** in plan 05 G1 the implementer ran its full `maxTurns` (100 tool
+uses, 193k tokens) on six Markdown edits. Twice, a Done-when
+`grep -n 'Steps: pending decisions'` / `'not-verifiable — Skills table not
+provided'` found nothing although the text was present.
+**Cause:** `grep` matches line by line. Hard-wrapped Markdown prose splits a
+multi-word template string across two lines, so the phrase exists but never on
+one line.
+**Rule:** a phrase that a Done-when greps for is written unbroken on one line,
+ideally inside backticks, and never hard-wrapped. When a planner writes a grep
+Done-when for prose, it picks a short token that cannot wrap (an id, a heading,
+a backticked literal) instead of a sentence fragment.
+**Evidence:** `docs/plans/05-decisions-first-planning.md` → S3/S5 Done-when ·
+implementer run: 100 tool uses · `.claude/agents/plan-verifier.md`, `AGENTS.md`
 
 ### 2026-09-27 — `rg` edge checks catch comments and prose, and `rg` is not a binary here
 **Symptom:** a plan Done-when "`rg -n "_components|FindingCard|FindingRecord"

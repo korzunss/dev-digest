@@ -25,7 +25,11 @@ no nested spawning.
 `security-reviewer`, `plan-verifier` and `brainstormer` have no `Edit`/`Write`
 in `tools`, so they cannot write files through those tools. `planner` has
 `Write`/`Edit`, but only for its own plan file and index row — a **prompt
-rule**, like everything else below:
+rule**, like everything else below. Dropping `Edit` and keeping only `Write`
+was considered (D4) and declined: it enforces nothing (`Write` can still
+overwrite any file the agent has read) and forces whole-file rewrites for
+every pass-1 → pass-2 fill-in and correction. A planner-scoped hook on
+`docs/plans/**` is the only real limit and was declined too (plans 03/04):
 
 - `Bash` is limited by an explicit command allowlist in `researcher`,
   `planner`, `architecture-reviewer`, `security-reviewer`, `plan-verifier` and
@@ -53,9 +57,13 @@ flowchart LR
   pick --> planner
   pick -. facts needed .-> researcher
   req --> planner
-  planner --> plan[Development Plan S1…Sn<br/>Status: draft]
-  plan --> record[main session records<br/>decisions, sets Status]
-  record --> ok{decisions resolved,<br/>you approve}
+  planner --> pass1[pass 1:<br/>decisions-only draft]
+  pass1 --> record[you decide,<br/>main session records]
+  record -. EXT questions .-> researcher
+  record --> planner2[planner pass 2<br/>resumed]
+  researcher -. EXT research .-> planner2
+  planner2 --> plan[Development Plan S1…Sn<br/>Status: draft]
+  plan --> ok{decisions resolved,<br/>you approve}
   ok -- Status: approved --> implementer
   implementer -- next step group --> implementer
   implementer --> tw[test-writer]
@@ -82,12 +90,21 @@ The main session drives every hop:
    session, which adds only `Status:` and `## Choice recorded`. The chosen
    option becomes the planner's scope; *Facts needed* seeds the researcher's
    questions.
-1. Research before planning is repo-mode only; external research runs later,
-   only for the planner's *Risks & open questions*.
-2. The planner writes its plan itself as `docs/plans/NN-kebab-name.md`
-   (`Status: draft`) plus the index row, and returns a summary; in a
-   correction round it edits the file and lists the changed sections. The main
-   session writes the user's decisions into the file and sets
+1. Research before planning is repo-mode only. By default the `planner` first
+   writes **pass 1**: a decisions-only draft (`docs/plans/NN-kebab-name.md`,
+   `Status: draft`, ends `Steps: pending decisions`) plus the index row
+   (`draft (decisions)`), and returns the *Decisions needed* table and any
+   external-research questions. It skips straight to the full plan only when
+   the prompt says `single pass: <reason>` (D1) — the request or idea brief
+   already fixes every choice, or the plan is trivial (≤1 package, ≤3 files).
+2. The main session records the user's answers into *Decisions recorded*.
+   When pass 1 listed research questions, a separate `researcher` run answers
+   them before pass 2. The main session then resumes the same planner
+   (SendMessage) — or, if that is unavailable, starts a fresh run with the
+   plan path — for **pass 2**: it fills in the rest of the template, sets
+   *Decisions needed* to `None open — see *Decisions recorded*`, and flips the
+   index cell from `draft (decisions)` to `draft`; in a later correction round
+   it edits the file and lists the changed sections. The main session sets
    `Status: approved` only on the user's explicit final approval.
 3. From then on every agent gets the **file path**, not pasted text. The
    implementer runs once per step group (`G1`, `G2`, …) and runs only the
@@ -122,7 +139,7 @@ agent that edits a plan file, and only its own draft or correction round.
 | Agent | Accepts a plan in status | Refuses |
 |---|---|---|
 | `brainstormer` | none — runs before a plan exists | — |
-| `planner` | writes a new one as `draft`; corrections keep it `draft` | — |
+| `planner` | pass 1 writes a new one as `draft` with `Steps: pending decisions`; pass 2 fills it, still `draft`; corrections keep it `draft` | — |
 | `implementer` | `approved`, `in-progress` | `draft`, `done`; any plan with an unresolved *Decisions needed* row |
 | `test-writer` | `approved`, `in-progress`, `done` | `draft` |
 | `architecture-reviewer` | any, or none — the plan is optional context | — |
@@ -136,12 +153,12 @@ agent that edits a plan file, and only its own draft or correction round.
 |---|---|---|---|
 | `brainstormer` | A vague idea, goal or "should we…" question, with no chosen approach yet | **Idea brief**: problem, decision drivers, appetite, an "already in the repo" check, at most 5 unranked options including the status quo (value, packages/contract/migration, per-run LLM cost, risk, kill criterion), a comparison table adding purity, no-go and confidence as columns, one recommendation with a go/needs-clarification/kill verdict, the cheapest experiment for the riskiest assumption, questions that would change the choice, facts needed for the researcher | *Clarification needed*: up to 3 blocking questions, each with a default; or a redirect naming `planner` when one approach is already chosen and the request asks "how" |
 | `researcher` | A concrete question, about the repo, external facts, or both | *Repo research* and/or *External research* report: answer, confidence, evidence table (`path:line` or URL), every claim labelled `fact`/`inference`, only sources actually fetched, mandatory **Not established** | *Clarification needed*: up to 3 blocking questions |
-| `planner` | A feature or change request, optionally a spec from `specs/`; later, corrections or decisions | **Development Plan** (`Status: draft`, `Save as: docs/plans/NN-…`): acceptance criteria, **Decisions needed**, **step groups** with handoffs, steps `S1…Sn` (files, layer, skills, practices, known gotchas, **Done when**), tests by tier, migrations and contracts, out of scope; below the brief marker: context, design notes, risks, handed off, insights to record, red-flags check. On corrections: only the changed sections | *Clarification needed*: up to 3 blocking questions, each with a default |
+| `planner` | A feature or change request, optionally a spec from `specs/`; later, corrections or decisions | **Pass 1** (default, `Status: draft`, `Save as: docs/plans/NN-…`): Goal & acceptance criteria, **Decisions needed**, EXT research questions, `Steps: pending decisions` — returns the path, the Decisions table and the questions. **Pass 2** (resumed once decisions are recorded, or single-pass when `single pass: <reason>` is given): the same file filled with **step groups** with handoffs, steps `S1…Sn` (files, layer, skills, practices, known gotchas, **Done when**), tests by tier, migrations and contracts, out of scope; below the brief marker: context, a `## Skills` table, design notes, risks, handed off, insights to record, red-flags check. On corrections: only the changed sections | *Clarification needed*: up to 3 blocking questions, each with a default |
 | `implementer` | Plan mode: the path of an `approved` plan in `docs/plans/` + the step group to run. Fix mode: the plan path + gap ids from `plan-verifier` or findings from `architecture-reviewer` | **Implementation Report**: plan, mode and group, status, per-step (or per-gap) table, deviations (trivial / material with a suggested plan change), skills applied, verification commands with results, not verified, diff trace, out-of-plan issues, handoff to the next group, handoff to review (architecture / security), insight candidates | *Plan deviation*: no plan file, plan not `approved`, an unresolved decision, a step without Files or Done when, a step it is not allowed to do, a fix that needs a file outside the plan, or Node < 22 |
 | `test-writer` | The path of an approved (or done) plan in `docs/plans/` + the Implementation Report(s), or named files and the behaviour to cover | **Test Report**: cases listed before writing, tests written (file, tier, kind, result), **proof** per new file (break check with `shasum` restored, 3-run stability), commands, **production defects found**, not verified, changed paths, coverage gaps | *Blocked* (no subject, no seam, or a `shasum` mismatch after a break check) or *Clarification needed* (no target, undecided expected behaviour) |
 | `architecture-reviewer` | Diff mode: a base ref or the working tree. Module mode: target paths. Optionally the plan path in `docs/plans/` | **Architecture Review**: mode, PASS/BLOCK, read-only proof (`git status` unchanged), checks run (A1…A12), findings `F1…` with `file:line` and evidence, *For fix mode* list, informational (module mode), downgraded, pre-existing, checks not run | *Clarification needed* (missing or ambiguous target) or `Status: blocked` (empty diff, unknown base ref) |
 | `security-reviewer` | Diff mode: a base ref or the working tree. Module mode: target paths. Optionally the plan path in `docs/plans/` | **Security Review**: mode, PASS/BLOCK, read-only proof (`git status` unchanged), trust boundaries touched, checks run (X1…X11), findings `SF1…` with quoted source → sink and evidence, *For fix mode* list, needs manual check, filtered out, downgraded, not reported by design, informational (module mode), pre-existing, checks not run | *Clarification needed* (missing or ambiguous target) or `Status: blocked` (empty diff, unknown base ref) |
-| `plan-verifier` | The path of the approved plan in `docs/plans/` + a diff source (+ which groups are done, the full integration run's result); optionally the spec and the reports | **Plan Verification**: result (`complete` · `complete — needs sign-off` · `incomplete` · `contradicted`), read-only proof, traceability matrix (AC/DC/S/P/D/T/M/O/R/SP → how sought → status → evidence → report claimed), gaps in fix-mode format (or *plan change*), needs sign-off, unplanned changes, checks re-run | `Status: blocked`: no plan file, a `draft` plan, no diff source, or empty diff · *Clarification needed* when the target is ambiguous |
+| `plan-verifier` | The path of the approved plan in `docs/plans/` + a diff source (+ which groups are done, the full integration run's result); optionally the spec and the reports | **Plan Verification**: result (`complete` · `complete — needs sign-off` · `incomplete` · `contradicted`), read-only proof, traceability matrix (AC/DC/S/P/D/SK/T/M/O/R/SP → how sought → status → evidence → report claimed), gaps in fix-mode format (or *plan change*), needs sign-off, unplanned changes, checks re-run | `Status: blocked`: no plan file, a `draft` plan, no diff source, or empty diff · *Clarification needed* when the target is ambiguous |
 | `doc-writer` | A finished plan (`docs/plans/…`, `Status: done`) + its implementation and verification reports, or a spec, notes or a module | **Documentation Report**: files with Diátaxis type and index row, claims → evidence (`path:line`, kept out of doc prose), not documented (deviations, not met, awaiting sign-off), rationale gaps, diagrams, checks (links, anchors, citations, scope), suggested `AGENTS.md` lines | *Clarification needed* (plan not `done`, code absent, ambiguous kind or audience) or `Status: blocked` (a file it may not write) |
 
 ## Shared conventions
@@ -204,21 +221,26 @@ verifier's matrix reuse them, and the implementer's fix mode accepts them.
 
 ## Skills
 
-`planner` and `implementer` preload the **same 12 project skills** through the
-`skills:` frontmatter. The full `SKILL.md` of each is injected when the agent
-starts, so every rule a plan relies on also binds the implementation:
-
-`engineering-insights` · `onion-architecture` · `fastify-best-practices` ·
-`drizzle-orm-patterns` · `postgresql-table-design` · `frontend-architecture` ·
-`next-best-practices` · `react-best-practices` · `react-testing-library` · `zod` ·
-`typescript-expert` · `security`
-
-This costs about 28k tokens of context per spawn. Two skills are not preloaded:
-`mermaid-diagram`, which has nothing to do with implementation, and
-`pr-self-review`, the pre-PR gate, which the implementer does not run.
-`devdigest-appsec` is also not preloaded here — it is review knowledge, used
-only by `security-reviewer`. `researcher` preloads only `engineering-insights`,
-because its repo mode starts from the `INSIGHTS.md` files.
+`planner` and `implementer` preload only `engineering-insights` and
+`onion-architecture` through the `skills:` frontmatter (D7) — about 18.5 KB of
+`SKILL.md` combined, an estimated ~4–5k tokens per spawn, down from the ~28k
+tokens the previous 12-skill preload cost (T4 measures the real figure on the
+next plan that touches package code). Every other skill —
+`fastify-best-practices` · `drizzle-orm-patterns` · `postgresql-table-design` ·
+`frontend-architecture` · `next-best-practices` · `react-best-practices` ·
+`react-testing-library` · `zod` · `typescript-expert` · `security` — is read on
+demand: the planner reads a skill's `SKILL.md` while placing a step, and names
+every skill whose rules bind that step in the step's *Skills to apply*; the
+implementer reads exactly that list before making the step's change (hard
+rule). The `plan-verifier`'s `SK` items check that every *Skills to apply*
+skill shows up in the implementer's `## Skills` table for that step — the
+enforcement point that keeps a step from skipping a rule it depends on. Two
+skills are never preloaded here: `mermaid-diagram`, which has nothing to do
+with implementation, and `pr-self-review`, the pre-PR gate, which the
+implementer does not run. `devdigest-appsec` is also not preloaded — it is
+review knowledge, used only by `security-reviewer`. `researcher` preloads only
+`engineering-insights`, because its repo mode starts from the `INSIGHTS.md`
+files.
 
 The other six preload only what their job needs:
 
@@ -228,7 +250,7 @@ The other six preload only what their job needs:
 | `test-writer` | `engineering-insights` · `react-testing-library` · `fastify-best-practices` · `drizzle-orm-patterns` · `onion-architecture` · `zod` · `typescript-expert` · `security` | test idioms per layer. `security` picks the negative cases at trust boundaries. The production-code skills (`next-best-practices`, `react-best-practices`, `frontend-architecture`, `postgresql-table-design`) are left out because it writes no production code |
 | `architecture-reviewer` | `engineering-insights` · `onion-architecture` · `frontend-architecture` · `next-best-practices` · `fastify-best-practices` · `zod` · `typescript-expert` | the skills that define boundaries and placement. No `security`: security review is out of its scope |
 | `security-reviewer` | `engineering-insights` · `devdigest-appsec` · `fastify-best-practices` · `zod` | knowledge (trust boundaries, `X1…X11`, LLM controls, never-report list) lives in `devdigest-appsec`; process (modes, severity, filter pass, template) lives in the agent. No `security`: it targets a different (Express/Mongo/JWT) stack |
-| `plan-verifier` | `engineering-insights` | the plan is its rulebook. Any other skill (`onion-architecture`, `frontend-architecture`, `typescript-expert`, …) is **read on demand**, only when a plan item names one of its rules as the criterion, and only for that item. Preloading review skills invites generic review in place of the matrix |
+| `plan-verifier` | `engineering-insights` | the plan is its rulebook. Any other skill (`onion-architecture`, `frontend-architecture`, `typescript-expert`, …) is **read on demand**, only when a plan item names one of its rules as the criterion, and only for that item — plus the `SK` items above, which check *presence* in the implementer's `## Skills` table, not the rule itself. Preloading review skills invites generic review in place of the matrix |
 | `doc-writer` | `engineering-insights` · `mermaid-diagram` | diagrams. Placement rules come from the `docs/README.md` indexes |
 
 `test-writer` overrides parts of `react-testing-library` with `client/INSIGHTS.md`:
@@ -255,17 +277,21 @@ All are primary Anthropic sources, retrieved 2026-09-25 by `researcher`.
 |---|---|---|
 | `description` says **when** to delegate. Behaviour belongs in the body | Trigger-first descriptions that also say what the agent does not do | [Create custom subagents](https://code.claude.com/docs/en/sub-agents) |
 | Omitting `tools` inherits everything, including MCP and `Agent` | Explicit allowlists. No `Agent` tool | same |
-| `skills:` injects the full `SKILL.md`. Parent skills are not inherited | Same 12 skills preloaded in both agents | same · [Skills](https://code.claude.com/docs/en/skills) |
+| `skills:` injects the full `SKILL.md`. Parent skills are not inherited | Two skills (`engineering-insights`, `onion-architecture`) preloaded in both agents; the rest read on demand, per step | same · [Skills](https://code.claude.com/docs/en/skills) |
 | Per-agent `permissionMode`. `bypassPermissions` only in a sandbox | `acceptEdits` for implementer | [Permission modes](https://code.claude.com/docs/en/permission-modes) |
 | `maxTurns` stops an agent after a number of turns | a cap on every agent; implementer keeps turns for its report | [Create custom subagents](https://code.claude.com/docs/en/sub-agents) |
 | Orchestrator and workers with an explicit handoff | Plan steps `S1…Sn` and step groups with a handoff that the report mirrors | [Building effective agents](https://www.anthropic.com/engineering/building-effective-agents) |
 | Workers return a condensed summary, about 1–2k tokens | A plan brief under ~20,000 characters above the marker; reports of ~700–1,000 words. Commands and outcomes, not logs | [Effective context engineering](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents) |
 | Give the agent a pass/fail check. Review happens in a fresh context, without over-flagging | A runnable *Done when* per step. The implementer verifies but does not review | [Claude Code best practices](https://code.claude.com/docs/en/best-practices) |
 
-**Deliberate deviation:** the [skill authoring guide](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices)
-favours progressive disclosure. Here all skills are preloaded on purpose, so
-the implementer cannot skip one. Reference files inside skills are still read
-only on demand.
+**Now follows progressive disclosure (D7):** the
+[skill authoring guide](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices)
+favours it, and this pair now does too — only the two skills every step needs
+are preloaded; the rest are read on demand per step. The risk the earlier
+"preload everything" choice guarded against — the implementer skipping a
+skill it needed — is now covered by the `plan-verifier`'s `SK` coverage check
+instead of by preloading. Reference files inside skills are still read only
+on demand, as before.
 
 ### planner and implementer: repo sources
 
