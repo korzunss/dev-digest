@@ -43,11 +43,18 @@ Spec: <specs/NNN-name.md or "none">
 | `done` | Verified by the `plan-verifier` with result `complete` — or `complete — needs sign-off` **and** the user has accepted every item on its *Needs sign-off* list. |
 | `abandoned` | Stopped. Say why in one line under the status. |
 
-**Who writes the file.** The `planner` writes its own draft here, as `draft`,
-adds its row to the index below, and returns only a summary. It writes no other
-file. The main session keeps the `Status:` line and the index current and
-writes user decisions (*Decisions recorded*) and corrections into the plan
-itself, not left in the conversation.
+A pass-1 draft (the planner's default first pass, see below) is still
+`Status: draft` — its body ends with `Steps: pending decisions` and its index
+cell reads `draft (decisions)`, not a new status value. Pass 2 fills in the
+rest of the template and turns the index cell into plain `draft`.
+
+**Who writes the file.** The `planner` writes pass 1 here — a decisions-only
+draft, `Status: draft` — then, once the user's decisions are recorded, pass 2
+fills in the full plan into the **same file**. It adds its row to the index
+below on pass 1 and returns only a summary each time. It writes no other file.
+The main session keeps the `Status:` line and the index current and writes
+user decisions (*Decisions recorded*) and corrections into the plan itself,
+not left in the conversation.
 
 **Who reads it.** The `implementer` and the `plan-verifier` get this file's
 **path**, never a pasted copy, and both refuse a `draft`. The implementer runs
@@ -76,3 +83,4 @@ result to the verifier.
 | [02-smart-diff](02-smart-diff.md) | done | [007](../../specs/007-smart-diff.md) | shared, reviewer-core, server, client |
 | [03-brainstormer-agent](03-brainstormer-agent.md) | done | none | `.claude/agents`, repo docs |
 | [04-security-reviewer-agent](04-security-reviewer-agent.md) | done | none | `.claude/agents`, `.claude/skills`, repo docs |
+| [05-decisions-first-planning](05-decisions-first-planning.md) | done | none | `.claude/agents`, repo docs |

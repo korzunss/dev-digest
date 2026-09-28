@@ -72,13 +72,20 @@ that package's `AGENTS.md`, which loads automatically when you work in its folde
   path; it returns only the changed sections. *Facts needed* seed the
   researcher's ≤8 questions, and the planner gets the brief's path.
 - Research before planning is **repo-mode only** (≤8 questions to the
-  `researcher`). External research runs only for the items the planner lists
-  under *Risks & open questions*, as a separate researcher run.
-- The `planner` writes its own draft: it creates `docs/plans/NN-kebab-name.md`
-  with `Status: draft`, adds the row to `docs/plans/README.md`, and returns only
-  a summary (path, *Decisions needed*, open questions). In a correction round it
-  edits that plan file and returns the list of changed sections. It writes no
-  other file. The `Status:` line and *Decisions recorded* belong to the **main
+  `researcher`). External research runs for the questions pass 1's *Risks &
+  open questions* lists, after the user answers *Decisions needed* and before
+  pass 2, as a separate researcher run.
+- By default the `planner` writes **pass 1**: a decisions-only draft
+  (`docs/plans/NN-kebab-name.md`, `Status: draft`, ending
+  `Steps: pending decisions`) plus its index row (`draft (decisions)`), and
+  returns only a summary (path, *Decisions needed*, research questions). It
+  skips straight to the full plan only when the prompt says
+  `single pass: <reason>` — every product choice is already fixed, or the plan
+  is trivial (≤1 package, ≤3 files). **Pass 2** resumes the same planner
+  (fallback: a fresh run with the plan path) once decisions are recorded. In
+  both passes the planner writes no other file. Later correction rounds edit the plan file in place
+  and return only the changed
+  sections. The `Status:` line and *Decisions recorded* belong to the **main
   session**.
 - The user's answers to *Decisions needed* and any corrections are written
   **into that file**, not left in the conversation. A correction is not an
@@ -98,7 +105,8 @@ that package's `AGENTS.md`, which loads automatically when you work in its folde
   same way. Its dependency-audit item runs in the main session (needs
   network), not the agent.
 - Hand-offs between groups go **into the plan**, not into prompts: the main
-  session appends each implementer's *Handoff to the next group* under
+  session appends each implementer's *Handoff to the next group* — and its
+  `## Skills` table, the `plan-verifier`'s source for the `SK` items — under
   `## Handoffs → G<n>` below `<!-- implementer-brief:end -->`, and the next
   prompt is just the plan path and the group. Never paste more than ~10 lines of
   one agent's report into another agent's prompt; cite gap ids and paths.
