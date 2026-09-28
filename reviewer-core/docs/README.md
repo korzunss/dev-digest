@@ -3,12 +3,9 @@
 Index of engine-local documentation. `reviewer-core/AGENTS.md` links here rather
 than inlining it. One line per document, enough to decide whether to open it.
 
-_No engine docs yet — the pipeline diagram and the exported API live in
-[`../README.md`](../README.md). Add a row below when you add a document._
-
 | Document | Read it when |
 |----------|--------------|
-| — | — |
+| [`pipeline.md`](pipeline.md) | Changing prompt assembly, the grounding gate, map-reduce, scoring, or `toReviewPayload` — or tracing what `reviewPullRequest` does step by step |
 
 ## What belongs here
 

@@ -64,6 +64,28 @@ export const s = {
     color: "var(--text-primary)",
     paddingRight: 12,
   } satisfies CSSProperties,
+  markerDot: {
+    width: 6,
+    height: 6,
+    borderRadius: "50%",
+    background: "var(--crit)",
+    flexShrink: 0,
+  } satisfies CSSProperties,
+  unanchoredWrap: {
+    borderTop: "1px solid var(--border)",
+    margin: "4px 14px 4px 58px",
+    paddingTop: 10,
+    display: "flex",
+    flexDirection: "column",
+    gap: 8,
+  } satisfies CSSProperties,
+  unanchoredTitle: {
+    fontSize: 11,
+    fontWeight: 700,
+    textTransform: "uppercase",
+    letterSpacing: "0.06em",
+    color: "var(--text-muted)",
+  } satisfies CSSProperties,
 } as const;
 
 /** Chevron rotates 90deg when the file card is open. */
@@ -75,10 +97,53 @@ export function chevronFor(open: boolean): CSSProperties {
   };
 }
 
-/** Row background per line kind (add/del tinted, others transparent). */
-export function lineRowFor(kind: Line["kind"]): CSSProperties {
+/** Row background per line kind (add/del tinted, others transparent), plus an
+    optional annotation bar. `boxShadow` (not `border`) carries the bar so it
+    never mixes with a border shorthand on this row (client/insights/gotchas.md
+    — four-sides longhand only matters for actual `border*` properties). */
+export function lineRowFor(kind: Line["kind"], barColor?: string): CSSProperties {
   const background = kind === "add" ? "var(--code-add)" : kind === "del" ? "var(--code-del)" : "transparent";
-  return { display: "flex", alignItems: "stretch", fontSize: 13, lineHeight: "20px", background };
+  return {
+    display: "flex",
+    alignItems: "stretch",
+    fontSize: 13,
+    lineHeight: "20px",
+    background,
+    boxShadow: barColor ? `inset 3px 0 0 ${barColor}` : "none",
+  };
+}
+
+/** Outlined severity pill beside an annotated line (S12; pill design S26) —
+    a 1px severity-coloured border, a lightly tinted background and the
+    (optional) icon before the lowercase label text. Four-side longhand
+    borders (client/insights/gotchas.md). */
+export function annotationLabelFor(color: string): CSSProperties {
+  return {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 4,
+    padding: "1px 8px",
+    borderRadius: 6,
+    borderTopWidth: 1,
+    borderRightWidth: 1,
+    borderBottomWidth: 1,
+    borderLeftWidth: 1,
+    borderTopStyle: "solid",
+    borderRightStyle: "solid",
+    borderBottomStyle: "solid",
+    borderLeftStyle: "solid",
+    borderTopColor: color,
+    borderRightColor: color,
+    borderBottomColor: color,
+    borderLeftColor: color,
+    background: `color-mix(in srgb, ${color} 12%, transparent)`,
+    fontSize: 12,
+    fontWeight: 500,
+    color,
+    flexShrink: 0,
+    marginRight: 12,
+    alignSelf: "center",
+  };
 }
 
 /** Gutter sign colour per line kind. */

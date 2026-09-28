@@ -48,6 +48,85 @@ _Nothing yet._
 
 ## What Doesn't Work
 
+### 2026-09-27 — seeding the working tree while other reviewer runs are in flight breaks their read-only proof
+**Symptom:** during plan 04's smoke tests, the T5 module audit reported
+`git status --porcelain unchanged: no`. A file it never touched had flipped
+from ` M` to clean mid-run.
+**Cause:** the main session reverted the T2 seed (`git checkout -- <file>`)
+while T5 was still running. Reviewer agents prove they are read-only by
+comparing two `git status` snapshots of the shared working tree, so any edit
+by the main session during their run shows up as a violation.
+**Rule:** when reviewer runs overlap, apply and revert seeds only while no
+other reviewer run is in flight. Run module audits first, or run all smoke
+tests one after another. Treat a snapshot mismatch that lines up with a
+main-session seed or revert as noise, not an agent write. The agent's report
+should name the file, as T5's did.
+**Evidence:** `docs/plans/04-security-reviewer-agent.md` → Verification log
+(T5, T6)
+
+### 2026-09-27 — in an agent prompt, the output template beats the prose rules
+**Symptom:** `brainstormer` smoke runs broke two rules its Method section
+stated plainly. The status quo came out as `Opt1`, although the prompt said
+"not first or last". A narrow idea got a padding option instead of the "only
+one sane approach" line. A later run returned 6 options under "up to 5
+(plus the status quo)".
+**Cause:** the model followed the template and the description over the
+prose. The template heading read `### Opt1 — <name> (status quo, if
+applicable)`. The description said "3-5 approaches (plus the status quo)",
+which reads as 5 + 1. The escape hatch was a single sentence after the
+method, with no concrete check attached.
+**Rule:** when an agent prompt has an output template, write every
+placement or count rule into the template itself, not only into the prose.
+State limits inclusively ("at most 5, status quo included"). Turn an escape
+hatch into a named check with the exact line to write ("Padding check …
+write 'Only one sane approach: OptN.'"). Smoke-test with an input that
+should trigger the escape hatch. A realistic input with several sane
+approaches does not exercise it.
+**Evidence:** `docs/plans/03-brainstormer-agent.md` → Verification log (T5
+runs 2–3, T2 regression) · `.claude/agents/brainstormer.md` Method (b),
+*Padding check*, `## Options` heading
+
+### 2026-09-26 — the onion skill's `depcruise` gate and its baseline are not real
+**Symptom:** the planner and architecture-reviewer both reached for
+`npm run depcruise` to check the new intent module's edges. The
+`onion-architecture` skill says the gate was "validated against the real graph:
+**0 errors, 15 warnings**" and lists **2** cross-module edges as the
+burn-down baseline. The command doesn't exist, and the reviewer then counted at
+least 4 pre-existing cross-module edges the baseline doesn't list — close to
+flagging old drift as new.
+**Cause:** there is no `server/.dependency-cruiser.cjs` and no `depcruise`
+script in `server/package.json` (only the `dependency-cruiser` dependency). The
+numbers in the skill were never reproducible here.
+**Rule:** until the config and script exist, check layering with explicit `rg`
+edge checks (e.g. `rg -n "platform/container|\.\./settings/|\.\./repos/"
+server/src/modules/<mod>`) and a manual import walk; don't compare against the
+skill's counts. Treat a "pre-existing" edge as pre-existing only after checking
+`git show HEAD:<file>`. Re-baselining the skill belongs with adding the config.
+**Evidence:** `.claude/skills/onion-architecture/SKILL.md:109,127` ·
+`.claude/skills/onion-architecture/enforcement.md:120,130` ·
+`ls server/.dependency-cruiser*` → no such file · unlisted edges:
+`conventions/service.ts:15`, `polling/routes.ts:8`, `pulls/routes.ts:16`,
+`settings/constants.ts:4`
+
+### 2026-09-25 — `pr-self-review`'s skill map is not a reliable source for which skills exist or how contracts change
+**Symptom:** copying the skill map from `pr-self-review/routing.md` into the
+`planner` agent would have told the implementer to load
+`vercel-react-best-practices` and `nodejs-best-practices`. Neither is in
+`.claude/skills/`, so loading them fails. The same file's §4 also says the
+`vendor/shared` contracts are "do-not-touch by hand" and that drift "means a
+regeneration step was missed". That contradicts `CLAUDE.md` ("Contracts change
+in `shared` first") and the 2026-09-17 entry below (mirror the edit by hand;
+there is no regeneration step).
+**Cause:** `routing.md` and `SKILL.md` were written against a larger, generic
+skill set and an assumed codegen step. Neither the skills nor the codegen step
+exists in this repo.
+**Rule:** take the list of available skills from `ls .claude/skills/`, never
+from a skill's own references. For contract changes, follow `CLAUDE.md` and the
+entry below, not `routing.md` §4. A drift CRITICAL from the gate means the hand
+mirror was missed, not that a regeneration was skipped.
+**Evidence:** `.claude/skills/pr-self-review/routing.md:46,54,81` ·
+`.claude/skills/pr-self-review/SKILL.md:59,61` · `ls .claude/skills/`
+
 ### 2026-09-17 — the two vendored `shared` copies are not actually in sync
 
 **Symptom:** on a clean checkout, `diff -r server/src/vendor/shared
@@ -70,6 +149,19 @@ whole-file equality — that check is red today and will stay red.
 
 ## Codebase Patterns
 
+### 2026-09-26 — a feature model's default lives in three places, not two
+**Symptom:** changing `review_intent`'s default model (spec 006, D2-B) in
+`server/src/vendor/shared` and its client mirror still left Settings → Models
+showing the old default.
+**Cause:** the Settings page doesn't read the vendored contract. It renders its
+own non-vendored copy, `FEATURE_MODELS` in `client/src/lib/feature-models.ts`.
+**Rule:** a change to `FEATURE_MODELS` (default provider/model, description, a
+new feature id) touches **three** files: `server/src/vendor/shared/contracts/platform.ts`,
+its client vendored mirror, and `client/src/lib/feature-models.ts`. Grep the
+feature id across `client/src` before calling it done.
+**Evidence:** `client/src/lib/feature-models.ts:13,22` ·
+`client/src/app/settings/[section]/_components/SettingsView/_components/SettingsModels/SettingsModels.tsx:9`
+
 ### 2026-09-17 — searches return duplicate hits from `server/clones/`
 
 **Symptom:** grep and file searches surface two or three copies of the same
@@ -82,6 +174,54 @@ that path; it's runtime data, and the next resync overwrites it.
 **Evidence:** `CLAUDE.md` → "Do not touch"; `.gitignore` → `clones/`
 
 ## Tool & Library Notes
+
+### 2026-09-27 — `rg` edge checks catch comments and prose, and `rg` is not a binary here
+**Symptom:** a plan Done-when "`rg -n "_components|FindingCard|FindingRecord"
+client/src/components/diff-viewer` returns nothing" failed on a *comment* in a
+test file (plan 02 gap D20), and a process check `rg ': any\b'` flagged
+"(D8: any depth)" in plan and spec prose. Separately, a verifier's
+`… | xargs rg …` died with `xargs: rg: No such file or directory`.
+**Cause:** these checks are plain text searches, so words in comments, test
+fixtures and Markdown count as hits. And in the agent shell `rg` is a shell
+function from the Claude Code snapshot, not an executable on `PATH`, so
+anything that execs it (`xargs`, `find -exec`, a script) cannot find it.
+**Rule:** write layering/"no import" checks against import lines —
+`rg -n "^import .*(_components|FindingCard)" <dir>` or
+`rg -n "from ['\"].*_components" <dir>` — and scope process scans to code files
+(`-g '*.ts' -g '*.tsx'`), not `docs/` or `specs/`. When piping a file list, use
+`xargs grep -E`, not `xargs rg`.
+**Evidence:** `docs/plans/02-smart-diff.md` → Verification log, gap D20
+(`client/src/components/diff-viewer/FileCard/FileCard.test.tsx:4` comment) ·
+`type rg` → `rg is a shell function from ~/.claude/shell-snapshots/…` ·
+`echo x | xargs rg zzz` → `xargs: rg: No such file or directory`
+
+### 2026-09-25 — correction: new agents do show up mid-session
+**Symptom:** the entry below says a new agent needs a session restart. Later in
+the same session, with no restart, the harness announced "New agent types are
+now available: implementer, planner".
+**Cause:** agent definitions are picked up again during the session, but with
+a delay. The failure below came from spawning too soon after writing the file.
+**Rule:** after creating an agent, wait for the "new agent types" notice before
+spawning it. Restart only if the notice never comes. A probe
+subagent asked to list its "preloaded skills" also names every skill in the
+session's listing, so that answer can't show that `skills:` injection worked.
+**Evidence:** harness notice "New agent types are now available" after
+creating `.claude/agents/implementer.md`, with no restart
+**Extension (2026-09-27):** edits to an agent that already exists take effect
+on its next spawn in the same session, with no notice. This is not a
+guarantee. The brainstormer's T5 smoke run failed, its prompt was fixed
+mid-session, and the next spawn followed the new rule. Iterate on prompt
+fixes in-session, with no restart
+(`docs/plans/03-brainstormer-agent.md` → Verification log).
+
+### 2026-09-25 — a new `.claude/agents/*.md` can't be spawned in the session that created it
+**Symptom:** right after writing `.claude/agents/implementer.md`, the Agent
+tool returned `Agent type 'implementer' not found. Available agents: … researcher …`.
+The listed agents were the ones that existed when the session started.
+**Cause:** Claude Code reads agent definitions only at session start.
+**Rule:** to test a new or edited agent, especially its `permissionMode`,
+start a new session.
+**Evidence:** `.claude/agents/implementer.md`
 
 ### 2026-09-21 — `TESTING.md`'s "`server/package.json` is skip-worktree" is not true here
 

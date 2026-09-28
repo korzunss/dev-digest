@@ -282,6 +282,8 @@ export interface MockGitOptions {
   head?: string;
   /** Head `currentHead()` returns AFTER `sync()` runs — simulates fetch+reset advancing HEAD. */
   syncedHead?: string;
+  /** `readFileAt` fixtures, keyed `"<ref>:<path>"` (spec 006 linked docs). */
+  filesAt?: Record<string, string>;
 }
 
 export class MockGitClient implements GitClient {
@@ -325,6 +327,12 @@ export class MockGitClient implements GitClient {
   }
   async readFile(_repo: RepoRef, path: string): Promise<string> {
     return this.opts.files?.[path] ?? '';
+  }
+
+  async readFileAt(_repo: RepoRef, ref: string, path: string): Promise<string> {
+    const content = this.opts.filesAt?.[`${ref}:${path}`];
+    if (content === undefined) throw new Error('not found');
+    return content;
   }
 }
 

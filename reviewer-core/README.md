@@ -13,26 +13,15 @@ emits JS — its `build` is a type-check.
 
 ## Pipeline
 
-```mermaid
-flowchart LR
-  IN["inputs<br/>diff · system prompt · repo map"] --> PROMPT["assemblePrompt()<br/>prompt.ts"]
-  PROMPT --> WRAP["wrapUntrusted() + INJECTION_GUARD<br/>fence untrusted content vs prompt injection"]
-  WRAP --> LLM["LLMProvider (injected)<br/>llm/openrouter.ts"]
-  LLM --> STRUCT["structured output<br/>llm/structured.ts<br/>Zod → JSON Schema · parse-with-repair"]
-  STRUCT --> GROUND["groundFindings()<br/>grounding.ts<br/>mechanical citation gate vs the diff"]
-  GROUND --> OUT["Review<br/>verdict · score · grounded findings"]
-```
+`reviewPullRequest` (`src/review/run.ts`) assembles the prompt, calls the
+injected `LLMProvider` for structured output (single-pass, or one call per file
+above the map-reduce threshold), reduces the partials, and runs every result
+through `groundFindings` — a mandatory gate that drops any finding whose cited
+lines aren't in the diff and recomputes the score from the survivors, never
+from the model's self-report.
 
-The grounding step is the mandatory gate: a finding that doesn't cite a real line
-in the diff is dropped, so the engine can't hallucinate locations. The score is
-recomputed deterministically from the **surviving** findings, not trusted from the
-model. `review/run.ts` orchestrates the run (single-pass by default).
-
-The engine also accepts optional prompt slots the **course lessons** start
-feeding it — `skills` (L02), `memory` (L07), `specs` (L05), `callers` — plus a
-`reduce()`/map-reduce path and a `toReview()` CI payload helper used from L06.
-In the starter the server passes only the diff, system prompt, and repo map; the
-extra slots are omitted, so `assemblePrompt` simply leaves those sections out.
+Full step-by-step walkthrough, the injection-defense and grounding invariants,
+the public API, and a diagram → [`docs/pipeline.md`](docs/pipeline.md).
 
 ## Public API
 

@@ -71,6 +71,36 @@ swallow clicks meant for the row underneath.
 
 ## Tool & Library Notes
 
+### 2026-09-27 — `SeverityBadge compact` renders the icon only, never the severity word
+**Symptom:** plan 02 asked the inline finding card and its collapsed stub for
+"severity badge + word". The implementation used `<SeverityBadge compact />`,
+tests passed, and the plan-verifier then found the word missing on screen
+(gap S27c) — a whole fix-mode round.
+**Cause:** in the vendored primitive `compact` does not mean "smaller": it
+drops the label (`{compact ? null : s.label}`) and leaves only the icon. The
+prop name does not say so, and FindingCard (the usual reference) uses the
+compact form because its title row carries the meaning.
+**Rule:** when a design needs the severity word, render it yourself from
+`SEV[sev]` / the i18n label next to the icon, or use `SeverityBadge` without
+`compact`. Write the word into a test assertion so the gap cannot pass silently.
+**Evidence:** `src/vendor/ui/primitives/Badge.tsx:80` · plan
+`docs/plans/02-smart-diff.md` → Verification log, gap S27c ·
+`src/app/repos/[repoId]/pulls/[number]/_components/DiffTab/_components/InlineFinding/InlineFinding.tsx`
+
+### 2026-09-27 — `pnpm test -- <pattern>` does not filter; it runs the whole suite
+**Symptom:** a targeted run such as `pnpm test -- DiffTab/helpers` in `client/`
+printed `Test Files 42 passed (42)` — every file, not the one asked for. It
+looks like a filter that matched broadly, so a green run gets read as "the
+target passed" while the target may not have been the point at all.
+**Cause:** `"test": "vitest run"` plus pnpm's passthrough gives
+`vitest run -- <pattern>`; vitest treats everything after `--` as not a file
+filter and runs all files.
+**Rule:** for a targeted client run use `pnpm exec vitest run <pattern>` (no
+`--`). Write plan Done-whens that way; `pnpm test` stays the whole-suite check.
+**Evidence:** `client/package.json:10` · `pnpm test -- run-settled` → `$ vitest
+run -- run-settled` … `Test Files 42 passed (42)` vs `pnpm exec vitest run
+run-settled` → `Test Files 1 passed (1)`
+
 ### 2026-09-22 — the `useSearchParams`/`Suspense` rule only bites on STATIC routes
 
 **Symptom:** the codebase looks inconsistent about a build-breaking rule.
@@ -109,6 +139,24 @@ client/package.json` before reaching for it out of habit.
 `src/app/repos/[repoId]/pulls/[number]/_components/RunReviewDropdown/RunReviewDropdown.test.tsx`
 
 ## Recurring Errors & Fixes
+
+### 2026-09-27 — TS2742 from a `styles.ts` that spreads a separately typed base object
+**Symptom:** `pnpm typecheck` failed on a new colocated `styles.ts` with
+`TS2742: The inferred type of 's' cannot be named without a reference to
+'.pnpm/csstype@3.2.3/…'. This is likely not portable.` The file looked like
+every other `styles.ts` in the app.
+**Cause:** the client compiles with `declaration: true`, so the inferred type of
+the exported `s` object must be nameable. Spreading a separately declared
+`const base: CSSProperties = {…}` into an entry that itself uses
+`satisfies CSSProperties` makes TypeScript reach into pnpm's nested `csstype`
+path for the emitted type.
+**Rule:** in `styles.ts` give every entry its own full literal with
+`satisfies CSSProperties` — no shared base object spread into entries. A
+dynamic value is a function entry (`(color: string): CSSProperties => ({…})`),
+not a spread at the call site.
+**Evidence:** `src/app/repos/[repoId]/pulls/[number]/_components/DiffTab/_components/DiffOrderToggle/styles.ts`
+(error reproduced before the fix, plan 02 G3 report) · the pattern it follows:
+`ConventionList/styles.ts`
 
 ### 2026-09-23 — `vi.mock` of a hooks barrel breaks children, and the error names the child
 

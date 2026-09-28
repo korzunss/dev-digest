@@ -1,6 +1,12 @@
 import { z } from 'zod';
 import { Finding, Verdict } from './findings.js';
-import { Intent, SmartDiff } from './brief.js';
+import {
+  IntentClassification,
+  IntentSource,
+  MissingContext,
+  SmartDiff,
+} from './brief.js';
+import { CostSource, PromptSection } from './trace.js';
 
 /**
  * A2 — Review-Core API surface contracts. These extend the core
@@ -56,9 +62,40 @@ export const ReviewRunResponse = z.object({
 });
 export type ReviewRunResponse = z.infer<typeof ReviewRunResponse>;
 
-/** Intent persisted for a PR (the Intent plus the pr_id it scopes). */
-export const PrIntentRecord = Intent.extend({ pr_id: z.string() });
+/**
+ * Intent persisted for a PR (spec 006): the classifier's structured output
+ * plus everything needed to show it and decide whether it is stale.
+ * `stale`/`stale_reason` are derived at read time from `head_sha` and
+ * `description_hash` against the PR's current row — they are never
+ * persisted columns themselves.
+ */
+export const PrIntentRecord = IntentClassification.extend({
+  pr_id: z.string(),
+  head_sha: z.string().nullable(),
+  description_hash: z.string().nullable(),
+  stale: z.boolean(),
+  stale_reason: z.enum(['head_moved', 'description_changed']).nullable(),
+  provider: z.string().nullable(),
+  model: z.string().nullable(),
+  sources: z.array(IntentSource),
+  missing_context: z.array(MissingContext),
+  composition: z.array(PromptSection),
+  tokens_in: z.number().int().nullable(),
+  tokens_out: z.number().int().nullable(),
+  cost_usd: z.number().nullable(),
+  cost_source: CostSource.nullable(),
+  classified_at: z.string(),
+});
 export type PrIntentRecord = z.infer<typeof PrIntentRecord>;
+
+/** Response of `GET /pulls/:id/intent`. `pr_head_sha` is the PR's CURRENT
+ * head, independent of the (possibly stale) record's own `head_sha`, so the
+ * client can show staleness without a second round trip. */
+export const PrIntentResponse = z.object({
+  intent: PrIntentRecord.nullable(),
+  pr_head_sha: z.string(),
+});
+export type PrIntentResponse = z.infer<typeof PrIntentResponse>;
 
 /** Smart-diff response for a PR (the SmartDiff). */
 export const SmartDiffResponse = SmartDiff;

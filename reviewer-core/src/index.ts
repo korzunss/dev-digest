@@ -35,6 +35,37 @@ export {
 // Map-reduce helpers (reduce partials, slice a file's diff).
 export { reduceReviews, sliceDiff } from './review/reduce.js';
 
+// Out-of-scope filter (spec 006 D6) — runs after grounding, wired into
+// reviewPullRequest when ReviewInput.intent is set.
+export {
+  applyScopeFilter,
+  ScopedFinding,
+  ScopedReview,
+  type ScopeFilterResult,
+} from './review/scope.js';
+
+// PR intent classification (spec 006) — pure prompt build + structured call.
+export {
+  buildIntentPrompt,
+  classifyIntent,
+  INTENT_MAX_DESCRIPTION_CHARS,
+  INTENT_MAX_ISSUE_BODY_CHARS,
+  INTENT_MAX_DOC_CHARS,
+  INTENT_MAX_ISSUES,
+  INTENT_MAX_DOCS,
+  INTENT_MAX_FILES,
+  INTENT_MAX_HEADERS_PER_FILE,
+  type IntentPromptInput,
+  type IntentPromptIssue,
+  type IntentPromptDoc,
+  type IntentUnavailableSource,
+  type IntentPromptResult,
+  type BuildIntentPromptOptions,
+  type ClassifyIntentInput,
+  type ClassifyIntentResult,
+} from './intent/classify.js';
+export { fileSummariesFromDiff, type FileSummary } from './intent/file-summaries.js';
+
 // The engine entry point: given (diff + resolved agent inputs + LLM) → grounded Review.
 export {
   reviewPullRequest,
@@ -58,3 +89,13 @@ export {
 // The single OpenAI-compatible structured provider (OpenRouter), shared by the
 // CI runner and the server's openrouter path. Owns session grouping + guards.
 export { OpenRouterProvider, type OpenRouterProviderOptions } from './llm/openrouter.js';
+
+// Smart Diff (L03) — pure path -> role classification for the reviewer-ordered
+// Files changed tab. No I/O; the rules are data so a later prompt filter can
+// reuse them.
+export { classifyFile } from './smart-diff/classify.js';
+export {
+  SMART_DIFF_ROLE_ORDER,
+  SMART_DIFF_RULES,
+  type SmartDiffRule,
+} from './smart-diff/constants.js';

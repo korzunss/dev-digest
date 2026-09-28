@@ -10,27 +10,15 @@ against one shared browser session by `run.ts`.
 
 ## How a flow works
 
-A spec lives in `specs/NN-name.flow.json`:
-
-```jsonc
-{
-  "name": "App boots and lands on the seeded repo's PR list",
-  "steps": [
-    { "cmd": ["open", "{BASE}/"],            "label": "load the app root" },
-    { "cmd": ["wait", "--url", "/pulls"],    "label": "root redirects to PRs" },
-    { "cmd": ["wait", "--text", "#482"],     "label": "seeded PR row visible" }
-  ]
-}
-```
-
-- `{BASE}` is replaced with `E2E_BASE_URL` (default `http://localhost:3000`).
-- Each `cmd` is passed verbatim to `agent-browser`. A non-zero exit fails the
-  step and the flow — so `wait --text` / `wait --url` **are** the assertions
-  (they time out and exit non-zero if the condition never holds).
-- Optional `"assert": { "stdoutIncludes": "…" }` adds a substring check on the
-  command's stdout.
-- Locators are deterministic only (`--url`, `--text`, `find role|text|label`).
-  We never use the AI `chat` command, so runs are stable and key-free.
+A spec lives in `specs/NN-name.flow.json`: a `name`, an optional
+`description`, and `steps` of `{ cmd, label?, assert? }` run in order against
+one shared `agent-browser` session. `{BASE}` is replaced with `E2E_BASE_URL`.
+A non-zero exit from a `cmd` fails the step and the flow, so `wait --text` /
+`wait --url` **are** the assertions; `"assert": { "stdoutIncludes": … }` only
+adds a substring check on top. Locators are deterministic only (`--url`,
+`--text`, `find role|text|label`) — never the AI `chat` command, so runs stay
+stable and key-free. Full format reference, why the `NN-` prefix is run order,
+and the flow-by-flow catalogue: [`docs/flows.md`](docs/flows.md).
 
 Flows target **read-only seeded data** (the demo repo `acme/payments-api`, PR
 #482, the seeded agents), so nothing triggers a model call.
@@ -102,3 +90,7 @@ a CI artifact by `.github/workflows/e2e-web.yml`).
 | `07-settings` | `/settings/api-keys` + `/settings/models` → section titles render |
 | `08-severity-filter` | PR list FINDINGS chip → PR #482 filtered to CRITICAL → clear the filter |
 | `09-skills` | `/skills` → open a seeded skill → walk Config/Context/Preview/Versions/Stats/Evals; agent editor → Skills tab lists its attached skills |
+| `10-conventions` | Sidebar → conventions screen → reject one candidate, bulk-accept the rest → create a skill from them → it appears in the Skills Lab |
+| `11-gitlab-affordances` | Settings → API Keys shows the GitLab PAT row + scope hint; onboarding copy accepts a GitLab URL (no live import) |
+
+Full catalogue with each flow's seed-data assumptions: [`docs/flows.md`](docs/flows.md#3-the-11-flows-today).

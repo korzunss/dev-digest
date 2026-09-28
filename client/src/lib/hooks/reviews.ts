@@ -161,6 +161,29 @@ export function useFindingAction() {
 }
 
 /**
+ * Invalidate reviews + run history when a PR's active-run count drops from
+ * >=1 to 0 (spec 007, D15-A). Page-level so it fires regardless of which tab
+ * is open — FindingsTab's own `onRunDone` refetch only covers itself, and
+ * `["reviews", prId]` is a prefix that also invalidates
+ * `["reviews", prId, "smart-diff"]` (React Query's default `exact: false`).
+ * A run shorter than one 4s active-runs poll can be missed (accepted blind
+ * spot, D15-A); a double invalidation alongside `onRunDone` is harmless.
+ */
+export function useRefreshOnRunsSettled(prId: string | null | undefined, activeCount: number) {
+  const qc = useQueryClient();
+  const prevRef = React.useRef(activeCount);
+
+  React.useEffect(() => {
+    const prev = prevRef.current;
+    if (prId && prev > 0 && activeCount === 0) {
+      qc.invalidateQueries({ queryKey: ["reviews", prId] });
+      qc.invalidateQueries({ queryKey: ["pr-runs", prId] });
+    }
+    prevRef.current = activeCount;
+  }, [prId, activeCount, qc]);
+}
+
+/**
  * Subscribe to a run's SSE event stream. Returns the accumulated RunEvents and a
  * `running` flag (true until the stream closes). Live status for the
  * RunReviewDropdown / Live Log. Multiple runIds are subscribed in parallel.

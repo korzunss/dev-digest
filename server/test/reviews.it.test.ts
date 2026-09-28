@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { startPg, dockerAvailable, type PgFixture } from './helpers/pg.js';
 import { waitForPrRuns } from './helpers/runs.js';
+import { isolatedTestConfig } from './helpers/config.js';
 import { buildApp } from '../src/app.js';
-import { loadConfig } from '../src/platform/config.js';
 import { seed } from '../src/db/seed.js';
 import { MockLLMProvider, MockEmbedder, MockGitClient } from '../src/adapters/mocks.js';
 import * as t from '../src/db/schema.js';
@@ -12,7 +12,11 @@ import type { Review } from '@devdigest/shared';
 const hasDocker = await dockerAvailable();
 const d = hasDocker ? describe : describe.skip;
 
-const config = () => loadConfig({ ...process.env, NODE_ENV: 'test' } as NodeJS.ProcessEnv);
+// Isolated from the developer's real ~/.devdigest/secrets.json (spec 006
+// Option B) — every review run here also triggers IntentService, and a real
+// OpenRouter/GitHub key would turn this hermetic suite into a live network
+// call (server/test/helpers/config.ts).
+const config = () => isolatedTestConfig();
 
 /**
  * A unified diff touching src/config.ts (line 11 added) so grounding can keep a

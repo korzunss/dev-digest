@@ -129,6 +129,29 @@ export class SimpleGitClient implements GitClient {
   async readFile(repo: RepoRef, path: string): Promise<string> {
     return readFile(join(this.clonePathFor(repo), path), 'utf8');
   }
+
+  /**
+   * `git show <ref>:<path>` — reads a file's content at a specific commit
+   * without checking it out. Used by the intent classifier to read a linked
+   * plan/spec at the PR head (spec 006). Both args are validated as raw
+   * strings BEFORE any git call: a `..` guard placed after `new URL()`/path
+   * normalisation never fires (server/insights/gotchas.md), and an
+   * unvalidated leading `-` would be read as a `git show` option.
+   */
+  async readFileAt(repo: RepoRef, ref: string, path: string): Promise<string> {
+    if (!/^[0-9a-f]{7,40}$/.test(ref)) {
+      throw new Error(`readFileAt: invalid ref ${ref}`);
+    }
+    if (
+      path.startsWith('-') ||
+      path.includes('\0') ||
+      path.startsWith('/') ||
+      path.split('/').includes('..')
+    ) {
+      throw new Error(`readFileAt: invalid path ${path}`);
+    }
+    return this.git(repo).raw(['show', `${ref}:${path}`]);
+  }
 }
 
 function parseBlamePorcelain(raw: string): BlameLine[] {

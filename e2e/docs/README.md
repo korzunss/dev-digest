@@ -7,12 +7,9 @@ it. One line per document, enough to decide whether to open it.
 flows (`*.flow.json`), unlike every other package. See
 [`../specs/README.md`](../specs/README.md).
 
-_No e2e docs yet — the flow format, env knobs, and coverage table live in
-[`../README.md`](../README.md). Add a row below when you add a document._
-
 | Document | Read it when |
 |----------|--------------|
-| — | — |
+| [`flows.md`](flows.md) | You need the `*.flow.json` format in full, why the `NN-` prefix is run order (not decoration), a catalogue of the 11 current flows and their seed-data assumptions, or a checklist for a flaky flow. The env knobs, run instructions and short coverage table stay in [`../README.md`](../README.md); this document doesn't repeat them. |
 
 ## What belongs here
 

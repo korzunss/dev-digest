@@ -77,6 +77,37 @@ collapses '..' before the guard can see it" ·
 
 ## Codebase Patterns
 
+### 2026-09-27 — correction: `findings.review_id` IS indexed now
+**Symptom:** the 2026-09-18 FK-index entry below still says
+`findings.reviewId` "still has no callback at all". For the Smart Diff
+latest-review findings query that read as an open gap; only opening the schema
+showed the index was already there.
+**Cause:** the index was added later (spec 002) and the old entry was never
+corrected; its evidence line went stale, not its rule.
+**Rule:** the rule stands — a FK column gets no index of its own, add one when
+you add a read path. But `findings_review_idx` already exists: a query that
+filters `findings` by `review_id` needs no new migration. Check the table's
+callback in the schema before trusting a listed "still missing" index.
+**Evidence:** `server/src/db/schema/reviews.ts:59-64` →
+`index('findings_review_idx').on(t.reviewId)` · plan
+`docs/plans/02-smart-diff.md` S5 (no migration)
+
+### 2026-09-26 — `runLog.info(msg, data)`: only `msg` reaches the stored run log
+**Symptom:** the intent classifier logged `runLog.info('intent: classified',
+{ model, tokensIn, tokensOut, costUsd })`, yet the run log in the UI showed
+only "intent: classified" — no model, no tokens, no cost. The call looks fully
+instrumented.
+**Cause:** `RunLogger.logFor` maps the event buffer to `{ t, kind, msg }` and
+drops `data`; `LiveLogStream` renders only the message. `data` goes to pino
+and nowhere a user can see it.
+**Rule:** anything a user must see in a run's log (model, token counts, cost,
+source counts) goes into the message **string**; keep `data` for structured
+server logs only. Apply the same no-secrets/no-content rule to the string as to
+`data` — it is persisted.
+**Evidence:** `server/src/platform/run-logger.ts:94-95` · spec 006 fix V2 in
+`docs/plans/01-intent-layer.md` · `server/test/intent-review.it.test.ts` (V2
+asserts the values in the message text)
+
 ### 2026-09-23 — adding a NULLABLE column to a unique index silently stops deduplicating
 
 **Symptom:** `repos` gained `api_base` (null for a hosted repo, set for a
@@ -234,6 +265,33 @@ rollup test inserts PR #999 for exactly this reason
 
 ## Recurring Errors & Fixes
 
+### 2026-09-26 — `.it` tests read the developer's real secrets and make live LLM calls
+**Symptom:** after spec 006 added intent classification to review pre-work,
+`reviews.it` and `skills-in-prompt.it` failed 4/16 on one machine: the review
+was never persisted (`expected [] to have a length of 1`) or the trace
+"never appeared". With `HOME=<temp dir>` the same files passed 16/16. That reads
+like flakiness in the feature, but it is the test environment.
+**Cause:** `buildApp({ config: … })` in tests kept `loadConfig()`'s default
+`secretsPath` (`~/.devdigest/secrets.json`), and `LocalSecretsProvider.get`
+falls back to `process.env` when the file has no key. The tests mock only the
+`openai`/`anthropic` providers, so the first code path that resolves
+`container.llm('openrouter')` built a real `OpenRouterProvider` from the
+developer's key: a paid network call with a 90 s timeout and 2 retries, racing
+the helpers' 10 s waits.
+**Rule:** a hermetic `.it` test must not be able to reach a real key. Build its
+config with `isolatedTestConfig()` (a throwaway `secretsPath`), and inject a
+`MockLLMProvider` under `overrides.llm.<id>` for **every** provider id the code
+path can resolve — including ones the test "doesn't use". A temp `secretsPath`
+alone is not enough: an exported `OPENROUTER_API_KEY` (shell or CI) still leaks
+in through the `process.env` fallback; stub `overrides.secrets` to close that.
+When a new feature adds an LLM or forge call to an existing flow, re-run the
+`.it` lane with a real `~/.devdigest/secrets.json` present, not just in CI.
+**Evidence:** `server/src/platform/config.ts:92` (default `secretsPath`) ·
+`server/src/adapters/secrets/local.ts:40-41` (`process.env` fallback) ·
+`server/test/helpers/config.ts` (`isolatedTestConfig`) · `HOME=$tmp pnpm exec
+vitest run test/reviews.it.test.ts test/skills-in-prompt.it.test.ts` → 16/16 vs
+4 failed with the normal HOME
+
 ### 2026-09-21 — `waitForPrRuns` returns before the run trace exists
 
 **Symptom:** an integration test reads `GET /runs/:id/trace` right after
@@ -273,4 +331,21 @@ _Nothing yet._
 
 ## Open Questions
 
-_Nothing yet._
+### 2026-09-27 — "no auth by design" is really "no auth for the whole LAN"
+**Symptom:** a `security-reviewer` module audit (plan 04, T8) showed that any
+peer on the same network can call every route. For example,
+`POST /settings/test-connection` with a `key` persists it through
+`container.secrets.set`, so a peer can overwrite the user's stored LLM or forge
+key. A web page can reach the same routes through DNS rebinding.
+**Cause:** `app.listen({ port, host: '0.0.0.0' })` binds all interfaces, while
+the log line says `http://localhost`. `server/src` has no Host-header or
+`onRequest` guard. CORS locked to `webOrigin` does not stop non-browser
+clients, and it does not stop rebinding. The local-first `LocalNoAuthProvider`
+design assumes a loopback-only API.
+**Rule:** until this is fixed, treat every route as reachable from the LAN.
+Never add a route that returns a secret or runs a side effect on the strength
+of "it's local". The candidate fix, a separate plan: bind `127.0.0.1` by
+default with an opt-in host, and add an `onRequest` Host/Origin allowlist.
+**Evidence:** `server/src/server.ts:28` · `server/src/modules/settings/routes.ts:78-86`
+· `grep -rn "headers.host\|onRequest" server/src` → none ·
+`docs/plans/04-security-reviewer-agent.md` → Verification log T8

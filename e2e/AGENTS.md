@@ -55,4 +55,5 @@ sorts after the numbered ones; name new flows `09-…`, `10-…` to place them.
 
 - Flow format, env knobs, coverage table → `README.md`
 - Deep topics (runner internals, CI stack) → `docs/README.md`
-- Solved bugs and surprises → `INSIGHTS.md`
+- Writing, ordering and debugging flows; the flow catalogue → `docs/flows.md`
+- Rules in force (read first) → `insights/gotchas.md`; solved bugs and surprises, in full → `INSIGHTS.md`

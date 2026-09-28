@@ -1,4 +1,4 @@
-import type { ForgeProvider } from '@devdigest/shared';
+import type { ForgeProvider, RepoRef } from '@devdigest/shared';
 
 /**
  * Pure helpers for resolving WHICH forge client and WHICH secret to use.
@@ -53,4 +53,37 @@ export function apiBaseHost(apiBase: string | null): string | null {
 export function gitlabApiRoot(apiBase: string | null): string {
   const base = (apiBase ?? DEFAULT_API_BASE.gitlab).replace(/\/+$/, '');
   return `${base}/api/v4`;
+}
+
+/**
+ * Adapter-facing ref for a persisted repo. Built here, in one place, so no call
+ * site can forget `provider`/`apiBase` and silently talk to the wrong forge.
+ *
+ * (F1) Moved unchanged from `modules/repos/helpers.ts`, which now re-exports
+ * it — this is pure cross-cutting resolution, not a repos-module concern.
+ */
+export function toRepoRef(row: {
+  owner: string;
+  name: string;
+  fullName: string;
+  provider: string;
+  apiBase: string | null;
+}): RepoRef {
+  return {
+    owner: row.owner,
+    name: row.name,
+    path: row.fullName,
+    provider: row.provider as ForgeProvider,
+    apiBase: row.apiBase ?? undefined,
+  };
+}
+
+/**
+ * The forge HOST for a repo: the host of its `api_base` when set and
+ * well-formed, else the public host for its provider. Same result as the
+ * old per-module `forgeHostFor` (`modules/intent/service.ts`), computed here
+ * so it's reusable without importing a module's internals.
+ */
+export function forgeHostOf(provider: ForgeProvider, apiBase: string | null): string {
+  return apiBaseHost(apiBase) ?? new URL(DEFAULT_API_BASE[provider] ?? DEFAULT_API_BASE.github).host;
 }

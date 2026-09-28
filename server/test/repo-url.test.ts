@@ -10,6 +10,8 @@ import {
   forgeTokenKeys,
   forgeCacheKey,
   gitlabApiRoot,
+  forgeHostOf,
+  toRepoRef as toRepoRefFromPlatform,
 } from '../src/platform/forge-resolve.js';
 import { resolveTestApiBase } from '../src/modules/settings/constants.js';
 import { AppError } from '../src/platform/errors.js';
@@ -318,6 +320,31 @@ describe('forge-resolve', () => {
     expect(gitlabApiRoot('https://acme.com/gitlab')).toBe('https://acme.com/gitlab/api/v4');
     expect(gitlabApiRoot('https://git.acme.com/')).toBe('https://git.acme.com/api/v4');
     expect(gitlabApiRoot(null)).toBe('https://gitlab.com/api/v4');
+  });
+
+  it('S15a: forgeHostOf reads the host of a well-formed apiBase', () => {
+    expect(forgeHostOf('gitlab', 'https://git.acme.com/gitlab')).toBe('git.acme.com');
+  });
+
+  it('S15a: forgeHostOf falls back to the provider\'s public host on a malformed apiBase', () => {
+    expect(forgeHostOf('gitlab', 'not-a-url')).toBe('gitlab.com');
+    expect(forgeHostOf('github', 'not-a-url')).toBe('github.com');
+  });
+
+  it('S15a: forgeHostOf falls back to the public host when apiBase is null', () => {
+    expect(forgeHostOf('gitlab', null)).toBe('gitlab.com');
+    expect(forgeHostOf('github', null)).toBe('github.com');
+  });
+});
+
+describe('D9-A: repos/helpers.ts re-exports the SAME toRepoRef, not a copy', () => {
+  it('the shim import is the identical function object as platform/forge-resolve.ts', () => {
+    // Two different importers must never end up with two different
+    // `toRepoRef`s — F1 moved the function so the container-friendly
+    // `IntentService` (which imports the platform copy) and the pre-existing
+    // callers (`repos/helpers.ts` and its re-export consumers) can never
+    // silently diverge in behaviour.
+    expect(toRepoRef).toBe(toRepoRefFromPlatform);
   });
 });
 

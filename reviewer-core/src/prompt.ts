@@ -1,4 +1,4 @@
-import type { ChatMessage, PromptAssembly } from '@devdigest/shared';
+import type { ChatMessage, Intent, PromptAssembly, PromptSection } from '@devdigest/shared';
 
 /**
  * Prompt assembly + prompt-injection hardening.
@@ -36,6 +36,42 @@ export function wrapUntrusted(label: string, content: string): string {
 /** Cap the PR description so a huge author body can't blow the token budget. */
 const MAX_PR_DESCRIPTION_CHARS = 4000;
 
+// A TRUSTED rule (spec 006) — appended verbatim next to the untrusted intent
+// block, never derived from it. Scope only ever REMOVES a signal downstream
+// (reviewer-core's applyScopeFilter); it must never be used to soften severity.
+const SCOPE_RULE =
+  'Scope rule: set `out_of_scope: true` on a finding only when it concerns work ' +
+  'listed OUT OF SCOPE above, or work outside every item listed IN SCOPE. Never ' +
+  'lower a finding\'s severity because of scope — scope only marks it, it never ' +
+  'downgrades it.';
+
+function renderIntentBlock(intent: Intent): string {
+  const lines = [`Intent: ${intent.intent}`];
+  if (intent.in_scope.length > 0) {
+    lines.push('In scope:', ...intent.in_scope.map((s) => `- ${s}`));
+  }
+  if (intent.out_of_scope.length > 0) {
+    lines.push('Out of scope:', ...intent.out_of_scope.map((s) => `- ${s}`));
+  }
+  return lines.join('\n');
+}
+
+export interface AssemblePromptOptions {
+  /** Injected token counter (e.g. the server's tiktoken adapter). Falls back
+   * to a chars/4 estimate — labelled 'estimate' — when absent. */
+  countTokens?: (s: string) => number;
+}
+
+function sectionFor(
+  name: string,
+  text: string,
+  opts?: AssemblePromptOptions,
+): PromptSection {
+  return opts?.countTokens
+    ? { name, chars: text.length, tokens: opts.countTokens(text), tokens_source: 'tokenizer' }
+    : { name, chars: text.length, tokens: Math.ceil(text.length / 4), tokens_source: 'estimate' };
+}
+
 export interface PromptParts {
   /** Agent's system prompt (trusted). */
   system: string;
@@ -66,6 +102,13 @@ export interface PromptParts {
    * undefined → section omitted.
    */
   prDescription?: string;
+  /**
+   * Structured PR intent (spec 006), derived by a separate classifier call —
+   * untrusted, same as the diff/description it was derived from. Rendered
+   * right after `## PR description`. Present ⇒ a TRUSTED `SCOPE_RULE` is also
+   * appended. Absent ⇒ no behavior change (byte-identical prompt).
+   */
+  intent?: Intent;
   /** The unified diff / user task (untrusted content). */
   diff: string;
   /** Optional task framing line, e.g. "Review PR #482 '…'". */
@@ -82,7 +125,7 @@ export interface AssembledPrompt {
  * Untrusted blocks (specs, diff) are delimiter-wrapped; the injection guard is
  * appended to the system message.
  */
-export function assemblePrompt(parts: PromptParts): AssembledPrompt {
+export function assemblePrompt(parts: PromptParts, opts?: AssemblePromptOptions): AssembledPrompt {
   const system = `${parts.system}\n\n${INJECTION_GUARD}`;
 
   const skillsBlock =
@@ -101,10 +144,17 @@ export function assemblePrompt(parts: PromptParts): AssembledPrompt {
       ? parts.prDescription.slice(0, MAX_PR_DESCRIPTION_CHARS)
       : undefined;
 
+  const intentText = parts.intent ? renderIntentBlock(parts.intent) : undefined;
+
   const userSections: string[] = [];
   if (parts.task) userSections.push(parts.task);
   if (prDescription) {
     userSections.push(`## PR description\n${wrapUntrusted('pr-description', prDescription)}`);
+  }
+  if (intentText) {
+    userSections.push(
+      `## PR intent (derived, untrusted)\n${wrapUntrusted('intent', intentText)}\n\n${SCOPE_RULE}`,
+    );
   }
   if (skillsBlock) userSections.push(`## Skills / rules\n${skillsBlock}`);
   if (memoryBlock) userSections.push(`## Relevant memory\n${memoryBlock}`);
@@ -126,6 +176,21 @@ export function assemblePrompt(parts: PromptParts): AssembledPrompt {
     { role: 'user', content: user },
   ];
 
+  const sections: PromptSection[] = [sectionFor('system', system, opts)];
+  if (parts.task) sections.push(sectionFor('task', parts.task, opts));
+  if (prDescription) sections.push(sectionFor('pr_description', prDescription, opts));
+  if (intentText) sections.push(sectionFor('intent', intentText, opts));
+  if (skillsBlock) sections.push(sectionFor('skills', skillsBlock, opts));
+  if (memoryBlock) sections.push(sectionFor('memory', memoryBlock, opts));
+  if (parts.repoMap && parts.repoMap.trim().length > 0) {
+    sections.push(sectionFor('repo_map', parts.repoMap, opts));
+  }
+  if (specsBlock) sections.push(sectionFor('specs', specsBlock, opts));
+  if (parts.callers && parts.callers.trim().length > 0) {
+    sections.push(sectionFor('callers', parts.callers, opts));
+  }
+  sections.push(sectionFor('diff', parts.diff, opts));
+
   const assembly: PromptAssembly = {
     system,
     skills: skillsBlock ?? null,
@@ -134,6 +199,8 @@ export function assemblePrompt(parts: PromptParts): AssembledPrompt {
     callers: parts.callers ?? null,
     repo_map: parts.repoMap ?? null,
     pr_description: prDescription ?? null,
+    intent: intentText ?? null,
+    sections,
     user,
   };
 

@@ -19,7 +19,14 @@ import { DiffTab } from "./_components/DiffTab";
 import RunTraceDrawer from "./_components/RunTraceDrawer";
 import { usePullDetail, usePulls } from "../../../../../lib/hooks";
 import { useQueryClient } from "@tanstack/react-query";
-import { usePrReviews, useCancelRun, usePrActiveRuns, usePrRuns, useDeleteRun } from "../../../../../lib/hooks/reviews";
+import {
+  usePrReviews,
+  useCancelRun,
+  usePrActiveRuns,
+  usePrRuns,
+  useDeleteRun,
+  useRefreshOnRunsSettled,
+} from "../../../../../lib/hooks/reviews";
 import { useActiveRepo, useRepoNotFound } from "../../../../../lib/repo-context";
 import { ApiError } from "../../../../../lib/api";
 import { forgePrUrl, FORGE_LABEL } from "../../../../../lib/forge-urls";
@@ -52,6 +59,7 @@ export default function PRDetailPage() {
   // Which run the confirmation is open for; null = closed.
   const [deletingRunId, setDeletingRunId] = React.useState<string | null>(null);
   const liveRunIds = (activeRuns ?? []).map((r) => r.run_id);
+  useRefreshOnRunsSettled(prId, liveRunIds.length);
   const reviewRunning = liveRunIds.length > 0;
   const cancel = useCancelRun();
   const invalidateActiveRuns = () => {
@@ -149,7 +157,7 @@ export default function PRDetailPage() {
       />
 
       <div style={{ padding: "24px 32px 44px", display: "flex", flexDirection: "column", gap: 24, maxWidth: 1080, margin: "0 auto" }}>
-        {tab === "overview" && <OverviewTab prBody={pr.body} />}
+        {tab === "overview" && <OverviewTab prId={prId} prHeadSha={pr.head_sha} prBody={pr.body} />}
 
         {tab === "findings" && (
           <FindingsTab
@@ -174,6 +182,11 @@ export default function PRDetailPage() {
               invalidateActiveRuns();
               invalidateRunHistory();
               refetchReviews();
+              // refetchReviews() only refetches the exact ["reviews", prId]
+              // key (staleTime 30s, lib/providers.tsx) — smart-diff is a
+              // separate query keyed under the same prefix, so it needs its
+              // own invalidation to pick up the new review's findings.
+              if (prId) qc.invalidateQueries({ queryKey: ["reviews", prId, "smart-diff"] });
             }}
           />
         )}
@@ -184,6 +197,8 @@ export default function PRDetailPage() {
             filesCount={pr.files_count}
             files={pr.files}
             canComment={pr.status === "open"}
+            repo={repo}
+            headSha={pr.head_sha}
           />
         )}
       </div>

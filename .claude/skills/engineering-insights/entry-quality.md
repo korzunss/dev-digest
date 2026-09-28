@@ -1,7 +1,7 @@
 # Entry quality
 
-Contents: the template · good vs bad · one example per section · keeping the
-files lean.
+Contents: the template · good vs bad · one example per section · the gotchas
+file · keeping the files lean.
 
 ## The template
 
@@ -53,10 +53,49 @@ the mechanism, a named file or command, and a decision the reader can act on.
 - **Open Questions** — "Does the map-reduce path in `review/reduce.ts` need its
   own grounding pass, or does the single-pass gate already cover it? Unverified."
 
+## The gotchas file
+
+`<pkg>/insights/gotchas.md` lists the rules of one package that are **still in
+force** — a curated index over the log, not a second log. It exists for readers
+who need the rules, not the history: the start-of-task read, the planner's
+*Known gotchas*, a reviewer's criteria.
+
+Template (used when creating the file):
+
+```md
+# <pkg> — current gotchas
+
+Last reconciled with ../INSIGHTS.md: YYYY-MM-DD
+
+<Two-line intro: curated index of rules still in force; full write-ups live in
+`../INSIGHTS.md` (append-only); items are added, corrected and removed by the
+`engineering-insights` skill.>
+
+## <Topic>
+- **<the rule, 1–2 sentences>** — spot it: <the symptom you would see> — [INSIGHTS: YYYY-MM-DD — <entry title>](../INSIGHTS.md#<anchor>)
+```
+
+- **Topics**, in this order, only those that have items: DB & migrations ·
+  Contracts · Tests · Security · Tooling · UI (client) · Engine invariants
+  (reviewer-core).
+- **No content without a source.** Every item links to an `INSIGHTS.md` entry.
+  A rule with no entry behind it goes into `INSIGHTS.md` first.
+- **About 15 items.** Past that, merge items that share a mechanism, or drop the
+  ones the code now enforces on its own (a type, a lint, a test that fails).
+- **Rules, not stories.** The item says what to do and how to recognise the
+  trap; the why stays behind the link.
+
+| ✗ Item | ✓ Item |
+|---|---|
+| "Be careful with migrations — see INSIGHTS." | "**When one table both drops and adds a column, run `pnpm db:generate` twice (drop first, then adds)** — spot it: `db:generate` prints nothing and never exits — [INSIGHTS: 2026-09-22 — …](../INSIGHTS.md#…)" |
+| A paragraph retelling the incident | One rule, one symptom, one link |
+
 ## Keeping the files lean
 
 - **Append-only.** Corrections are new, dated entries that name what changed. The
   old entry stays — knowing a rule *used to* hold is itself information.
+  (This is about `INSIGHTS.md`. `insights/gotchas.md` is edited in place — see
+  SKILL.md Step 5b.)
 - **Conflicts get resolved, not accumulated.** Two entries that contradict each
   other are worse than neither: append a third that states which one holds now.
 - **Promotion.** A rule everyone must follow becomes one line under `Gotchas` in
@@ -64,5 +103,9 @@ the mechanism, a named file or command, and a decision the reader can act on.
 - **Size.** Past roughly 200 entries in one file, signal drops. Prune on a
   quarterly pass: drop what the code no longer permits, merge duplicates, and
   delete Session Notes whose lesson was already promoted.
+- **Reconcile gotchas on the same pass.** After pruning, walk
+  `insights/gotchas.md`: every link must still resolve to an entry, and every
+  item must still hold in the code. Remove or reword the rest, and update the
+  `Last reconciled` date.
 - **These files are a draft under review.** They're committed and diffable on
   purpose — a wrong summary is caught in the PR, not months later.

@@ -67,22 +67,34 @@ export class OpenRouterProvider implements LLMProvider {
     let lastRaw = '';
 
     for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
-      const res = await this.client.chat.completions.create({
-        model: req.model,
-        messages,
-        temperature: req.temperature ?? 0,
-        ...(req.maxTokens ? { max_tokens: req.maxTokens } : {}),
-        response_format: {
-          type: 'json_schema',
-          json_schema: { name: req.schemaName, schema: jsonSchema.schema, strict: true },
+      req.signal?.throwIfAborted();
+      const res = await this.client.chat.completions.create(
+        {
+          model: req.model,
+          messages,
+          temperature: req.temperature ?? 0,
+          ...(req.maxTokens ? { max_tokens: req.maxTokens } : {}),
+          response_format: {
+            type: 'json_schema',
+            json_schema: { name: req.schemaName, schema: jsonSchema.schema, strict: true },
+          },
+          // OpenRouter session grouping — extra body field (spread is exempt from
+          // excess-property checks). Only sent when talking to OpenRouter.
+          ...(this.id === 'openrouter' && req.sessionId ? { session_id: req.sessionId } : {}),
+          // OpenRouter provider routing — restrict to endpoints that support
+          // structured outputs (some, e.g. Relace/GMICloud, don't). Requested per
+          // model (spec 006 D2), not global, since most models don't need it.
+          ...(this.id === 'openrouter' && req.requireParameters
+            ? { provider: { require_parameters: true } }
+            : {}),
+          // OpenRouter usage accounting — ask it to return the REAL generation
+          // cost (USD) in `usage.cost`, instead of estimating from a price book.
+          ...(this.id === 'openrouter' ? { usage: { include: true } } : {}),
         },
-        // OpenRouter session grouping — extra body field (spread is exempt from
-        // excess-property checks). Only sent when talking to OpenRouter.
-        ...(this.id === 'openrouter' && req.sessionId ? { session_id: req.sessionId } : {}),
-        // OpenRouter usage accounting — ask it to return the REAL generation
-        // cost (USD) in `usage.cost`, instead of estimating from a price book.
-        ...(this.id === 'openrouter' ? { usage: { include: true } } : {}),
-      });
+        // Caller-owned cancellation — passed as request options, never into the
+        // body, so it never reaches the wire.
+        req.signal ? { signal: req.signal } : undefined,
+      );
 
       // OpenRouter can return HTTP 200 with no `choices` (an upstream provider
       // error / moderation / free-tier limit in the body) — surface it.

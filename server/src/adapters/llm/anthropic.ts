@@ -99,23 +99,29 @@ export class AnthropicProvider implements LLMProvider {
     let lastRaw = '';
 
     for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
+      req.signal?.throwIfAborted();
       const res = await withRetry(() =>
         withTimeout(
-          this.client.messages.create({
-            model: req.model,
-            system: system || undefined,
-            messages,
-            max_tokens: req.maxTokens ?? DEFAULT_MAX_TOKENS,
-            temperature: req.temperature ?? 0,
-            tools: [
-              {
-                name: toolName,
-                description: `Return the result as ${req.schemaName}.`,
-                input_schema: jsonSchema.schema as Anthropic.Tool.InputSchema,
-              },
-            ],
-            tool_choice: { type: 'tool', name: toolName },
-          }),
+          this.client.messages.create(
+            {
+              model: req.model,
+              system: system || undefined,
+              messages,
+              max_tokens: req.maxTokens ?? DEFAULT_MAX_TOKENS,
+              temperature: req.temperature ?? 0,
+              tools: [
+                {
+                  name: toolName,
+                  description: `Return the result as ${req.schemaName}.`,
+                  input_schema: jsonSchema.schema as Anthropic.Tool.InputSchema,
+                },
+              ],
+              tool_choice: { type: 'tool', name: toolName },
+            },
+            // Caller-owned cancellation — passed as request options, never into
+            // the body, so it never reaches the wire.
+            req.signal ? { signal: req.signal } : undefined,
+          ),
           req.timeoutMs ?? DEFAULT_TIMEOUT,
         ),
       );

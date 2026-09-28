@@ -15,5 +15,26 @@
     "blame": "blame",
     "noHistory": "No history available for this line.",
     "noCommits": "No commits found for this line."
+  },
+  "intentCard": {
+    "title": "PR Brief",
+    "empty": "Intent not classified yet.",
+    "emptyHint": "Run Re-classify to derive this PR's intent and scope.",
+    "loadError": "Could not load this PR's intent. Reload the page to try again.",
+    "lowConfidence": "Low confidence — based on the title and file list only, with no description or linked context.",
+    "missingContext": "Some linked context could not be read; the result may be incomplete.",
+    "staleHeadMoved": "Stale — the PR has new commits since this was classified.",
+    "staleDescriptionChanged": "Stale — the PR title or description changed since this was classified.",
+    "reclassify": "Re-classify",
+    "classifying": "Classifying…",
+    "error": "Could not classify this PR's intent. Try again.",
+    "sourcesTitle": "Sources",
+    "inScope": "In scope",
+    "outOfScope": "Out of scope",
+    "confidence": {
+      "high": "High confidence",
+      "medium": "Medium confidence",
+      "low": "Low confidence"
+    }
   }
 }

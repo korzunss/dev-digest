@@ -52,4 +52,5 @@ messages/<locale>/*.json     next-intl, one file per feature namespace
 - UI route map and the API surface each route leans on → `README.md`
 - Deep topics (state, i18n, design system) → `docs/README.md`
 - Feature specs — read the spec before implementing the feature → `specs/README.md`
-- Solved bugs and surprises → `INSIGHTS.md`
+- Route map (RSC/client), code placement, data layer, i18n, UI testing → `docs/ui-architecture.md`
+- Rules in force (read first) → `insights/gotchas.md`; solved bugs and surprises, in full → `INSIGHTS.md`

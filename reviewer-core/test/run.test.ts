@@ -142,6 +142,161 @@ describe('reviewPullRequest (engine)', () => {
  * it came from: a price OpenRouter reported and one we guessed from tokens look
  * identical downstream otherwise, and the UI has to mark the guess.
  */
+/**
+ * Out-of-scope filter wired into the engine (spec 006 S5, D6). Grounding runs
+ * FIRST and is unaffected by intent; the scope filter only ever removes a
+ * grounding survivor, never restores a dropped one.
+ */
+describe('reviewPullRequest — out-of-scope filter (with intent)', () => {
+  const intent = {
+    intent: 'Add rate limiting to the public API',
+    in_scope: ['Rate limiter middleware'],
+    out_of_scope: ['Config refactors'],
+  };
+
+  it('an ungrounded finding is dropped by GROUNDING, even when marked in-scope', async () => {
+    const fixture = {
+      verdict: 'comment',
+      summary: 'x',
+      score: 90,
+      findings: [
+        {
+          id: 'ungrounded',
+          severity: 'WARNING',
+          category: 'bug',
+          title: 'phantom finding on a line not in the diff',
+          file: 'src/config.ts',
+          start_line: 999,
+          end_line: 999,
+          rationale: 'not real',
+          confidence: 0.3,
+          kind: 'finding',
+        },
+      ],
+    };
+    const llm = new MockLLMProvider('openai', { structured: fixture });
+    const diff = await new MockGitClient().diff();
+    const events: string[] = [];
+
+    const outcome = await reviewPullRequest({
+      systemPrompt: 's',
+      model: 'm',
+      diff,
+      llm,
+      intent,
+      onEvent: (e) => events.push(e.msg),
+    });
+
+    expect(outcome.review.findings).toHaveLength(0);
+    expect(events.some((m) => m.includes('grounding dropped'))).toBe(true);
+    expect(events.some((m) => m.includes('scope-filtered'))).toBe(false);
+  });
+
+  it('two serious (CRITICAL) out-of-scope findings collapse into exactly one kept finding', async () => {
+    const seriousFinding = (id: string) => ({
+      id,
+      severity: 'CRITICAL',
+      category: 'security',
+      title: `Serious OOS finding ${id}`,
+      file: 'src/config.ts',
+      start_line: 11,
+      end_line: 11,
+      rationale: 'grounded on line 11',
+      confidence: 0.9,
+      kind: 'finding',
+      out_of_scope: true,
+    });
+    const fixture = {
+      verdict: 'request_changes',
+      summary: 'x',
+      score: 20,
+      findings: [seriousFinding('a'), seriousFinding('b')],
+    };
+    const llm = new MockLLMProvider('openai', { structured: fixture });
+    const diff = await new MockGitClient().diff();
+    const events: string[] = [];
+
+    const outcome = await reviewPullRequest({
+      systemPrompt: 's',
+      model: 'm',
+      diff,
+      llm,
+      intent,
+      onEvent: (e) => events.push(e.msg),
+    });
+
+    expect(outcome.review.findings).toHaveLength(1);
+    expect(outcome.review.findings[0]!.title).toMatch(/^Out of scope: /);
+    expect(events.some((m) => m.includes('scope-filtered'))).toBe(true);
+  });
+
+  it('a non-serious out-of-scope finding is dropped entirely', async () => {
+    const fixture = {
+      verdict: 'comment',
+      summary: 'x',
+      score: 90,
+      findings: [
+        {
+          id: 'oos-suggestion',
+          severity: 'SUGGESTION',
+          category: 'style',
+          title: 'Config style nit',
+          file: 'src/config.ts',
+          start_line: 11,
+          end_line: 11,
+          rationale: 'grounded on line 11',
+          confidence: 0.7,
+          kind: 'finding',
+          out_of_scope: true,
+        },
+      ],
+    };
+    const llm = new MockLLMProvider('openai', { structured: fixture });
+    const diff = await new MockGitClient().diff();
+
+    const outcome = await reviewPullRequest({ systemPrompt: 's', model: 'm', diff, llm, intent });
+    expect(outcome.review.findings).toHaveLength(0);
+  });
+
+  it('no intent ⇒ out_of_scope is never consulted — the finding survives untouched', async () => {
+    const fixture = {
+      verdict: 'comment',
+      summary: 'x',
+      score: 90,
+      findings: [
+        {
+          id: 'would-be-oos',
+          severity: 'SUGGESTION',
+          category: 'style',
+          title: 'Config style nit',
+          file: 'src/config.ts',
+          start_line: 11,
+          end_line: 11,
+          rationale: 'grounded on line 11',
+          confidence: 0.7,
+          kind: 'finding',
+          out_of_scope: true,
+        },
+      ],
+    };
+    const llm = new MockLLMProvider('openai', { structured: fixture });
+    const diff = await new MockGitClient().diff();
+    const events: string[] = [];
+
+    const outcome = await reviewPullRequest({
+      systemPrompt: 's',
+      model: 'm',
+      diff,
+      llm,
+      onEvent: (e) => events.push(e.msg),
+    });
+
+    expect(outcome.review.findings).toHaveLength(1);
+    expect(outcome.review.findings[0]!.id).toBe('would-be-oos');
+    expect(events.some((m) => m.includes('scope-filtered'))).toBe(false);
+  });
+});
+
 describe('reviewPullRequest — cost provenance', () => {
   const clean = { verdict: 'approve', summary: 'ok', score: 100, findings: [] };
 

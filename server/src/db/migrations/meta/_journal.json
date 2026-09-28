@@ -127,6 +127,13 @@
       "when": 1790174957360,
       "tag": "0017_wild_scarlet_witch",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1790436155516,
+      "tag": "0018_powerful_calypso",
+      "breakpoints": true
     }
   ]
 }

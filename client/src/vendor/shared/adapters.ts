@@ -69,6 +69,18 @@ export interface StructuredRequest<T> {
   maxTokens?: number;
   timeoutMs?: number;
   maxRetries?: number;
+  /**
+   * OpenRouter-only: forces `provider.require_parameters` so routing excludes
+   * any upstream endpoint that doesn't support this request's parameters
+   * (e.g. structured outputs). Other providers ignore it.
+   */
+  requireParameters?: boolean;
+  /**
+   * Caller-owned cancellation. Providers pass it to the SDK request and check
+   * it before each reprompt attempt; an aborted call rejects. Never
+   * serialised into the request body.
+   */
+  signal?: AbortSignal;
 }
 
 export interface StructuredResult<T> {
@@ -197,6 +209,13 @@ export interface GitClient {
   blame(repo: RepoRef, path: string): Promise<BlameLine[]>;
   log(repo: RepoRef, path?: string): Promise<GitCommit[]>;
   readFile(repo: RepoRef, path: string): Promise<string>;
+  /**
+   * Read `path` as it existed at `ref` (a commit SHA), without checking that
+   * commit out (`git show <ref>:<path>`). Used to fetch a linked doc/spec at
+   * the PR's head so the intent classifier sees the version the PR actually
+   * changed (spec 006).
+   */
+  readFileAt(repo: RepoRef, ref: string, path: string): Promise<string>;
   clonePathFor(repo: RepoRef): string;
 }
 

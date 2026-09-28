@@ -30,32 +30,18 @@ swapped for mocks in tests.
 
 ## Request & DI flow
 
-```mermaid
-flowchart LR
-  REQ["HTTP request"] --> MW["plugins (registered before modules)<br/>helmet · cors · rate-limit · SSE"]
-  MW --> VAL["route zod schema<br/>params/body validation"]
-  VAL --> MOD["feature module plugin<br/>modules/&lt;name&gt;/routes.ts"]
-  MOD --> SVC["service<br/>(e.g. ReviewService)"]
-  SVC --> DI{"DI container<br/>platform/container.ts"}
-  DI --> ADP["adapters (ports)<br/>llm · github · git · astgrep · tokenizer · secrets"]
-  ADP -->|"prod"| EXT["LLM (OpenAI/Anthropic) · GitHub · git · pgvector"]
-  ADP -->|"tests"| MOCK["src/adapters/mocks.ts<br/>MockLLMProvider · MockGitClient · …"]
-  SVC --> DB[("Drizzle → Postgres")]
-  SVC -. "run traces" .-> SSE["SSE stream → client"]
-  VAL -. "invalid" .-> ERR["error handler (structured envelope)<br/>validation → 422 · AppError → status<br/>response serialization → 500"]
-  SVC -. "throws" .-> ERR
-```
+A request runs: plugins (helmet/cors/rate-limit/SSE, registered before
+modules) → route zod schema (422 on invalid input) → module plugin → service
+→ DI container → adapter (real in prod, `src/adapters/mocks.ts` in tests) →
+Drizzle/Postgres — with the shared error handler catching validation and
+thrown errors. Modules are registered statically in `src/modules/index.ts`;
+the engine reaps orphaned `running` runs on boot. A global 120/min rate limit
+applies (disabled under `NODE_ENV=test`), with tighter per-route caps on
+expensive endpoints (e.g. `POST /pulls/:id/review`); SSE and `/health*` are
+exempt.
 
-- **Plugins register before modules** so the encapsulated module plugins inherit
-  them (helmet, cors, rate-limit, SSE) and the shared error handler.
-- **Validation is schema-first.** Each route declares zod `params`/`body` schemas
-  (`fastify-type-provider-zod`); invalid input is rejected with a `422` **before**
-  the handler runs — handlers no longer hand-roll `Schema.parse(req.body)`.
-- **Rate limiting:** a global 120/min limit (disabled under `NODE_ENV=test`), with
-  tighter per-route caps on expensive endpoints (e.g. `POST /pulls/:id/review`);
-  SSE and `/health*` are exempt.
-- Modules are registered statically in `src/modules/index.ts` (one import + one
-  `app.register` each); the engine reaps orphaned `running` runs on boot.
+Layers, module anatomy, DI wiring, the platform files, and the request/review
+sequence diagrams live in [`docs/architecture.md`](docs/architecture.md).
 
 ## API map (starter)
 

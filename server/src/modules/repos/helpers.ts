@@ -1,4 +1,4 @@
-import type { ForgeProvider, RepoRef, Repo } from '@devdigest/shared';
+import type { ForgeProvider, Repo } from '@devdigest/shared';
 import * as t from '../../db/schema.js';
 import { AppError } from '../../platform/errors.js';
 import {
@@ -188,24 +188,13 @@ export function cloneUrlFor(row: {
 }
 
 /**
- * Adapter-facing ref for a persisted repo. Built here, in one place, so no call
- * site can forget `provider`/`apiBase` and silently talk to the wrong forge.
+ * `toRepoRef` moved to `platform/forge-resolve.ts` (F1/S15a) — it's pure
+ * cross-cutting resolution, not a repos-module concern, and `IntentService`
+ * needed it without importing across modules. Re-exported here unchanged so
+ * the other existing importers (`pulls/routes.ts`, `polling/routes.ts`,
+ * `test/repo-url.test.ts`) keep working (D9-A).
  */
-export function toRepoRef(row: {
-  owner: string;
-  name: string;
-  fullName: string;
-  provider: string;
-  apiBase: string | null;
-}): RepoRef {
-  return {
-    owner: row.owner,
-    name: row.name,
-    path: row.fullName,
-    provider: row.provider as ForgeProvider,
-    apiBase: row.apiBase ?? undefined,
-  };
-}
+export { toRepoRef } from '../../platform/forge-resolve.js';
 
 /** Map a persisted repo row to the API `Repo` DTO. */
 export function toRepoDto(row: typeof t.repos.$inferSelect): Repo {

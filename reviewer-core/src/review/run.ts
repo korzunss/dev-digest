@@ -1,6 +1,8 @@
+import type { ZodType } from 'zod';
 import type {
   CostSource,
   Finding,
+  Intent,
   LLMProvider,
   PromptAssembly,
   Review,
@@ -11,6 +13,7 @@ import { Review as ReviewSchema } from '@devdigest/shared';
 import { assemblePrompt } from '../prompt.js';
 import { groundFindings, groundingSummary } from '../grounding.js';
 import { reduceReviews, scoreFromFindings, sliceDiff } from './reduce.js';
+import { applyScopeFilter, ScopedReview, type ScopedFinding } from './scope.js';
 
 /**
  * reviewPullRequest — the review engine entry point.
@@ -72,6 +75,19 @@ export interface ReviewInput {
   /** PR author's description/body (untrusted; truncated + delimiter-wrapped in
       the prompt). Empty/undefined → section omitted. */
   prDescription?: string;
+  /**
+   * Structured PR intent (spec 006), resolved by the caller's IntentService.
+   * When set, the prompt gains a `## PR intent` untrusted block + a trusted
+   * scope rule, and findings the model marks `out_of_scope` are filtered
+   * AFTER grounding (grounding is never loosened). Absent ⇒ identical to
+   * today's behavior (same schema, same prompt, no scope step).
+   */
+  intent?: Intent;
+  /**
+   * Injected token counter for the prompt trace's `sections` (e.g. the
+   * server's tiktoken adapter). Falls back to a chars/4 estimate when absent.
+   */
+  countTokens?: (s: string) => number;
   /** Task framing line, e.g. "Review PR #482 …". */
   task?: string;
   /** Override the structured-output retry budget. */
@@ -143,10 +159,19 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
     repoMap: input.repoMap,
     prDescription: input.prDescription,
     task: input.task,
+    intent: input.intent,
   };
+  const assembleOpts = input.countTokens ? { countTokens: input.countTokens } : undefined;
+  // With intent, validate against ScopedReview (Finding + optional out_of_scope)
+  // so the model's scope flag survives structured-output parsing; the
+  // schemaName stays 'Review' either way (out_of_scope is model-facing only).
+  const reviewSchema = (input.intent ? ScopedReview : ReviewSchema) as ZodType<Review>;
 
   // Whole-diff assembly is the trace default; overwritten below for single-pass.
-  let assembly: PromptAssembly = assemblePrompt({ ...promptParts, diff: input.diff.raw }).assembly;
+  let assembly: PromptAssembly = assemblePrompt(
+    { ...promptParts, diff: input.diff.raw },
+    assembleOpts,
+  ).assembly;
 
   const chunks =
     mode === 'map-reduce'
@@ -177,11 +202,11 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
       mode === 'map-reduce' ? `map: reviewing ${chunk.label}` : `Reviewing ${chunk.label} in one pass`,
       { file: chunk.label },
     );
-    const a = assemblePrompt({ ...promptParts, diff: chunk.diffText });
+    const a = assemblePrompt({ ...promptParts, diff: chunk.diffText }, assembleOpts);
     if (mode === 'single-pass') assembly = a.assembly;
     const res = await input.llm.completeStructured<Review>({
       model: input.model,
-      schema: ReviewSchema,
+      schema: reviewSchema,
       schemaName: 'Review',
       messages: a.messages,
       maxRetries,
@@ -212,11 +237,24 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
   }
   emit('result', `Citation grounding: ${grounding}`);
 
-  // Score is derived from the findings that SURVIVED grounding (not the model's
-  // self-reported number, and not the pre-grounding set) so the score, the
-  // findings list, and the deterministic event always agree.
+  // Out-of-scope filter (spec 006 D6) — runs ONLY on grounding survivors, and
+  // can only remove a finding, never add one back. No intent ⇒ skipped
+  // entirely, so a review without intent is byte-identical to before.
+  let finalFindings: Finding[] = ground.kept;
+  if (input.intent) {
+    const scoped = applyScopeFilter(ground.kept as ScopedFinding[]);
+    for (const d of scoped.dropped) {
+      // Distinguishable from a grounding drop (spec 006 S5 gotcha).
+      emit('info', `scope-filtered "${d.finding.title}": ${d.reason}`);
+    }
+    finalFindings = scoped.kept;
+  }
+
+  // Score is derived from the findings that SURVIVED grounding (+ scope) (not
+  // the model's self-reported number) so the score, the findings list, and the
+  // deterministic event always agree.
   return {
-    review: { ...merged, findings: ground.kept, score: scoreFromFindings(ground.kept) },
+    review: { ...merged, findings: finalFindings, score: scoreFromFindings(finalFindings) },
     grounding,
     dropped: ground.dropped,
     mode,

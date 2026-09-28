@@ -25,7 +25,24 @@ _Nothing yet._
 
 ## Codebase Patterns
 
-_Nothing yet._
+### 2026-09-26 — `fetch` in `src/llm/openrouter.ts` is the one allowed I/O; an import-only purity check misses it
+**Symptom:** the purity rule says "no db, no GitHub, no filesystem, no
+`process.env`", and the architecture check that greps `^import … from 'fs'|…`
+reported `reviewer-core/src` as clean — yet `OpenRouterProvider.listModels()`
+calls `fetch` directly. It surfaced only while writing `docs/pipeline.md`.
+**Cause:** the package ships the one concrete `LLMProvider` next to the pure
+engine (`AGENTS.md` → Map: "the one LLMProvider implementation"). Its
+`listModels()` fetches `/models` raw because the OpenAI SDK's `models.list`
+strips the `pricing` field. `fetch` is a global, so no import line names it.
+The engine itself (`reviewPullRequest` and everything it calls) does no I/O.
+**Rule:** leave that one call alone; it is the provider's own side effect, not
+the engine's. Any other `fetch`, HTTP client or node I/O added under
+`reviewer-core/src` breaks purity (`architecture-reviewer` A2 → CRITICAL). When
+checking purity, search for `\bfetch\(` and `process\.env` as well as imports.
+**Evidence:** `reviewer-core/src/llm/openrouter.ts:135` ·
+`rg -n "\bfetch\(" reviewer-core/src` → that line only ·
+`.claude/agents/architecture-reviewer.md` → A2 and *Known exceptions* ·
+`reviewer-core/docs/pipeline.md`
 
 ## Tool & Library Notes
 

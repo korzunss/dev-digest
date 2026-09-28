@@ -38,6 +38,17 @@ export const RunEvent = z.object({
 });
 export type RunEvent = z.infer<typeof RunEvent>;
 
+/** One named block of a composed prompt, with its size (spec 006). Tokens
+ * come from the injected tokenizer when available, else a chars/4 estimate —
+ * `tokens_source` says which, so a UI never shows an estimate as exact. */
+export const PromptSection = z.object({
+  name: z.string(),
+  chars: z.number().int(),
+  tokens: z.number().int(),
+  tokens_source: z.enum(['tokenizer', 'estimate']),
+});
+export type PromptSection = z.infer<typeof PromptSection>;
+
 export const ToolCall = z.object({
   tool: z.string(),
   args: z.string(),
@@ -67,6 +78,12 @@ export const PromptAssembly = z.object({
   repo_map: z.string().nullish(),
   /** PR author's description/body (truncated); null when absent. */
   pr_description: z.string().nullish(),
+  /** Rendered `## PR intent` block (spec 006); null when no intent was
+   * available for this run. */
+  intent: z.string().nullish(),
+  /** Per-section sizes of the composed prompt (spec 006); null for traces
+   * written before section accounting existed. */
+  sections: z.array(PromptSection).nullish(),
   user: z.string(),
 });
 export type PromptAssembly = z.infer<typeof PromptAssembly>;

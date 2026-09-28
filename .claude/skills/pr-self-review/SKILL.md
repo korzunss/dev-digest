@@ -61,7 +61,8 @@ issue, fix}`) — no prose. Reuse the project's existing analyzers where they fi
   `postgresql-table-design`, `nodejs-best-practices`.
 - **Both** → `typescript-expert`, `zod`, `security`, plus the `@devdigest/shared` contract-drift
   check.
-- Feed each subagent the touched package's `INSIGHTS.md` as extra review criteria.
+- Feed each subagent the touched package's `insights/gotchas.md` as extra review criteria
+  (the linked `INSIGHTS.md` entries only when a finding needs the reasoning).
 
 For small diffs (≤ ~3 files, single bucket) skip the fan-out and review inline — the subagent
 overhead isn't worth it.

@@ -50,13 +50,71 @@ that package's `AGENTS.md`, which loads automatically when you work in its folde
 ## Session protocol
 
 - **First step of any task**, before planning, searching or editing: read the
-  `INSIGHTS.md` of the package the request concerns, plus the root one, and name
-  the entries that bear on the task (or say none do). They are accumulated session
-  knowledge — treat them as high-confidence guidance unless the code says otherwise.
+  `insights/gotchas.md` of the package the request concerns and the entry
+  headings of that package's `INSIGHTS.md` and the root `INSIGHTS.md`
+  (`grep '^### '`). Open a full `INSIGHTS.md` entry only when a gotcha item or a
+  heading bears on the task. Name the entries that bear on the task (or say none
+  do). They are accumulated session knowledge — treat them as high-confidence
+  guidance unless the code says otherwise.
 - **When wrapping up**, run the `engineering-insights` skill: re-read that file,
-  and append only what is genuinely new and non-obvious. If the session produced
+  and append only what is genuinely new and non-obvious; the skill then brings
+  the package's `insights/gotchas.md` in step. If the session produced
   nothing that qualifies, or the lesson is already recorded there, write nothing
   and say so — an empty wrap-up is the normal case, padding the file is the failure.
+
+## Plan → implement → verify
+
+- **Optional brainstorm stage** for a goal with no chosen approach: the
+  read-only `brainstormer` returns an idea brief, never a plan. The main
+  session saves **every** brief, `kill` included, verbatim to
+  `docs/ideas/NN-kebab-name.md` plus its index row, adding only `Status:` and
+  `## Choice recorded`. A correction re-runs `brainstormer` with the brief's
+  path; it returns only the changed sections. *Facts needed* seed the
+  researcher's ≤8 questions, and the planner gets the brief's path.
+- Research before planning is **repo-mode only** (≤8 questions to the
+  `researcher`). External research runs only for the items the planner lists
+  under *Risks & open questions*, as a separate researcher run.
+- The `planner` writes its own draft: it creates `docs/plans/NN-kebab-name.md`
+  with `Status: draft`, adds the row to `docs/plans/README.md`, and returns only
+  a summary (path, *Decisions needed*, open questions). In a correction round it
+  edits that plan file and returns the list of changed sections. It writes no
+  other file. The `Status:` line and *Decisions recorded* belong to the **main
+  session**.
+- The user's answers to *Decisions needed* and any corrections are written
+  **into that file**, not left in the conversation. A correction is not an
+  approval.
+- Only after the user's explicit, final approval does the main session set
+  `Status: approved`. Nothing is implemented from a `draft`.
+- `implementer` gets the plan **path** plus one step group per run (`G1`, then
+  `G2`, …), and the status moves to `in-progress`. It runs only the integration
+  tests related to its group; after the last group the main session runs the
+  full `.it` suite once, then hands the same path — and that run's result — to
+  `plan-verifier`. The status becomes `done` after a `complete` verification,
+  or after `complete — needs sign-off` once the user has accepted the listed
+  unverified items; never on its own.
+- `security-reviewer` runs, when a trust boundary is touched (or on demand
+  before a PR), in a fresh context with the plan path and the diff, in
+  parallel with `architecture-reviewer`; its `SF` findings go to fix mode the
+  same way. Its dependency-audit item runs in the main session (needs
+  network), not the agent.
+- Hand-offs between groups go **into the plan**, not into prompts: the main
+  session appends each implementer's *Handoff to the next group* under
+  `## Handoffs → G<n>` below `<!-- implementer-brief:end -->`, and the next
+  prompt is just the plan path and the group. Never paste more than ~10 lines of
+  one agent's report into another agent's prompt; cite gap ids and paths.
+- Gaps from the verifier or either reviewer go back to `implementer`
+  in **fix mode** (plan path + gap ids). A gap that needs a file outside the
+  plan's steps is a plan change: the plan returns to `draft` and needs the
+  user's approval again.
+- **Trivial fixes skip the implementer.** A gap or approved plan change that
+  touches ≤1 file and ≤10 lines, where that file is already in some step's
+  *Files* and the change is not a contract, migration, vendor or lock-file edit,
+  is applied by the main session. It runs that step's Done-when and logs the
+  change in the plan's Verification log as `main-session fix: <id>`; the next
+  plan-verifier run checks it like any other change.
+- **Re-verification is a delta.** After fix mode, call `plan-verifier` in delta
+  mode (previous result + open gap ids); a full pass runs once per wave of
+  implementation, not after every fix.
 
 ## Do not touch
 
@@ -84,3 +142,8 @@ that package's `AGENTS.md`, which loads automatically when you work in its folde
 - Built-in agent prompts → `docs/README.md`
 - Cross-package feature specs → `specs/README.md`
 - Hard-won gotchas: cross-package → `INSIGHTS.md`, package-local → `<pkg>/INSIGHTS.md`
+  (the log) and `<pkg>/insights/gotchas.md` (the rules in force)
+- Package deep-dives → `server/docs/architecture.md`, `client/docs/ui-architecture.md`,
+  `reviewer-core/docs/pipeline.md`, `e2e/docs/flows.md`
+- Approved Development Plans → `docs/plans/README.md`
+- Idea briefs → `docs/ideas/README.md`
