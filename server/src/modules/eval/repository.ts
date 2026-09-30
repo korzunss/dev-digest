@@ -1,5 +1,5 @@
 import { and, desc, eq, inArray } from 'drizzle-orm';
-import type { Db } from '../../db/client.js';
+import type { DbExecutor } from '../../db/client.js';
 import * as t from '../../db/schema.js';
 
 export interface RunRow {
@@ -44,7 +44,15 @@ const runColumns = {
 
 /** Reads the stored runs of a PR and writes eval_cases / eval_runs. No LLM, no other module. */
 export class EvalRepository {
-  constructor(private db: Db) {}
+  constructor(private db: DbExecutor) {}
+
+  /**
+   * Runs `fn` with a repository bound to one transaction. A throw inside `fn`
+   * rolls back every write made through the repository it was given.
+   */
+  transaction<T>(fn: (repo: EvalRepository) => Promise<T>): Promise<T> {
+    return this.db.transaction((tx) => fn(new EvalRepository(tx)));
+  }
 
   async findWorkspaceByName(name: string): Promise<{ id: string } | null> {
     const [row] = await this.db
@@ -151,24 +159,6 @@ export class EvalRepository {
     inputMeta: unknown;
     expectedOutput: unknown;
   }): Promise<string> {
-    const where = and(
-      eq(t.evalCases.workspaceId, input.workspaceId),
-      eq(t.evalCases.ownerKind, 'agent'),
-      eq(t.evalCases.ownerId, input.ownerId),
-      eq(t.evalCases.name, input.name),
-    );
-    const [existing] = await this.db
-      .select({ id: t.evalCases.id })
-      .from(t.evalCases)
-      .where(where)
-      .limit(1);
-    if (existing) {
-      await this.db
-        .update(t.evalCases)
-        .set({ inputMeta: input.inputMeta, expectedOutput: input.expectedOutput })
-        .where(eq(t.evalCases.id, existing.id));
-      return existing.id;
-    }
     const [row] = await this.db
       .insert(t.evalCases)
       .values({
@@ -178,6 +168,10 @@ export class EvalRepository {
         name: input.name,
         inputMeta: input.inputMeta,
         expectedOutput: input.expectedOutput,
+      })
+      .onConflictDoUpdate({
+        target: [t.evalCases.workspaceId, t.evalCases.ownerKind, t.evalCases.ownerId, t.evalCases.name],
+        set: { inputMeta: input.inputMeta, expectedOutput: input.expectedOutput },
       })
       .returning({ id: t.evalCases.id });
     return row!.id;

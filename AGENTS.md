@@ -128,7 +128,9 @@ that package's `AGENTS.md`, which loads automatically when you work in its folde
 ## Do not touch
 
 - `*/src/vendor/**` — vendored code, changed upstream, not edited by hand.
-- `server/src/db/migrations/**` — generated; add via `pnpm db:generate`.
+- `server/src/db/migrations/**` — generated; add via `pnpm db:generate`. The one
+  hand-written kind: a data migration goes into the empty stub made by
+  `pnpm db:generate --custom`, and only into that file (plan 12).
 - `server/clones/**` — runtime checkouts of imported repos. **Exclude it from
   every search/grep**: it contains full copies of other repos (and of this one),
   so matches there are noise.

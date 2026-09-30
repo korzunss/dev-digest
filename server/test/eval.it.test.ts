@@ -164,10 +164,58 @@ d('EvalService (real Postgres)', () => {
   });
 
   it('re-running adds eval_runs rows but no new eval_cases rows', async () => {
-    await service.scoreReviewFixture(fixture, { workspaceName: DEFAULT_WORKSPACE_NAME });
     const { db } = pg.handle;
-    expect(await db.select().from(t.evalCases)).toHaveLength(2);
+    const caseIdsOf = async (runIds: string[]) =>
+      (await db.select().from(t.evalRuns).where(inArray(t.evalRuns.id, runIds)))
+        .map((r) => r.caseId)
+        .sort();
+    const first = await service.scoreReviewFixture(fixture, { workspaceName: DEFAULT_WORKSPACE_NAME });
+    const casesBefore = await db.select().from(t.evalCases);
+    const second = await service.scoreReviewFixture(fixture, { workspaceName: DEFAULT_WORKSPACE_NAME });
+    expect(await db.select().from(t.evalCases)).toHaveLength(casesBefore.length);
+    expect(await caseIdsOf(second.evalRunIds)).toEqual(await caseIdsOf(first.evalRunIds));
     expect((await db.select().from(t.evalRuns)).length).toBeGreaterThanOrEqual(4);
+  });
+
+  it('concurrent upserts of one key return one case', async () => {
+    const { db } = pg.handle;
+    const input = {
+      workspaceId,
+      ownerId: secId,
+      name: 'eval-it-concurrent',
+      inputMeta: { n: 1 },
+      expectedOutput: { n: 1 },
+    };
+    const [a, b] = await Promise.all([
+      new EvalRepository(db).upsertEvalCase(input),
+      new EvalRepository(db).upsertEvalCase(input),
+    ]);
+    expect(a).toBe(b);
+    expect(await db.select().from(t.evalCases).where(eq(t.evalCases.name, 'eval-it-concurrent'))).toHaveLength(1);
+  });
+
+  it('a failing write mid-loop leaves no rows', async () => {
+    const { db } = pg.handle;
+    class FailSecondInsert extends EvalRepository {
+      override transaction<T>(fn: (repo: EvalRepository) => Promise<T>): Promise<T> {
+        return super.transaction((txRepo) => {
+          const insert = txRepo.insertEvalRun.bind(txRepo);
+          let calls = 0;
+          txRepo.insertEvalRun = async (input) => {
+            if (++calls === 2) throw new Error('boom');
+            return insert(input);
+          };
+          return fn(txRepo);
+        });
+      }
+    }
+    const failing = new EvalService({ repo: new FailSecondInsert(db) });
+    const runsBefore = (await db.select().from(t.evalRuns)).length;
+    await expect(
+      failing.scoreReviewFixture({ ...fixture, id: 'eval-it-rollback' }, { workspaceName: DEFAULT_WORKSPACE_NAME }),
+    ).rejects.toThrow(/boom/);
+    expect(await db.select().from(t.evalCases).where(eq(t.evalCases.name, 'eval-it-rollback'))).toHaveLength(0);
+    expect(await db.select().from(t.evalRuns)).toHaveLength(runsBefore);
   });
 
   it('explicit run ids override the default', async () => {

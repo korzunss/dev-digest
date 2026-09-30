@@ -186,6 +186,12 @@ foreign key POINTS AT"
 
 ## Tool & Library Notes
 
+### 2026-09-30 — a data migration goes into a `pnpm db:generate --custom` stub, generated *before* the schema edit
+**Symptom:** a new unique index needed existing duplicate rows cleaned first. drizzle-kit only emits DDL, and `migrations/**` is "generated only", so there seemed to be no legitimate place for the cleanup SQL. The custom migration's snapshot then showed hundreds of changed lines in a plain `diff`, which looked like schema drift.
+**Cause:** `drizzle-kit generate --custom --name <x>` (0.30.6) creates an empty, journaled `.sql` stub, and its snapshot is a copy of the previous one. So it must run *before* the schema edit, or the index lands in the custom snapshot and the DDL migration comes out empty. The copy has reordered keys but identical content. The migrator applies all pending migrations in **one transaction** (`drizzle-orm/pg-core/dialect.js:60`), so the data fix and the DDL that needs it succeed or fail together.
+**Rule:** for a data fix that a DDL change depends on, run `pnpm db:generate --custom --name <x>` first and hand-write only that stub (the one exception in AGENTS.md "Do not touch"). Then edit the schema and run `pnpm db:generate` for the DDL. Compare snapshots with `jq -S 'del(.id,.prevId)'`, not `diff`. Write each statement so it also runs outside a transaction (no temp tables), and separate statements with `--> statement-breakpoint`.
+**Evidence:** `server/src/db/migrations/0020_dedupe_eval_cases.sql`, `0021_unique_veda.sql` · `server/test/eval-cases-dedupe.it.test.ts` · `docs/plans/12-eval-write-integrity.md` → Design notes, Verification log
+
 ### 2026-09-30 — `withTimeout` does not stop a git call; pass an `AbortSignal` to the adapter, and test the kill path deterministically
 **Symptom:** after `loadDiff`'s 90 s `withTimeout` fired, the review fell back to `pr_files`, but `git fetch --deepen` kept running in the shared clone. That process could hold `shallow.lock` or `index.lock` and break a concurrent `sync` or the next review of the same repo. A later "abort during fetch" test passed without ever killing a fetch.
 **Cause:** `withTimeout` (`platform/resilience.ts:13-24`) is a `Promise.race`: the caller stops waiting, and nothing is cancelled. For the test there were two problems. (1) `beforeAll` had already fetched the SHAs into the shared clone, so the later case ran on local objects. (2) `AbortSignal.timeout(1)` fired before or during `cat-file`, not during the fetch.

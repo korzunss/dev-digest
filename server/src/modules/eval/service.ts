@@ -23,7 +23,8 @@ export interface ScoreResult extends SuiteScore {
 
 /**
  * Scores stored review runs against a planted-issue fixture. Every precondition
- * throws before the first write, so a failed eval leaves nothing half-written.
+ * throws before the first write, and all writes run in one transaction, so a
+ * failed eval leaves nothing half-written.
  * Makes no LLM call and touches no table but through the injected repository.
  */
 export class EvalService {
@@ -117,45 +118,48 @@ export class EvalService {
 
     const suite = scoreSuite(fixture, inputs);
 
-    const evalRunIds: string[] = [];
-    for (const score of suite.agents) {
-      const s = scored.find((x) => x.run.id === score.runId)!;
-      const caseId = await repo.upsertEvalCase({
-        workspaceId: workspace.id,
-        ownerId: s.agent.id,
-        name: fixture.id,
-        inputMeta: { repo: fixture.repo, pr: fixture.pr, head_sha: fixture.head_sha },
-        expectedOutput: {
-          lane: s.lane,
-          issues: fixture.issues.filter((i) => i.lane === s.lane),
-          acceptable_extras: fixture.acceptable_extras.filter((i) => i.lane === s.lane),
-          line_tolerance: fixture.line_tolerance,
-        },
-      });
-      evalRunIds.push(
-        await repo.insertEvalRun({
-          caseId,
-          pass: null,
-          recall: score.recall,
-          precision: score.precision,
-          citationAccuracy: score.citationAccuracy,
-          durationMs: score.durationMs,
-          costUsd: score.costUsd,
-          actualOutput: {
-            run_id: score.runId,
+    const evalRunIds = await repo.transaction(async (tx) => {
+      const ids: string[] = [];
+      for (const score of suite.agents) {
+        const s = scored.find((x) => x.run.id === score.runId)!;
+        const caseId = await tx.upsertEvalCase({
+          workspaceId: workspace.id,
+          ownerId: s.agent.id,
+          name: fixture.id,
+          inputMeta: { repo: fixture.repo, pr: fixture.pr, head_sha: fixture.head_sha },
+          expectedOutput: {
+            lane: s.lane,
+            issues: fixture.issues.filter((i) => i.lane === s.lane),
+            acceptable_extras: fixture.acceptable_extras.filter((i) => i.lane === s.lane),
+            line_tolerance: fixture.line_tolerance,
+          },
+        });
+        ids.push(
+          await tx.insertEvalRun({
+            caseId,
+            pass: null,
             recall: score.recall,
             precision: score.precision,
-            lane_found: score.laneFound,
-            lane_missed: score.laneMissed,
-            off_lane: score.offLane,
-            extras: score.extras,
-            unmatched: score.unmatched,
-            duplicates: suite.duplicates.filter((d) => d.agents.includes(score.agentName)),
-            suite_recall: suite.suiteRecall,
-          },
-        }),
-      );
-    }
+            citationAccuracy: score.citationAccuracy,
+            durationMs: score.durationMs,
+            costUsd: score.costUsd,
+            actualOutput: {
+              run_id: score.runId,
+              recall: score.recall,
+              precision: score.precision,
+              lane_found: score.laneFound,
+              lane_missed: score.laneMissed,
+              off_lane: score.offLane,
+              extras: score.extras,
+              unmatched: score.unmatched,
+              duplicates: suite.duplicates.filter((d) => d.agents.includes(score.agentName)),
+              suite_recall: suite.suiteRecall,
+            },
+          }),
+        );
+      }
+      return ids;
+    });
 
     return { ...suite, evalRunIds, noRun, warnings };
   }

@@ -192,6 +192,12 @@ that path; it's runtime data, and the next resync overwrites it.
 
 ## Tool & Library Notes
 
+### 2026-09-30 — the auto-mode permission check blocks an implementer from writing a migration file
+**Symptom:** in plan 12 the implementer ran `pnpm db:generate --custom` fine, but its write of the SQL body into the new `server/src/db/migrations/0020_*.sql` stub was denied by the auto-mode classifier ("Modify Shared Resources"). The group came back `partial`: the stub was empty, the dedupe `.it` test failed, and `0021`'s unique index would have failed on any DB with duplicates.
+**Cause:** the harness's permission check treats a hand write under `migrations/**` as a shared-resource change, independent of the plan's approval. A plan decision (D1-A) is not a permission grant, and the main session must not "launder" the denied write by doing it on the agent's behalf.
+**Rule:** when a plan step hand-writes a migration (the `--custom` stub), expect the implementer to be denied. Surface it to the user with the exact content. Write the file in the main session **only** on the user's explicit instruction for that file (plan 12: "План 12. Зроби сам"), then log it as a main-session fix. Until then, `db:migrate` must not be run.
+**Evidence:** `docs/plans/12-eval-write-integrity.md` → Handoffs → verification, Verification log (main-session fix: S1)
+
 ### 2026-09-28 — a Done-when `grep` for a phrase fails when Markdown wraps that phrase across two lines
 **Symptom:** in plan 05 G1 the implementer ran its full `maxTurns` (100 tool
 uses, 193k tokens) on six Markdown edits. Twice, a Done-when

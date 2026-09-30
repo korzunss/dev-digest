@@ -89,3 +89,5 @@ result to the verifier.
 | [08-llm-call-reliability](08-llm-call-reliability.md) | done | none | shared, reviewer-core, server, client (contract mirror) |
 | [09-review-eval-fixture](09-review-eval-fixture.md) | done | none | server (new `modules/eval`, `eval:review` script) |
 | [11-diff-commits-cancellation](11-diff-commits-cancellation.md) | done | none | shared (port; client `fetchPullHead` mirror), server |
+| [12-eval-write-integrity](12-eval-write-integrity.md) | done | none | server (eval module, schema + 2 migrations, `db/client.ts` type) |
+| [13-count-failed-llm-attempt-usage](13-count-failed-llm-attempt-usage.md) | done | none | shared (port; client mirror), reviewer-core, server (run-executor wiring) |
