@@ -269,7 +269,12 @@ export interface GitCommit {
 
 export interface GitClient {
   clone(repo: RepoRef, url: string, opts?: CloneOptions): Promise<{ path: string }>;
-  fetchPullHead(repo: RepoRef, n: number): Promise<void>;
+  /**
+   * Fetch the PR head ref into a local ref. Aborting `signal` stops the running
+   * git process and the call rejects with `signal.reason`. Time spent waiting
+   * for the clone's lock counts toward the signal.
+   */
+  fetchPullHead(repo: RepoRef, n: number, signal?: AbortSignal): Promise<void>;
   /**
    * Resync an already-cloned repo to the tip of `branch`: fetch from origin and
    * advance the local working tree to `origin/<branch>`. Unlike `clone`'s bare
@@ -283,9 +288,16 @@ export interface GitClient {
    * Diff two commit SHAs (`base...head`). Both must be full commit SHAs; either
    * is fetched when missing locally, and the clone is deepened until a merge-base
    * exists. Throws when a SHA is malformed or no merge-base is found within the
-   * deepening cap.
+   * deepening cap. Aborting `signal` stops the running git process and the call
+   * rejects with `signal.reason`; time spent waiting for the clone's lock counts
+   * toward the signal.
    */
-  diffCommits(repo: RepoRef, base: string, head: string): Promise<UnifiedDiff>;
+  diffCommits(
+    repo: RepoRef,
+    base: string,
+    head: string,
+    signal?: AbortSignal,
+  ): Promise<UnifiedDiff>;
   /**
    * Names of files changed between two commits (`git diff --name-only base..head`).
    * Two-dot form is intentional — we want files reachable from `head` but not `base`,

@@ -127,7 +127,14 @@ export class ReviewRunExecutor {
     try {
       const loaded = await runLog.step(
         'Loading PR diff',
-        () => loadDiff(this.container.git, this.repo, pull, { owner: repo.owner, name: repo.name }),
+        () =>
+          loadDiff(
+            this.container.git,
+            this.repo,
+            pull,
+            { owner: repo.owner, name: repo.name },
+            { signal: this.container.runBus.signalForAll(jobs.map((j) => j.runId)), logger },
+          ),
         { kind: 'tool' },
       );
       diff = loaded.diff;

@@ -11,6 +11,7 @@ import type {
   GitCommit,
 } from '@devdigest/shared';
 import { parseUnifiedDiff } from './diff-parser.js';
+import { KeyedMutex } from './clone-lock.js';
 
 /**
  * Depth fetched by `sync()`. Deeper than the shallow clone (CLONE_DEPTH=1) so the
@@ -30,10 +31,39 @@ const MERGE_BASE_DEEPEN = 50;
 const COMMIT_SHA_RE = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 
 /**
+ * Per-command backstop for every git call: simple-git kills the child when it
+ * prints nothing for this long. An inactivity timer, not a deadline — set above
+ * the longest silent phase of a fetch/deepen on a large repo.
+ */
+export const GIT_BLOCK_TIMEOUT_MS = 300_000;
+
+/**
+ * Maps what a stopped git call throws to what callers should see: the abort
+ * reason when the caller's signal fired, a URL-free stall message for the
+ * simple-git `block` timeout, anything else unchanged. The plugin is detected by
+ * duck typing (`plugin === 'timeout'`) rather than importing its error class.
+ */
+export function toGitStopError(err: unknown, signal?: AbortSignal): unknown {
+  if (signal?.aborted) return signal.reason;
+  if (isBlockTimeout(err)) {
+    return new Error(`git stalled — no output for ${GIT_BLOCK_TIMEOUT_MS / 1000} s, stopped`);
+  }
+  return err;
+}
+
+function isBlockTimeout(err: unknown): boolean {
+  return (
+    typeof err === 'object' && err !== null && (err as { plugin?: unknown }).plugin === 'timeout'
+  );
+}
+
+/**
  * GitClient over simple-git. Repos clone to
  * `<cloneDir>/<owner>/<repo>`. We NEVER execute repo code — only git ops.
  */
 export class SimpleGitClient implements GitClient {
+  private locks = new KeyedMutex();
+
   constructor(private cloneDir: string) {
     // Force non-interactive auth so an unauthenticated/private clone fails in
     // ~1s with a clear error instead of hanging on a credential prompt until the
@@ -48,8 +78,16 @@ export class SimpleGitClient implements GitClient {
     return join(this.cloneDir, repo.owner, repo.name);
   }
 
-  private git(repo: RepoRef): SimpleGit {
-    return simpleGit(this.clonePathFor(repo));
+  private gitAt(baseDir: string, signal?: AbortSignal): SimpleGit {
+    return simpleGit({
+      baseDir,
+      timeout: { block: GIT_BLOCK_TIMEOUT_MS },
+      ...(signal ? { abort: signal } : {}),
+    });
+  }
+
+  private git(repo: RepoRef, signal?: AbortSignal): SimpleGit {
+    return this.gitAt(this.clonePathFor(repo), signal);
   }
 
   private async exists(path: string): Promise<boolean> {
@@ -63,25 +101,37 @@ export class SimpleGitClient implements GitClient {
 
   async clone(repo: RepoRef, url: string, opts?: CloneOptions): Promise<{ path: string }> {
     const dest = this.clonePathFor(repo);
-    await mkdir(join(this.cloneDir, repo.owner), { recursive: true });
-    if (await this.exists(join(dest, '.git'))) {
-      // already cloned → fetch latest
-      await simpleGit(dest).fetch();
-      return { path: dest };
-    }
-    // A prior clone may have timed out mid-write, leaving a partial dir without
-    // a .git — git clone refuses a non-empty dest, so clear it first.
-    if (await this.exists(dest)) await rm(dest, { recursive: true, force: true });
-    const args: string[] = [];
-    if (opts?.depth) args.push('--depth', String(opts.depth));
-    if (opts?.branch) args.push('--branch', opts.branch);
-    await simpleGit(this.cloneDir).clone(url, dest, args);
-    return { path: dest };
+    return this.locks.run(dest, undefined, async () => {
+      try {
+        await mkdir(join(this.cloneDir, repo.owner), { recursive: true });
+        if (await this.exists(join(dest, '.git'))) {
+          // already cloned → fetch latest
+          await this.gitAt(dest).fetch();
+          return { path: dest };
+        }
+        // A prior clone may have timed out mid-write, leaving a partial dir without
+        // a .git — git clone refuses a non-empty dest, so clear it first.
+        if (await this.exists(dest)) await rm(dest, { recursive: true, force: true });
+        const args: string[] = [];
+        if (opts?.depth) args.push('--depth', String(opts.depth));
+        if (opts?.branch) args.push('--branch', opts.branch);
+        await this.gitAt(this.cloneDir).clone(url, dest, args);
+        return { path: dest };
+      } catch (err) {
+        throw toGitStopError(err);
+      }
+    });
   }
 
-  async fetchPullHead(repo: RepoRef, n: number): Promise<void> {
-    // Fetch the PR head ref into a local ref (GitHub exposes pull/<n>/head).
-    await this.git(repo).fetch(['origin', `pull/${n}/head:pr-${n}`]);
+  async fetchPullHead(repo: RepoRef, n: number, signal?: AbortSignal): Promise<void> {
+    await this.locks.run(this.clonePathFor(repo), signal, async () => {
+      try {
+        // Fetch the PR head ref into a local ref (GitHub exposes pull/<n>/head).
+        await this.git(repo, signal).fetch(['origin', `pull/${n}/head:pr-${n}`]);
+      } catch (err) {
+        throw toGitStopError(err, signal);
+      }
+    });
   }
 
   async sync(repo: RepoRef, branch: string): Promise<{ head: string }> {
@@ -91,19 +141,33 @@ export class SimpleGitClient implements GitClient {
     // Fetch a bounded depth (> the shallow CLONE_DEPTH) so the prior indexed sha
     // is usually reachable for an incremental diff; the indexer falls back to a
     // full reindex when it isn't.
-    const g = this.git(repo);
-    await g.fetch(['origin', branch, '--depth', String(RESYNC_FETCH_DEPTH)]);
-    await g.reset(['--hard', `origin/${branch}`]);
-    return { head: (await g.revparse(['HEAD'])).trim() };
+    return this.locks.run(this.clonePathFor(repo), undefined, async () => {
+      try {
+        const g = this.git(repo);
+        await g.fetch(['origin', branch, '--depth', String(RESYNC_FETCH_DEPTH)]);
+        await g.reset(['--hard', `origin/${branch}`]);
+        return { head: (await g.revparse(['HEAD'])).trim() };
+      } catch (err) {
+        throw toGitStopError(err);
+      }
+    });
   }
 
   async currentHead(repo: RepoRef): Promise<string> {
-    return (await this.git(repo).revparse(['HEAD'])).trim();
+    try {
+      return (await this.git(repo).revparse(['HEAD'])).trim();
+    } catch (err) {
+      throw toGitStopError(err);
+    }
   }
 
   async diff(repo: RepoRef, base: string, head: string): Promise<UnifiedDiff> {
-    const raw = await this.git(repo).diff([`${base}...${head}`]);
-    return parseUnifiedDiff(raw);
+    try {
+      const raw = await this.git(repo).diff([`${base}...${head}`]);
+      return parseUnifiedDiff(raw);
+    } catch (err) {
+      throw toGitStopError(err);
+    }
   }
 
   /**
@@ -112,37 +176,51 @@ export class SimpleGitClient implements GitClient {
    * Missing commits are fetched at depth 1, then the clone is deepened until a
    * merge-base exists (git >= 2.28 fails loudly on a missing merge-base).
    */
-  async diffCommits(repo: RepoRef, base: string, head: string): Promise<UnifiedDiff> {
+  async diffCommits(
+    repo: RepoRef,
+    base: string,
+    head: string,
+    signal?: AbortSignal,
+  ): Promise<UnifiedDiff> {
     if (!COMMIT_SHA_RE.test(base) || !COMMIT_SHA_RE.test(head)) {
       throw new Error('diffCommits: invalid sha (expected 40 or 64 lowercase hex characters)');
     }
-    const g = this.git(repo);
-    const missing: string[] = [];
-    for (const sha of [base, head]) {
+    return this.locks.run(this.clonePathFor(repo), signal, async () => {
       try {
-        await g.raw(['cat-file', '-e', `${sha}^{commit}`]);
-      } catch {
-        missing.push(sha);
-      }
-    }
-    if (missing.length > 0) await g.raw(['fetch', '--depth=1', 'origin', ...missing]);
+        const g = this.git(repo, signal);
+        const missing: string[] = [];
+        for (const sha of [base, head]) {
+          try {
+            await g.raw(['cat-file', '-e', `${sha}^{commit}`]);
+          } catch (err) {
+            // A stop is not "commit missing": let it propagate.
+            if (signal?.aborted || isBlockTimeout(err)) throw err;
+            missing.push(sha);
+          }
+        }
+        if (missing.length > 0) await g.raw(['fetch', '--depth=1', 'origin', ...missing]);
 
-    // simple-git does not throw on `merge-base` exit 1 (no stderr) — an empty
-    // output is the "no merge base" signal.
-    const hasMergeBase = async (): Promise<boolean> => {
-      try {
-        return (await g.raw(['merge-base', base, head])).trim().length > 0;
-      } catch {
-        return false;
+        // simple-git does not throw on `merge-base` exit 1 (no stderr) — an empty
+        // output is the "no merge base" signal.
+        const hasMergeBase = async (): Promise<boolean> => {
+          try {
+            return (await g.raw(['merge-base', base, head])).trim().length > 0;
+          } catch (err) {
+            if (signal?.aborted || isBlockTimeout(err)) throw err;
+            return false;
+          }
+        };
+        let found = await hasMergeBase();
+        for (let round = 0; round < MERGE_BASE_MAX_ROUNDS && !found; round++) {
+          await g.raw(['fetch', `--deepen=${MERGE_BASE_DEEPEN}`, 'origin', head, base]);
+          found = await hasMergeBase();
+        }
+        if (!found) throw new Error('diffCommits: no merge base found within the deepen cap');
+        return parseUnifiedDiff(await g.diff([`${base}...${head}`]));
+      } catch (err) {
+        throw toGitStopError(err, signal);
       }
-    };
-    let found = await hasMergeBase();
-    for (let round = 0; round < MERGE_BASE_MAX_ROUNDS && !found; round++) {
-      await g.raw(['fetch', `--deepen=${MERGE_BASE_DEEPEN}`, 'origin', head, base]);
-      found = await hasMergeBase();
-    }
-    if (!found) throw new Error('diffCommits: no merge base found within the deepen cap');
-    return parseUnifiedDiff(await g.diff([`${base}...${head}`]));
+    });
   }
 
   /**
@@ -153,7 +231,12 @@ export class SimpleGitClient implements GitClient {
    */
   async diffNameOnly(repo: RepoRef, base: string, head: string): Promise<string[]> {
     if (base === head) return [];
-    const raw = await this.git(repo).raw(['diff', '--name-only', `${base}..${head}`]);
+    let raw: string;
+    try {
+      raw = await this.git(repo).raw(['diff', '--name-only', `${base}..${head}`]);
+    } catch (err) {
+      throw toGitStopError(err);
+    }
     return raw
       .split('\n')
       .map((s) => s.trim())
@@ -161,18 +244,26 @@ export class SimpleGitClient implements GitClient {
   }
 
   async blame(repo: RepoRef, path: string): Promise<BlameLine[]> {
-    const raw = await this.git(repo).raw(['blame', '--line-porcelain', path]);
-    return parseBlamePorcelain(raw);
+    try {
+      const raw = await this.git(repo).raw(['blame', '--line-porcelain', path]);
+      return parseBlamePorcelain(raw);
+    } catch (err) {
+      throw toGitStopError(err);
+    }
   }
 
   async log(repo: RepoRef, path?: string): Promise<GitCommit[]> {
-    const log = await this.git(repo).log(path ? { file: path } : undefined);
-    return log.all.map((c) => ({
-      sha: c.hash,
-      message: c.message,
-      author: c.author_name,
-      date: c.date,
-    }));
+    try {
+      const log = await this.git(repo).log(path ? { file: path } : undefined);
+      return log.all.map((c) => ({
+        sha: c.hash,
+        message: c.message,
+        author: c.author_name,
+        date: c.date,
+      }));
+    } catch (err) {
+      throw toGitStopError(err);
+    }
   }
 
   async readFile(repo: RepoRef, path: string): Promise<string> {
@@ -199,7 +290,11 @@ export class SimpleGitClient implements GitClient {
     ) {
       throw new Error(`readFileAt: invalid path ${path}`);
     }
-    return this.git(repo).raw(['show', `${ref}:${path}`]);
+    try {
+      return await this.git(repo).raw(['show', `${ref}:${path}`]);
+    } catch (err) {
+      throw toGitStopError(err);
+    }
   }
 }
 

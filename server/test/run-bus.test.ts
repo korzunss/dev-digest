@@ -28,3 +28,25 @@ describe('RunBus abort signal', () => {
     expect(next.aborted).toBe(false);
   });
 });
+
+describe('RunBus.signalForAll', () => {
+  it('aborts only once every run is cancelled', () => {
+    const bus = new RunBus();
+    const all = bus.signalForAll(['a', 'b']);
+    bus.cancel('a');
+    expect(all.aborted).toBe(false);
+    bus.cancel('b');
+    expect(all.aborted).toBe(true);
+  });
+
+  it('is aborted at creation when all runs were already cancelled', () => {
+    const bus = new RunBus();
+    bus.cancel('a');
+    bus.cancel('b');
+    expect(bus.signalForAll(['a', 'b']).aborted).toBe(true);
+  });
+
+  it('never aborts for an empty batch', () => {
+    expect(new RunBus().signalForAll([]).aborted).toBe(false);
+  });
+});

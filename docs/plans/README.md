@@ -88,3 +88,4 @@ result to the verifier.
 | [07-review-diff-base-sha](07-review-diff-base-sha.md) | done | none | shared, server, client (contract mirror) |
 | [08-llm-call-reliability](08-llm-call-reliability.md) | done | none | shared, reviewer-core, server, client (contract mirror) |
 | [09-review-eval-fixture](09-review-eval-fixture.md) | done | none | server (new `modules/eval`, `eval:review` script) |
+| [11-diff-commits-cancellation](11-diff-commits-cancellation.md) | done | none | shared (port; client `fetchPullHead` mirror), server |

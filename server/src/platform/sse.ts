@@ -44,6 +44,21 @@ export class RunBus {
     return c.signal;
   }
 
+  /** One signal for a batch of runs: aborts only once every run in the batch
+   *  is cancelled. An empty batch never aborts. */
+  signalForAll(runIds: string[]): AbortSignal {
+    const signals = runIds.map((id) => this.signalFor(id));
+    const c = new AbortController();
+    const check = (): void => {
+      if (!c.signal.aborted && signals.length > 0 && signals.every((s) => s.aborted)) {
+        c.abort(new Error('All runs cancelled'));
+      }
+    };
+    for (const s of signals) s.addEventListener('abort', check, { once: true });
+    check();
+    return c.signal;
+  }
+
   /** Whether cancellation has been requested for a run. */
   isCancelled(runId: string): boolean {
     return this.cancelled.has(runId);

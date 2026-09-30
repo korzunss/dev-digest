@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { loadDiff } from '../src/modules/reviews/diff-loader.js';
 import { MockGitClient } from '../src/adapters/mocks.js';
 
@@ -76,5 +76,60 @@ describe('loadDiff', () => {
     await expect(loadDiff(git, repoWith([file('a.ts', null)]), makePull(), REF)).rejects.toThrow(
       /base\.\.\.head diff unavailable \(no merge base\)/,
     );
+  });
+  describe('stopped git', () => {
+    const abortAware = () => {
+      const seen: { signal?: AbortSignal } = {};
+      const git = {
+        diff: async () => {
+          throw new Error('not used');
+        },
+        diffCommits: (_r: unknown, _b: string, _h: string, signal?: AbortSignal) => {
+          seen.signal = signal;
+          return new Promise<never>((_, reject) => {
+            if (signal?.aborted) return reject(signal.reason);
+            signal?.addEventListener('abort', () => reject(signal.reason), { once: true });
+          });
+        },
+      };
+      return { git: git as never, seen };
+    };
+
+    it('names the timeout, aborts the signal and warns', async () => {
+      const { git, seen } = abortAware();
+      const warn = vi.fn();
+      const r = await loadDiff(git, repoWith([file('a.ts')]), makePull(), REF, {
+        timeoutMs: 20,
+        logger: { warn },
+      });
+      expect(r.source).toBe('pr_files');
+      expect(r.note).toContain('timed out after 0 s — git stopped');
+      expect(seen.signal?.aborted).toBe(true);
+      expect(warn).toHaveBeenCalledWith(
+        expect.objectContaining({ owner: 'acme', name: 'api', reason: 'timeout' }),
+        'diffCommits stopped',
+      );
+    });
+
+    it('names the batch cancellation', async () => {
+      const { git } = abortAware();
+      const warn = vi.fn();
+      const ac = new AbortController();
+      ac.abort(new Error('All runs cancelled'));
+      const r = await loadDiff(git, repoWith([file('a.ts')]), makePull(), REF, {
+        signal: ac.signal,
+        logger: { warn },
+      });
+      expect(r.note).toContain('all runs cancelled — git stopped');
+      expect(warn).toHaveBeenCalledWith(expect.objectContaining({ reason: 'cancelled' }), 'diffCommits stopped');
+    });
+
+    it('does not warn on a plain failure', async () => {
+      const warn = vi.fn();
+      const git = new MockGitClient({ diffCommitsError: new Error('no merge base') });
+      const r = await loadDiff(git, repoWith([file('a.ts')]), makePull(), REF, { logger: { warn } });
+      expect(r.note).toContain('no merge base');
+      expect(warn).not.toHaveBeenCalled();
+    });
   });
 });

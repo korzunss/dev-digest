@@ -1,6 +1,5 @@
 import type { GitClient, RepoRef, UnifiedDiff } from '@devdigest/shared';
 import { parseUnifiedDiff } from '../../adapters/git/diff-parser.js';
-import { withTimeout } from '../../platform/resilience.js';
 import type { ReviewRepository, PullRow } from './repository.js';
 import { DIFF_COMMITS_TIMEOUT_MS } from './constants.js';
 import { pathsOutsidePrFiles, prFilesAreFresh } from './helpers.js';
@@ -10,6 +9,13 @@ export interface LoadedDiff {
   source: 'git' | 'pr_files' | 'legacy_branch';
   /** A line for the run log explaining a fallback, or null when nothing notable happened. */
   note: string | null;
+}
+
+export interface LoadDiffOptions {
+  /** Batch-cancel signal (aborts when every run of the batch is cancelled). */
+  signal?: AbortSignal;
+  timeoutMs?: number;
+  logger?: { warn: (obj: unknown, msg?: string) => void };
 }
 
 /**
@@ -25,16 +31,18 @@ export async function loadDiff(
   repo: Pick<ReviewRepository, 'getPrFiles'>,
   pull: PullRow,
   repoRef: RepoRef,
+  opts: LoadDiffOptions = {},
 ): Promise<LoadedDiff> {
   const prFiles = await repo.getPrFiles(pull.id);
   let note: string | null = null;
 
   if (pull.baseSha) {
+    const timeoutMs = opts.timeoutMs ?? DIFF_COMMITS_TIMEOUT_MS;
+    const deadline = AbortSignal.timeout(timeoutMs);
+    const signal = opts.signal ? AbortSignal.any([deadline, opts.signal]) : deadline;
+    const started = Date.now();
     try {
-      const diff = await withTimeout(
-        git.diffCommits(repoRef, pull.baseSha, pull.headSha),
-        DIFF_COMMITS_TIMEOUT_MS,
-      );
+      const diff = await git.diffCommits(repoRef, pull.baseSha, pull.headSha, signal);
       if (diff.files.length > 0) {
         if (prFilesAreFresh(pull, prFiles)) {
           const outside = pathsOutsidePrFiles(diff, prFiles);
@@ -50,7 +58,28 @@ export async function loadDiff(
       }
       note = 'base...head diff unavailable (git diff returned 0 files)';
     } catch (err) {
-      note = `base...head diff unavailable (${(err as Error).message})`;
+      let reason: 'timeout' | 'cancelled' | null = null;
+      if (deadline.aborted) {
+        reason = 'timeout';
+        note = `base...head diff unavailable (timed out after ${Math.round(timeoutMs / 1000)} s — git stopped)`;
+      } else if (opts.signal?.aborted) {
+        reason = 'cancelled';
+        note = 'base...head diff unavailable (all runs cancelled — git stopped)';
+      } else {
+        note = `base...head diff unavailable (${(err as Error).message})`;
+      }
+      if (reason) {
+        opts.logger?.warn(
+          {
+            owner: repoRef.owner,
+            name: repoRef.name,
+            prId: pull.id,
+            elapsedMs: Date.now() - started,
+            reason,
+          },
+          'diffCommits stopped',
+        );
+      }
     }
   }
 

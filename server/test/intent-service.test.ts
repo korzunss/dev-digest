@@ -374,7 +374,25 @@ describe('IntentService — built from IntentServiceDeps fakes, no container (S1
 
     await new IntentService(deps).classify('ws-1', pull.id);
 
-    expect(git.diffCommits).toHaveBeenCalledWith(expect.anything(), 'b'.repeat(40), pull.headSha);
+    expect(git.diffCommits).toHaveBeenCalledWith(expect.anything(), 'b'.repeat(40), pull.headSha, expect.any(AbortSignal));
     expect(git.diff).not.toHaveBeenCalled();
+  });
+  it('fetchPullHead receives an AbortSignal as its 3rd argument', async () => {
+    const pull = makePull({ body: 'See docs/plan.md for the design.' });
+    const repo = makeRepo();
+    const { store } = makeStore(pull, repo);
+    const git = makeGit({ readFileAt: vi.fn(async () => 'doc content') });
+    const deps: IntentServiceDeps = {
+      repo: store,
+      git,
+      forge: async () => ({ getIssue: async () => { throw new Error('none'); } }),
+      llm: async () => makeFastLlm(),
+      tokenizer: { count: (s) => Math.ceil(s.length / 4) },
+      resolveModel: async () => ({ provider: 'openrouter', model: 'm' }),
+    };
+
+    await new IntentService(deps).classify('ws-1', pull.id);
+
+    expect(git.fetchPullHead).toHaveBeenCalledWith(expect.anything(), pull.number, expect.any(AbortSignal));
   });
 });

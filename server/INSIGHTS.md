@@ -186,6 +186,12 @@ foreign key POINTS AT"
 
 ## Tool & Library Notes
 
+### 2026-09-30 — `withTimeout` does not stop a git call; pass an `AbortSignal` to the adapter, and test the kill path deterministically
+**Symptom:** after `loadDiff`'s 90 s `withTimeout` fired, the review fell back to `pr_files`, but `git fetch --deepen` kept running in the shared clone. That process could hold `shallow.lock` or `index.lock` and break a concurrent `sync` or the next review of the same repo. A later "abort during fetch" test passed without ever killing a fetch.
+**Cause:** `withTimeout` (`platform/resilience.ts:13-24`) is a `Promise.race`: the caller stops waiting, and nothing is cancelled. For the test there were two problems. (1) `beforeAll` had already fetched the SHAs into the shared clone, so the later case ran on local objects. (2) `AbortSignal.timeout(1)` fired before or during `cat-file`, not during the fetch.
+**Rule:** bound a git call by passing a signal into `GitClient` (`diffCommits`/`fetchPullHead` take `signal?`, and simple-git's `abort` sends SIGINT). Never wrap a git call in `withTimeout`: `JobRunner` (`platform/jobs.ts:67`) still does, and that is a known orphan path. To test a kill mid-fetch, give the case its own clone and make the fetch deterministically slow with `git config remote.origin.uploadpack 'sleep 3 #'` (the `#` comments out the appended path). Then assert the call rejects well under 3 s, that no `*.lock` is left behind, and that a follow-up succeeds. Don't use `sh -c 'sleep 3; exec git-upload-pack "$@"'`: with that wrapper over `file://`, `git fetch` ignores SIGINT and the test hangs. Over real HTTPS (`github.com`, `fetch --deepen=5000`), SIGINT stopped git within 8 ms and left no locks or helpers, so production is unaffected.
+**Evidence:** `server/src/adapters/git/simple-git.ts` (`gitAt`, `toGitStopError`) · `server/test/simple-git-diff-commits.test.ts:81-108` · `node_modules/simple-git/dist/cjs/index.js:1928-1943` (the task settles on the child's `close`, and `kill` = SIGINT) · `docs/plans/11-diff-commits-cancellation.md` → Verification log
+
 ### 2026-09-30 — `loadConfig()` never fails on a missing `DATABASE_URL`; it falls back to local Postgres
 **Symptom:** moving the eval CLI's manual `if (!process.env.DATABASE_URL) throw …` onto `loadConfig().databaseUrl` (architecture F1) silently changed "unset → error" into "unset → connect to the local default".
 **Cause:** `EnvSchema` gives `DATABASE_URL` a default (`postgres://devdigest:devdigest@localhost:5432/devdigest`).

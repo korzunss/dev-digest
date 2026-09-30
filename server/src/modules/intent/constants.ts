@@ -40,6 +40,10 @@ export const MAX_DOC_BYTES = 64 * 1024;
  * or git call must not stall the whole classification. */
 export const SOURCE_TIMEOUT_MS = 10_000;
 
+/** Budget for the `diffCommits` call in `fileSummaries`. Matches the review's
+ * `DIFF_COMMITS_TIMEOUT_MS` (duplicated to avoid a cross-module import). */
+export const GIT_DIFF_TIMEOUT_MS = 90_000;
+
 /** Overall budget for `IntentService.ensureForReview` (staleness check +
  * `runClassification`) — a review must not stall on intent resolution.
  * The manual `classify` route (Re-classify) is NOT bounded by this (Fix R1). */
