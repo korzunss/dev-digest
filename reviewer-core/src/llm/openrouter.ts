@@ -8,7 +8,7 @@ import type {
   StructuredRequest,
   StructuredResult,
 } from '@devdigest/shared';
-import { LlmOutputInvalidError, LlmOutputTruncatedError } from './errors.js';
+import { LlmConnectionError, LlmOutputInvalidError, LlmOutputTruncatedError } from './errors.js';
 import { toJsonSchema, parseWithRepair } from './structured.js';
 
 /**
@@ -75,7 +75,8 @@ export class OpenRouterProvider implements LLMProvider {
 
     for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
       req.signal?.throwIfAborted();
-      const res = await this.client.chat.completions.create(
+      const res = await this.client.chat.completions
+        .create(
         {
           model: req.model,
           messages,
@@ -105,7 +106,18 @@ export class OpenRouterProvider implements LLMProvider {
         // Caller-owned cancellation — passed as request options, never into the
         // body, so it never reaches the wire.
         req.signal ? { signal: req.signal } : undefined,
-      );
+        )
+        .catch((err: unknown) => {
+          // Normalise at the adapter boundary: openai's error classes keep
+          // name "Error" and carry no status, so the engine can't classify them.
+          // A user abort is rethrown as is — cancel vs deadline is decided by
+          // signal state in callWithDeadline.
+          if (err instanceof OpenAI.APIUserAbortError) throw err;
+          if (err instanceof OpenAI.APIConnectionError) {
+            throw new LlmConnectionError(req.model, err instanceof OpenAI.APIConnectionTimeoutError);
+          }
+          throw err;
+        });
 
       // OpenRouter can return HTTP 200 with no `choices` (an upstream provider
       // error / moderation / free-tier limit in the body) — surface it.

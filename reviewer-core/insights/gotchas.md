@@ -35,6 +35,14 @@ is edited or removed here. Items are added or updated by the
   "served by" names the slow provider.
   [INSIGHTS: 2026-09-30 — on OpenRouter, duration is set by the routed provider; `reasoning.effort` does nothing for `deepseek-v4-flash`](../INSIGHTS.md#2026-09-30--on-openrouter-duration-is-set-by-the-routed-provider-reasoningeffort-does-nothing-for-deepseek-v4-flash)
 
+- **Classify `openai` SDK errors with `instanceof` in `openrouter.ts`, never by
+  `err.name`.** The SDK's classes keep `name === "Error"`, and connection errors
+  carry no `status`. The adapter rethrows them as `LlmConnectionError`, which is
+  what `isTransientLlmError` retries. — spot it: a connection failure ends a
+  call with no "retrying once" line, while a test built from plain
+  `{ name: ... }` objects stays green.
+  [INSIGHTS: 2026-09-30 — `openai` error classes keep `name === "Error"`: classifying by `name` never matches](../INSIGHTS.md#2026-09-30--openai-error-classes-keep-name--error-classifying-by-name-never-matches)
+
 ## Findings
 
 - **On a newly added file, finding line numbers drift 2–8 lines and grounding

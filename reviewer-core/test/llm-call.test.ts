@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import type { LLMProvider, StructuredRequest, StructuredResult } from '@devdigest/shared';
-import { callWithDeadline, LLM_WAIT_HEARTBEAT_MS, LlmDeadlineError, LlmOutputTruncatedError } from '../src/index.js';
+import { callWithDeadline, LLM_WAIT_HEARTBEAT_MS, LlmDeadlineError, LlmConnectionError, LlmOutputTruncatedError } from '../src/index.js';
 
 const ok = { data: 1, model: 'm', tokensIn: 1, tokensOut: 1, costUsd: null, raw: '', attempts: 1 } as StructuredResult<number>;
 
@@ -82,6 +82,14 @@ describe('callWithDeadline', () => {
 
   it('503 then success -> one retry line', async () => {
     const { llm, reqs } = fake((_r, n) => (n === 1 ? Promise.reject({ status: 503, name: 'InternalServerError' }) : Promise.resolve(ok)));
+    const lines: string[] = [];
+    await callWithDeadline<number>({ llm, request: base, label: 'x', emit: (_k, m) => lines.push(m) });
+    expect(reqs).toHaveLength(2);
+    expect(lines.filter((l) => l.includes('retrying once'))).toHaveLength(1);
+  });
+
+  it('LlmConnectionError then success -> one retry line', async () => {
+    const { llm, reqs } = fake((_r, n) => (n === 1 ? Promise.reject(new LlmConnectionError('m', false)) : Promise.resolve(ok)));
     const lines: string[] = [];
     await callWithDeadline<number>({ llm, request: base, label: 'x', emit: (_k, m) => lines.push(m) });
     expect(reqs).toHaveLength(2);

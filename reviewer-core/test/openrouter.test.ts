@@ -14,8 +14,18 @@ import { z } from 'zod';
 
 const createMock = vi.fn();
 
+const { APIUserAbortError, APIConnectionError, APIConnectionTimeoutError } = vi.hoisted(() => {
+  class APIUserAbortError extends Error {}
+  class APIConnectionError extends Error {}
+  class APIConnectionTimeoutError extends APIConnectionError {}
+  return { APIUserAbortError, APIConnectionError, APIConnectionTimeoutError };
+});
+
 vi.mock('openai', () => ({
   default: class MockOpenAI {
+    static APIUserAbortError = APIUserAbortError;
+    static APIConnectionError = APIConnectionError;
+    static APIConnectionTimeoutError = APIConnectionTimeoutError;
     chat = { completions: { create: createMock } };
     constructor(_opts: unknown) {
       void _opts;
@@ -24,7 +34,8 @@ vi.mock('openai', () => ({
 }));
 
 import { OpenRouterProvider } from '../src/llm/openrouter.js';
-import { LlmOutputInvalidError, LlmOutputTruncatedError } from '../src/llm/errors.js';
+import OpenAI from 'openai';
+import { LlmConnectionError, LlmOutputInvalidError, LlmOutputTruncatedError } from '../src/llm/errors.js';
 
 const TestSchema = z.object({ ok: z.boolean() });
 
@@ -199,5 +210,31 @@ describe('OpenRouterProvider.completeStructured — routing, served-by, failures
       LlmOutputInvalidError,
     );
     expect(createMock).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe('OpenRouterProvider.completeStructured — connection errors', () => {
+  const call = () =>
+    new OpenRouterProvider('k').completeStructured({
+      model: 'm',
+      schema: TestSchema,
+      schemaName: 'Test',
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+
+  it('maps a connection failure to LlmConnectionError(timedOut=false)', async () => {
+    createMock.mockRejectedValue(new OpenAI.APIConnectionError());
+    await expect(call()).rejects.toMatchObject({ name: 'LlmConnectionError', timedOut: false });
+  });
+
+  it('maps a header timeout to LlmConnectionError(timedOut=true)', async () => {
+    createMock.mockRejectedValue(new OpenAI.APIConnectionTimeoutError());
+    await expect(call()).rejects.toMatchObject({ name: 'LlmConnectionError', timedOut: true });
+  });
+
+  it('rethrows an abort unchanged', async () => {
+    const abort = new OpenAI.APIUserAbortError();
+    createMock.mockRejectedValue(abort);
+    await expect(call()).rejects.toBe(abort);
   });
 });

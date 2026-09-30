@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   isTransientLlmError,
+  LlmConnectionError,
   LlmDeadlineError,
   LlmOutputTruncatedError,
   LlmOutputInvalidError,
@@ -14,12 +15,12 @@ describe('isTransientLlmError', () => {
   it('is false for 400', () => {
     expect(isTransientLlmError({ status: 400 })).toBe(false);
   });
-  it('is true for connection timeouts', () => {
-    expect(isTransientLlmError({ name: 'APIConnectionTimeoutError' })).toBe(true);
+  it('is true for LlmConnectionError', () => {
+    expect(isTransientLlmError(new LlmConnectionError('m', false))).toBe(true);
+    expect(isTransientLlmError(new LlmConnectionError('m', true))).toBe(true);
   });
   it('is false for aborts', () => {
     expect(isTransientLlmError({ name: 'AbortError' })).toBe(false);
-    expect(isTransientLlmError({ name: 'APIUserAbortError' })).toBe(false);
   });
   it('is false for the typed classes', () => {
     expect(isTransientLlmError(new LlmDeadlineError('m', 1000))).toBe(false);

@@ -94,6 +94,7 @@ export {
 export { OpenRouterProvider, type OpenRouterProviderOptions } from './llm/openrouter.js';
 export {
   LlmDeadlineError,
+  LlmConnectionError,
   LlmOutputTruncatedError,
   LlmOutputInvalidError,
   isTransientLlmError,

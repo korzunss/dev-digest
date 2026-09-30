@@ -14,6 +14,17 @@ export class LlmDeadlineError extends Error {
   }
 }
 
+/** Connection-level failure (socket drop, header timeout) normalised at the adapter boundary. */
+export class LlmConnectionError extends Error {
+  constructor(
+    readonly model: string,
+    readonly timedOut: boolean,
+  ) {
+    super(`LLM call to ${model} failed at connection level${timedOut ? ' (timed out waiting for response headers)' : ''}`);
+    this.name = 'LlmConnectionError';
+  }
+}
+
 export class LlmOutputTruncatedError extends Error {
   constructor(
     readonly model: string,
@@ -43,10 +54,10 @@ export function isTransientLlmError(err: unknown): boolean {
   if (err instanceof LlmDeadlineError || err instanceof LlmOutputTruncatedError || err instanceof LlmOutputInvalidError) {
     return false;
   }
+  if (err instanceof LlmConnectionError) return true;
   if (typeof err !== 'object' || err === null) return false;
   const e = err as { name?: unknown; status?: unknown; statusCode?: unknown };
-  if (e.name === 'AbortError' || e.name === 'APIUserAbortError') return false;
-  if (e.name === 'APIConnectionError' || e.name === 'APIConnectionTimeoutError') return true;
+  if (e.name === 'AbortError') return false;
   for (const code of [e.status, e.statusCode]) {
     if (typeof code === 'number' && (code === 408 || code === 429 || code >= 500)) return true;
   }
