@@ -91,3 +91,4 @@ result to the verifier.
 | [11-diff-commits-cancellation](11-diff-commits-cancellation.md) | done | none | shared (port; client `fetchPullHead` mirror), server |
 | [12-eval-write-integrity](12-eval-write-integrity.md) | done | none | server (eval module, schema + 2 migrations, `db/client.ts` type) |
 | [13-count-failed-llm-attempt-usage](13-count-failed-llm-attempt-usage.md) | done | none | shared (port; client mirror), reviewer-core, server (run-executor wiring) |
+| [14-e2e-flows-agent-browser](14-e2e-flows-agent-browser.md) | done | none | e2e (flows 02/04/05/08/09/10 + docs), server (CLI-only conventions seed + tests) |

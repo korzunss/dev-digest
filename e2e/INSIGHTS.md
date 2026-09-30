@@ -29,7 +29,22 @@ _Nothing yet._
 
 ## Tool & Library Notes
 
-_Nothing yet._
+### 2026-09-30 — agent-browser 0.38 locator grammar: no `click --text`, `xpath=` prefix, `wait --text` sees CSS-uppercased text
+**Symptom:** `e2e web` had never passed in CI (runs #1–#3 all red, 8/11). The runner printed only `Command failed: agent-browser …`. Flows 09/10 failed on `click --text X`, and flow 08 timed out on `wait --text "CRITICAL only"` although the chip was on screen.
+**Cause:** in agent-browser 0.38 (CI installs `latest`, unpinned):
+- `click` takes only `<selector>` (CSS, `xpath=…`, or `@ref`). `--text` is read as a CSS selector (`✗ Element not found: --text`).
+- A bare `//…` XPath is also "not found" and needs the `xpath=` prefix.
+- `wait --text` is a case-sensitive substring match on the *rendered* text, so CSS `text-transform: uppercase` turns "CRITICAL only" into "CRITICAL ONLY" (and "Confidence" into "CONFIDENCE").
+- `find … click` does not wait, so it races a list that still shows "Loading…".
+- `e2e/run.ts` drops the CLI's stderr, which hides all of the above.
+**Rule:**
+- Click by `find text|role … click [--name] [--exact]`. `--exact` avoids substring clashes such as "Select all" / "Deselect all".
+- Use `click xpath=//…` for a dialog-scoped button.
+- Assert the text as rendered, uppercase included.
+- Before a `find … click` after navigation, wait for the target itself. For a tab whose name the sidebar also has, use `wait --fn` for a `<button>` with that exact text, because `wait --text` passes early on the sidebar link.
+- To see the real error, run with `AGENT_BROWSER_BIN=<wrapper that logs stderr>`.
+- A flow that needs data must get it from `pnpm db:seed` (the CLI), since no model runs in e2e.
+**Evidence:** `e2e/specs/08,09,10-*.flow.json` · `client/src/app/repos/[repoId]/pulls/[number]/_components/FindingsTab/styles.ts:64` · `agent-browser click --help` · `docs/plans/14-e2e-flows-agent-browser.md` → Verification log
 
 ## Recurring Errors & Fixes
 
