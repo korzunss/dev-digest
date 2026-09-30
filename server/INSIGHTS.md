@@ -21,6 +21,12 @@ _Nothing yet._
 
 ## What Doesn't Work
 
+### 2026-09-29 — a review diff by base *branch name* reviews unrelated commits, silently
+**Symptom:** a reviewer run on PR #8 of korzunss/dev-digest (74 files, +8 693) logged `Diff ready — 343 changed file(s)`, sent ~606k input tokens in one call, and returned 0 findings / score 100; the only candidate finding cited a file not in the PR and was dropped by grounding. Looks like a clean PR or a weak model.
+**Cause:** `loadDiff` ran `git diff ${pull.base}...${headSha}` where `pull.base` is the branch name (`octokit.ts` stores `pr.base.ref`). In the shallow clone the local `main` was stale (`c6af1e4`, while `origin/main` was current), so the merge-base was weeks old and the diff swept in every PR since. A non-empty diff never reaches the `pr_files` fallback.
+**Rule:** diff by commits, never by a ref name — `base_sha...head_sha` via `GitClient.diffCommits` (plan 07). When `base_sha` is set and that fails, fail the run rather than fall back to the branch diff. To diagnose a suspiciously clean review, compare the run log's `Diff ready — N changed file(s)` (`run_traces.trace->'log'`) with the PR's `pr_files` count.
+**Evidence:** `server/src/modules/reviews/diff-loader.ts` · `git diff --stat main...17975bf` → 345 files vs `git diff --stat 5a3f105...17975bf` → 74 files (in `server/clones/korzunss/dev-digest`) · `docs/plans/07-review-diff-base-sha.md`
+
 ### 2026-09-23 — an optional "disambiguation" field turned into an authorisation bypass
 
 **Symptom:** `parseRepoUrl` rejects an unknown forge host — unless the request
@@ -179,6 +185,12 @@ callback at all · `specs/001-run-cost-badge.md` → "Postgres indexes the colum
 foreign key POINTS AT"
 
 ## Tool & Library Notes
+
+### 2026-09-29 — simple-git `raw(['merge-base', a, b])` resolves empty instead of throwing when there is no merge base
+**Symptom:** a merge-base check wrapped in `try/catch` "passed" on a shallow repo, then the following `git diff a...b` failed with `fatal: a...b: no merge base` (exit 128).
+**Cause:** `git merge-base` exits 1 with no stderr when it finds nothing; simple-git's `raw` only rejects when stderr has content, so it resolves with `''`.
+**Rule:** detect "no merge base" by empty (trimmed) output, not by a throw. In a shallow clone, fetch both SHAs (`git fetch --depth=1 origin <sha>` works on GitHub) and loop `git fetch --deepen=N` + `merge-base` with a cap; git ≥ 2.28 is required — older git silently degrades `a...b` to a two-dot diff.
+**Evidence:** `server/src/adapters/git/simple-git.ts` (`hasMergeBase`) · `server/test/simple-git-diff-commits.test.ts`
 
 ### 2026-09-22 — `pnpm db:generate` hangs forever when one table both drops and adds a column
 

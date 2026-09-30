@@ -8,7 +8,7 @@ import type { AgentRow } from '../../db/rows.js';
 import type { ReviewRepository, FindingRow, PullRow, ReviewRow } from './repository.js';
 import { REVIEW_STRATEGY } from './constants.js';
 import { taskLine } from './helpers.js';
-import { loadDiff } from './diff-loader.js';
+import { loadDiff, type LoadedDiff } from './diff-loader.js';
 // The path guard is a pure function owned by the context module; importing it
 // keeps ONE definition of "which files may be read out of a clone".
 import { resolveDocPath } from '../context/helpers.js';
@@ -116,16 +116,24 @@ export class ReviewRunExecutor {
     };
 
     let diff: UnifiedDiff;
+    let diffSource: LoadedDiff['source'];
     try {
-      diff = await runLog.step('Loading PR diff', () => loadDiff(this.container, this.repo, workspaceId, pull, repo), {
-        kind: 'tool',
-      });
+      const loaded = await runLog.step(
+        'Loading PR diff',
+        () => loadDiff(this.container.git, this.repo, pull, { owner: repo.owner, name: repo.name }),
+        { kind: 'tool' },
+      );
+      diff = loaded.diff;
+      diffSource = loaded.source;
+      if (loaded.note) runLog.info(loaded.note);
     } catch (err) {
       runLog.error(`Failed to load PR diff: ${(err as Error).message}`);
       await failAll(`Failed to load PR diff: ${(err as Error).message}`);
       return;
     }
-    runLog.info(`Diff ready — ${diff.files.length} changed file(s); starting ${jobs.length} agent run(s)`);
+    const diffLabel =
+      diffSource === 'git' ? 'git base...head' : diffSource === 'pr_files' ? 'PR file list' : 'legacy branch diff';
+    runLog.info(`Diff ready — ${diff.files.length} changed file(s) (source: ${diffLabel}); starting ${jobs.length} agent run(s)`);
 
     // Resolve the PR's intent ONCE, shared by every queued agent job (spec 006
     // D4-A). `ensureForReview` never throws — a classification failure means

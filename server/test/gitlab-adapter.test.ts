@@ -9,6 +9,7 @@ import {
   buildPosition,
   supportsDiffsEndpoint,
   parseVersion,
+  mapMrToPrMeta,
 } from '../src/adapters/gitlab/mappers.js';
 
 const REPO = { owner: 'acme', name: 'api', path: 'acme/api', provider: 'gitlab' as const };
@@ -61,6 +62,23 @@ describe('mappers — MR state and diff stats', () => {
       { old_path: 'b.ts', new_path: 'b.ts', diff: '+only\n' },
     ]);
     expect(sumFileStats(files)).toEqual({ additions: 3, deletions: 1, files_count: 2 });
+  });
+
+  it('mapMrToPrMeta maps diff_refs.base_sha, null when diff_refs is absent', () => {
+    const mr = {
+      iid: 7,
+      title: 't',
+      source_branch: 'feat',
+      target_branch: 'main',
+      sha: 'HEAD1',
+      state: 'opened',
+    };
+    expect(
+      mapMrToPrMeta({ ...mr, diff_refs: { base_sha: 'B', start_sha: 'S', head_sha: 'HEAD1' } } as never)
+        .base_sha,
+    ).toBe('B');
+    expect(mapMrToPrMeta(mr as never).base_sha).toBeNull();
+    expect(mapMrToPrMeta({ ...mr, diff_refs: null } as never).base_sha).toBeNull();
   });
 
   it('falls back to old_path for a deleted file', () => {
@@ -290,6 +308,7 @@ describe('GitLabRestClient — transport', () => {
       branch: 'feat/rate-limit',
       base: 'main',
       head_sha: 'HEAD1',
+      base_sha: null, // diff_refs is absent from the list payload
       // Not on the list payload — the pulls route backfills them from detail,
       // so zeroes here are the contract, not a mapping miss.
       additions: 0,

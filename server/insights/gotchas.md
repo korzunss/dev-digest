@@ -1,6 +1,6 @@
 # server — current gotchas
 
-Last reconciled with ../INSIGHTS.md: 2026-09-27
+Last reconciled with ../INSIGHTS.md: 2026-09-29
 
 This is a curated index of rules still in force. Full write-ups live in
 [`server/INSIGHTS.md`](../INSIGHTS.md) (append-only log). A rule that stops
@@ -31,6 +31,11 @@ holding is edited or removed here. Items are added or updated by the
 ## Run log
 
 - **In `runLog.info(msg, data)` only `msg` is persisted and shown** — `RunLogger.logFor` keeps `{t, kind, msg}` and drops `data` (pino only). Put anything a user must see (model, tokens, cost, counts) into the message string, under the same no-secrets/no-content rule. — spot it: a run-log line that looks instrumented in code but shows only its label in the UI. — [INSIGHTS: 2026-09-26 — `runLog.info(msg, data)`: only `msg` reaches the stored run log](../INSIGHTS.md#2026-09-26--runloginfomsg-data-only-msg-reaches-the-stored-run-log)
+
+## Git & diffs
+
+- **Never diff a PR by its base *branch name* in a clone** — the clone is shallow and its local branch can be weeks stale, so `git diff <branch>...<head>` silently sweeps in unrelated commits and a non-empty result never reaches the `pr_files` fallback. Diff `base_sha...head_sha` via `GitClient.diffCommits`; with `base_sha` set, fail rather than fall back to the branch diff. — spot it: a clean-looking review (0 findings, score 100) whose run log says `Diff ready — N changed file(s)` with N far above the PR's `pr_files` count. — [INSIGHTS: 2026-09-29 — a review diff by base *branch name* reviews unrelated commits, silently](../INSIGHTS.md#2026-09-29--a-review-diff-by-base-branch-name-reviews-unrelated-commits-silently)
+- **simple-git `raw(['merge-base', a, b])` resolves `''` instead of throwing when there is no merge base** (git exits 1 with no stderr). Test for empty output; in a shallow clone fetch both SHAs and loop `--deepen` + `merge-base` with a cap; require git ≥ 2.28 (older git silently turns `a...b` into a two-dot diff). — spot it: a merge-base "check" passes, then `git diff a...b` fails with `fatal: …: no merge base`. — [INSIGHTS: 2026-09-29 — simple-git `raw(['merge-base', a, b])` resolves empty instead of throwing when there is no merge base](../INSIGHTS.md#2026-09-29--simple-git-rawmerge-base-a-b-resolves-empty-instead-of-throwing-when-there-is-no-merge-base)
 
 ## Tooling
 

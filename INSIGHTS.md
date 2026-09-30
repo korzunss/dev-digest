@@ -48,6 +48,12 @@ _Nothing yet._
 
 ## What Doesn't Work
 
+### 2026-09-29 — a skill listed on a step where it has nothing to do can only be closed by a plan change
+**Symptom:** plan 07's plan-verifier kept SK2–SK4 `missing` across two runs although the implementer re-read `zod` in full and recorded S2–S4 under *Not used — reason* ("no Zod schema in this step").
+**Cause:** the SK check reads only the *Applied in* column of the implementer's `## Skills` table; *Not used — reason* is informational. Separately, implementers record a cross-cutting skill (`zod`, `security`) against the one step where it was most visible, which also fails step-level SK items.
+**Rule:** planner — list a skill on a step only when that step writes the artifact the skill covers (`zod` only where a Zod schema is written). Implementer — list every step a cross-cutting skill was applied in. If a listed skill truly doesn't apply, close the SK item by removing it from the step (plan change, user approval), not by recording an honest "not used".
+**Evidence:** `docs/plans/07-review-diff-base-sha.md` → *Wave 1 — delta verification*, *plan change CH2* · `docs/plans/05-decisions-first-planning.md` → *Carry-over results*
+
 ### 2026-09-27 — seeding the working tree while other reviewer runs are in flight breaks their read-only proof
 **Symptom:** during plan 04's smoke tests, the T5 module audit reported
 `git status --porcelain unchanged: no`. A file it never touched had flipped
@@ -309,4 +315,8 @@ _Nothing yet._
 
 ## Open Questions
 
-_Nothing yet._
+### 2026-09-30 — review run time is driven by hidden reasoning tokens, and nothing caps them (fix deferred)
+**Symptom:** some reviewer runs take 15–70 min on an ordinary diff, General Reviewer most often (6 of 27 runs above 20k output tokens; avg 20.9k vs 8–9.6k for the other agents). Run duration correlates with `tokens_out` (0.74–1.00 per agent), not `tokens_in` (−0.01–0.35).
+**Cause:** `deepseek-v4-flash` spends hidden reasoning tokens that OpenRouter bills as output — e.g. 105 270 output tokens for a 210-char visible answer (71 min at ~24 tok/s). No cap is sent: `reviewer-core/src/review/run.ts` never passes `maxTokens`, and no OpenRouter `reasoning` limit is set anywhere. General Reviewer has the broadest mandate and the most skills (5 attached, 4 enabled) — likely why it reasons longest (inference, not tested).
+**Rule:** to diagnose a slow run, compare `agent_runs.tokens_out` with `length(run_traces.trace->>'raw_output')`; a large gap is reasoning, not a big answer. Planned fix (user, 2026-09-30: "later", no plan yet): (1) cap reasoning — OpenRouter `reasoning: { max_tokens | effort }` + `max_tokens`; (2) a real deadline via `AbortSignal` (see `reviewer-core/INSIGHTS.md` 2026-09-30); (3) per agent: fewer skills or `map-reduce` for General Reviewer. Touches `reviewer-core` + `server` → needs a plan.
+**Evidence:** `select a.name, corr(r.duration_ms, r.tokens_out) from agent_runs r join agents a on a.id = r.agent_id where r.status = 'done' group by 1` · `reviewer-core/src/review/run.ts:207-214`

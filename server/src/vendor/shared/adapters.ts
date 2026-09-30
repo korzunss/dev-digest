@@ -268,6 +268,13 @@ export interface GitClient {
   currentHead(repo: RepoRef): Promise<string>;
   diff(repo: RepoRef, base: string, head: string): Promise<UnifiedDiff>;
   /**
+   * Diff two commit SHAs (`base...head`). Both must be full commit SHAs; either
+   * is fetched when missing locally, and the clone is deepened until a merge-base
+   * exists. Throws when a SHA is malformed or no merge-base is found within the
+   * deepening cap.
+   */
+  diffCommits(repo: RepoRef, base: string, head: string): Promise<UnifiedDiff>;
+  /**
    * Names of files changed between two commits (`git diff --name-only base..head`).
    * Two-dot form is intentional — we want files reachable from `head` but not `base`,
    * matching the incremental indexer's "what moved since last_indexed_sha?" semantics.

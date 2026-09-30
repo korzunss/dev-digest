@@ -46,7 +46,11 @@ checking purity, search for `\bfetch\(` and `process\.env` as well as imports.
 
 ## Tool & Library Notes
 
-_Nothing yet._
+### 2026-09-30 — the `openai` SDK `timeout` stops at the response headers; a stalled OpenRouter body hangs for 1–2 hours
+**Symptom:** a General Reviewer run sat on `Reviewing all files in one pass` for 1 h 42 min with one unchanged HTTPS socket to OpenRouter, then failed with `Invalid response body while trying to fetch https://openrouter.ai/api/v1/chat/completions: Socket timeout`, 0 tokens. `OpenRouterProvider` sets `timeout: 90_000`, so a 90 s bound was expected. Same failure: Security Reviewer 2026-09-24 (34 min).
+**Cause:** `openai` 4.104 `fetchWithTimeout` clears its timer in `.finally()` of `fetch()`, which resolves on the headers (`node_modules/openai/core.js:382-400`). OpenRouter answers a non-streaming request with `200` at once and holds the body open while the model reasons, so reading the body is unbounded. The SDK's `maxRetries` never fires either. Only a lower-level socket timeout ends it.
+**Rule:** don't rely on the client `timeout` for a total deadline. Pass an `AbortSignal` with a deadline (e.g. `AbortSignal.timeout(ms)`) as `req.signal` to `completeStructured`; `openrouter.ts` already forwards it to the SDK request options. The server's run executor doesn't pass one today — deferred fix, not planned yet (see root `INSIGHTS.md` → *Open Questions*, 2026-09-30).
+**Evidence:** `reviewer-core/src/llm/openrouter.ts:55,96` · run `db109306-bd97-49f1-b617-c927cceaa34c` (`agent_runs.duration_ms` 6 095 036)
 
 ## Recurring Errors & Fixes
 

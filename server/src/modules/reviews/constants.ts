@@ -10,3 +10,6 @@
  * model's context.
  */
 export const REVIEW_STRATEGY = 'single-pass' as const;
+
+/** Upper bound for `GitClient.diffCommits` (fetch + deepen to a merge-base + diff). */
+export const DIFF_COMMITS_TIMEOUT_MS = 90_000;

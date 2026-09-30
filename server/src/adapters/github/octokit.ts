@@ -56,6 +56,7 @@ export class OctokitGitHubClient implements ForgeClient {
             branch: pr.head.ref,
             base: pr.base.ref,
             head_sha: pr.head.sha,
+            base_sha: pr.base.sha,
             additions: 0,
             deletions: 0,
             files_count: 0, // not present on the list payload; populated by getPullRequest
@@ -98,6 +99,7 @@ export class OctokitGitHubClient implements ForgeClient {
             branch: pr.head.ref,
             base: pr.base.ref,
             head_sha: pr.head.sha,
+            base_sha: pr.base.sha,
             additions: pr.additions,
             deletions: pr.deletions,
             files_count: pr.changed_files,

@@ -157,6 +157,8 @@ export function mapMrToPrMeta(mr: GlMergeRequest): PrMeta {
     branch: mr.source_branch,
     base: mr.target_branch,
     head_sha: mr.sha ?? mr.diff_refs?.head_sha ?? '',
+    // diff_refs exists only on the single-MR payload; the list payload yields null.
+    base_sha: mr.diff_refs?.base_sha ?? null,
     // Not on the list payload — the pulls route backfills these from detail.
     additions: 0,
     deletions: 0,

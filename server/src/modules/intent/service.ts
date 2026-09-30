@@ -47,7 +47,7 @@ export type IntentStore = Pick<IntentRepository, keyof IntentRepository>;
  */
 export interface IntentServiceDeps {
   repo: IntentStore;
-  git: Pick<GitClient, 'diff' | 'fetchPullHead' | 'readFileAt'>;
+  git: Pick<GitClient, 'diff' | 'diffCommits' | 'fetchPullHead' | 'readFileAt'>;
   forge: (ref: RepoRef) => Promise<Pick<ForgeClient, 'getIssue'>>;
   llm: (id: FeatureModelChoice['provider']) => Promise<LLMProvider>;
   tokenizer: { count(text: string): number };
@@ -192,7 +192,10 @@ export class IntentService {
       }));
     }
     try {
-      const fetched = await this.deps.git.diff(toRepoRef(repo), pull.base, pull.headSha);
+      const ref = toRepoRef(repo);
+      const fetched = pull.baseSha
+        ? await this.deps.git.diffCommits(ref, pull.baseSha, pull.headSha)
+        : await this.deps.git.diff(ref, pull.base, pull.headSha);
       return fileSummariesFromDiff(fetched);
     } catch {
       return [];

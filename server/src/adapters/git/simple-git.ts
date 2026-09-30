@@ -20,6 +20,16 @@ import { parseUnifiedDiff } from './diff-parser.js';
 const RESYNC_FETCH_DEPTH = 50;
 
 /**
+ * `diffCommits` deepens the shallow clone by MERGE_BASE_DEEPEN commits per round,
+ * for at most MERGE_BASE_MAX_ROUNDS rounds, until `git merge-base` succeeds. No
+ * bounded fetch form guarantees a merge-base, so the loop is capped and the
+ * caller falls back to the persisted PR file list.
+ */
+const MERGE_BASE_MAX_ROUNDS = 4;
+const MERGE_BASE_DEEPEN = 50;
+const COMMIT_SHA_RE = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
+
+/**
  * GitClient over simple-git. Repos clone to
  * `<cloneDir>/<owner>/<repo>`. We NEVER execute repo code — only git ops.
  */
@@ -94,6 +104,45 @@ export class SimpleGitClient implements GitClient {
   async diff(repo: RepoRef, base: string, head: string): Promise<UnifiedDiff> {
     const raw = await this.git(repo).diff([`${base}...${head}`]);
     return parseUnifiedDiff(raw);
+  }
+
+  /**
+   * `git diff base...head` by commit SHA. Both SHAs are validated before the
+   * first git call so a value starting with `-` can never become a git option.
+   * Missing commits are fetched at depth 1, then the clone is deepened until a
+   * merge-base exists (git >= 2.28 fails loudly on a missing merge-base).
+   */
+  async diffCommits(repo: RepoRef, base: string, head: string): Promise<UnifiedDiff> {
+    if (!COMMIT_SHA_RE.test(base) || !COMMIT_SHA_RE.test(head)) {
+      throw new Error('diffCommits: invalid sha (expected 40 or 64 lowercase hex characters)');
+    }
+    const g = this.git(repo);
+    const missing: string[] = [];
+    for (const sha of [base, head]) {
+      try {
+        await g.raw(['cat-file', '-e', `${sha}^{commit}`]);
+      } catch {
+        missing.push(sha);
+      }
+    }
+    if (missing.length > 0) await g.raw(['fetch', '--depth=1', 'origin', ...missing]);
+
+    // simple-git does not throw on `merge-base` exit 1 (no stderr) — an empty
+    // output is the "no merge base" signal.
+    const hasMergeBase = async (): Promise<boolean> => {
+      try {
+        return (await g.raw(['merge-base', base, head])).trim().length > 0;
+      } catch {
+        return false;
+      }
+    };
+    let found = await hasMergeBase();
+    for (let round = 0; round < MERGE_BASE_MAX_ROUNDS && !found; round++) {
+      await g.raw(['fetch', `--deepen=${MERGE_BASE_DEEPEN}`, 'origin', head, base]);
+      found = await hasMergeBase();
+    }
+    if (!found) throw new Error('diffCommits: no merge base found within the deepen cap');
+    return parseUnifiedDiff(await g.diff([`${base}...${head}`]));
   }
 
   /**

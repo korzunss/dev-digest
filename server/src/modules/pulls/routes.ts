@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
-import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type {
   PrMeta,
   PrDetail,
@@ -67,6 +67,7 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
               branch: pr.branch,
               base: pr.base,
               headSha: pr.head_sha,
+              baseSha: pr.base_sha ?? null,
               additions: pr.additions,
               deletions: pr.deletions,
               filesCount: pr.files_count,
@@ -78,6 +79,9 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
               target: [t.pullRequests.repoId, t.pullRequests.number],
               set: {
                 title: pr.title,
+                base: pr.base,
+                // D7: keep the stored base SHA while the head is unchanged, clear it once the head moved.
+                baseSha: sql`coalesce(excluded.base_sha, case when ${t.pullRequests.headSha} = excluded.head_sha then ${t.pullRequests.baseSha} end)`,
                 headSha: pr.head_sha,
                 status: pr.status,
                 updatedAt: pr.updated_at ? new Date(pr.updated_at) : null,
@@ -109,6 +113,9 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
           await container.db
             .update(t.pullRequests)
             .set({
+              base: detail.base,
+              headSha: detail.head_sha,
+              baseSha: detail.base_sha ?? null,
               additions: detail.additions,
               deletions: detail.deletions,
               filesCount: detail.files_count,
@@ -209,6 +216,7 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
         branch: r.branch,
         base: r.base,
         head_sha: r.headSha,
+        base_sha: r.baseSha,
         additions: r.additions,
         deletions: r.deletions,
         files_count: r.filesCount,
@@ -279,6 +287,10 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
         .update(t.pullRequests)
         .set({
           body: detail.body ?? null,
+          base: detail.base,
+          headSha: detail.head_sha,
+          baseSha: detail.base_sha ?? null,
+          filesHeadSha: detail.head_sha,
           // Diff stats aren't on GitHub's PR-list payload — backfill them from
           // the detail fetch so the Pull Requests list shows real size/files.
           additions: detail.additions,
@@ -300,6 +312,7 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
         branch: pr.branch,
         base: pr.base,
         head_sha: pr.headSha,
+        base_sha: pr.baseSha,
         additions: pr.additions,
         deletions: pr.deletions,
         files_count: pr.filesCount,

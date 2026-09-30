@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import * as t from '../../db/schema.js';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
@@ -41,6 +41,7 @@ export default async function pollingRoutes(appBase: FastifyInstance) {
           branch: pr.branch,
           base: pr.base,
           headSha: pr.head_sha,
+          baseSha: pr.base_sha ?? null,
           additions: pr.additions,
           deletions: pr.deletions,
           filesCount: pr.files_count,
@@ -51,6 +52,9 @@ export default async function pollingRoutes(appBase: FastifyInstance) {
           target: [t.pullRequests.repoId, t.pullRequests.number],
           set: {
             title: pr.title,
+            base: pr.base,
+            // D7: keep the stored base SHA while the head is unchanged, clear it once the head moved.
+            baseSha: sql`coalesce(excluded.base_sha, case when ${t.pullRequests.headSha} = excluded.head_sha then ${t.pullRequests.baseSha} end)`,
             headSha: pr.head_sha,
             status: pr.status,
             updatedAt: pr.updated_at ? new Date(pr.updated_at) : null,
