@@ -127,11 +127,25 @@ export class OpenRouterProvider implements LLMProvider {
         throw new Error(`OpenRouter returned no choices for ${req.schemaName}${errMsg ? `: ${errMsg}` : ''}`);
       }
       lastRaw = choice.message?.content ?? '';
-      tokensIn += res.usage?.prompt_tokens ?? 0;
-      tokensOut += res.usage?.completion_tokens ?? 0;
+      const roundIn = res.usage?.prompt_tokens ?? 0;
+      const roundOut = res.usage?.completion_tokens ?? 0;
+      tokensIn += roundIn;
+      tokensOut += roundOut;
       // `usage.cost` is an OpenRouter extension (USD), absent from the OpenAI SDK type.
       const apiCost = (res.usage as { cost?: number } | null | undefined)?.cost;
       if (typeof apiCost === 'number') costFromApi = (costFromApi ?? 0) + apiCost;
+      // Report THIS round's own usage before any throw point below, so a caller
+      // that later sees an error can still account for the spent round.
+      const roundCost =
+        typeof apiCost === 'number' ? apiCost : (this.estimateCost?.(req.model, roundIn, roundOut) ?? null);
+      req.onUsage?.({
+        tokensIn: roundIn,
+        tokensOut: roundOut,
+        costUsd: roundCost,
+        ...(roundCost == null
+          ? {}
+          : { costSource: (typeof apiCost === 'number' ? 'api' : 'estimate') as CostSource }),
+      });
 
       // The model ran out of output budget: a reprompt would burn the same cap.
       if (choice.finish_reason === 'length') {

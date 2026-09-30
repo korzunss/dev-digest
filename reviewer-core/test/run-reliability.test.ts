@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import type { LLMProvider, StructuredRequest, StructuredResult, UnifiedDiff } from '@devdigest/shared';
 import { reviewPullRequest } from '../src/index.js';
 
@@ -25,6 +25,8 @@ function diffOf(paths: string[]): UnifiedDiff {
     files: paths.map((path) => ({ path, additions: 1, deletions: 1, hunks: [] })),
   } as unknown as UnifiedDiff;
 }
+
+afterEach(() => vi.useRealTimers());
 
 const base = { systemPrompt: 'sys', model: 'm' };
 
@@ -73,5 +75,45 @@ describe('reviewPullRequest reliability', () => {
     const p = reviewPullRequest({ ...base, llm, diff: diffOf(['a.ts']), signal: ac.signal, checkCancelled: () => { if (ac.signal.aborted) throw new Error('run cancelled'); } });
     ac.abort();
     await expect(p).rejects.toThrow('run cancelled');
+  });
+
+  it('R1 sums a failed attempt\'s reported usage into the outcome', async () => {
+    let n = 0;
+    const llm = {
+      id: 'openrouter',
+      completeStructured: async (req: StructuredRequest<unknown>) => {
+        n++;
+        if (n === 1) {
+          req.onUsage!({ tokensIn: 1000, tokensOut: 200, costUsd: 0.002, costSource: 'api' });
+          throw Object.assign(new Error('boom'), { status: 503 });
+        }
+        return { data: review, model: req.model, tokensIn: 1200, tokensOut: 300, costUsd: 0.003, costSource: 'api', raw: '{}', attempts: 1 } as StructuredResult<unknown>;
+      },
+    } as unknown as LLMProvider;
+    const out = await reviewPullRequest({ ...base, llm, diff: diffOf(['a.ts']) });
+    expect(out.tokensIn).toBe(2200);
+    expect(out.tokensOut).toBe(500);
+    expect(out.costUsd).toBeCloseTo(0.005);
+    expect(out.costSource).toBe('api');
+  });
+
+  it('R2 forwards estimateCost and countTokens to the deadline estimate', async () => {
+    vi.useFakeTimers();
+    let n = 0;
+    const llm = {
+      id: 'openrouter',
+      completeStructured: (req: StructuredRequest<unknown>) => {
+        n++;
+        if (n === 1) return new Promise((_, reject) => req.signal!.addEventListener('abort', () => reject({ name: 'AbortError' })));
+        return Promise.resolve({ data: review, model: req.model, tokensIn: 1, tokensOut: 1, costUsd: 0.01, costSource: 'api', raw: '{}', attempts: 1 } as StructuredResult<unknown>);
+      },
+    } as unknown as LLMProvider;
+    const estimateCost = vi.fn(() => 0.5);
+    const p = reviewPullRequest({ ...base, llm, diff: diffOf(['a.ts']), callDeadlineMs: 1000, estimateCost, countTokens: () => 100 });
+    await vi.advanceTimersByTimeAsync(1500);
+    const out = await p;
+    expect(estimateCost).toHaveBeenCalledWith('m', 100, 16);
+    expect(out.costSource).toBe('estimate');
+    expect(out.costUsd).toBeCloseTo(0.51);
   });
 });

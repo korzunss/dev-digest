@@ -290,6 +290,7 @@ export class ReviewRunExecutor {
         // Absent ⇒ identical prompt/schema to today's (AC12).
         ...(intent ? { intent } : {}),
         countTokens: (s) => this.container.tokenizer.count(s),
+        estimateCost: (model, tokensIn, tokensOut) => this.container.priceBook.estimate(model, tokensIn, tokensOut),
         task,
         sessionId: `${repo.owner}/${repo.name}#${pull.number}:${agent.name}`,
         onEvent: (e) => runLog.event(e.kind, e.msg, e.data),

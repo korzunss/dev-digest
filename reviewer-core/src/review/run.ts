@@ -95,6 +95,11 @@ export interface ReviewInput {
    * server's tiktoken adapter). Falls back to a chars/4 estimate when absent.
    */
   countTokens?: (s: string) => number;
+  /**
+   * Price book for estimating a deadline-aborted attempt; absent ⇒ that
+   * attempt's tokens are counted unpriced.
+   */
+  estimateCost?: (model: string, tokensIn: number, tokensOut: number) => number | null;
   /** Task framing line, e.g. "Review PR #482 …". */
   task?: string;
   /** Override the structured-output retry budget. */
@@ -282,6 +287,8 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
       ...(input.callDeadlineMs != null ? { deadlineMs: input.callDeadlineMs } : {}),
       ...(input.signal ? { signal: input.signal } : {}),
       ...(input.checkCancelled ? { checkCancelled: input.checkCancelled } : {}),
+      ...(input.estimateCost ? { estimateCost: input.estimateCost } : {}),
+      ...(input.countTokens ? { countTokens: input.countTokens } : {}),
       label: chunk.label,
       emit,
     });

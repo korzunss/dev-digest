@@ -62,3 +62,4 @@ why, in one or two lines.
 | [01-learn-from-dismissed-findings](01-learn-from-dismissed-findings.md) | open | needs-clarification (Opt4) | — |
 | [02-cheaper-review-runs](02-cheaper-review-runs.md) | open | go (Opt1) | — |
 | [03-catch-more-real-bugs](03-catch-more-real-bugs.md) | open | needs-clarification (Opt1) | — |
+| [04-count-failed-llm-attempt-usage](04-count-failed-llm-attempt-usage.md) | chosen | go (Opt3) | [plan 13](../plans/13-count-failed-llm-attempt-usage.md) |

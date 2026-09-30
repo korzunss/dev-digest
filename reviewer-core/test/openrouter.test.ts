@@ -238,3 +238,65 @@ describe('OpenRouterProvider.completeStructured — connection errors', () => {
     await expect(call()).rejects.toBe(abort);
   });
 });
+
+describe('OpenRouterProvider.completeStructured — onUsage', () => {
+  const req = {
+    model: 'm',
+    schema: TestSchema,
+    schemaName: 'Test',
+    messages: [{ role: 'user' as const, content: 'hi' }],
+  };
+  const invalid = (prompt: number, completion: number, cost?: number) => ({
+    choices: [{ finish_reason: 'stop', message: { content: '{"nope":1}' } }],
+    usage: { prompt_tokens: prompt, completion_tokens: completion, ...(cost != null ? { cost } : {}) },
+  });
+
+  it('O1 reports the real round before a later round throws', async () => {
+    createMock
+      .mockResolvedValueOnce(invalid(1000, 200, 0.002))
+      .mockRejectedValueOnce(Object.assign(new Error('boom'), { status: 503 }));
+    const onUsage = vi.fn();
+    await expect(new OpenRouterProvider('k').completeStructured({ ...req, onUsage })).rejects.toThrow('boom');
+    expect(onUsage).toHaveBeenCalledTimes(1);
+    expect(onUsage).toHaveBeenCalledWith({ tokensIn: 1000, tokensOut: 200, costUsd: 0.002, costSource: 'api' });
+  });
+
+  it('O2 reports a truncated round before throwing', async () => {
+    createMock.mockResolvedValue({
+      choices: [{ finish_reason: 'length', message: { content: '{"ok' } }],
+      usage: { prompt_tokens: 1, completion_tokens: 32000, cost: 0.1 },
+    });
+    const onUsage = vi.fn();
+    await expect(
+      new OpenRouterProvider('k').completeStructured({ ...req, maxTokens: 32000, onUsage }),
+    ).rejects.toBeInstanceOf(LlmOutputTruncatedError);
+    expect(onUsage).toHaveBeenCalledTimes(1);
+    expect(onUsage.mock.calls[0]![0]).toMatchObject({ tokensOut: 32000 });
+  });
+
+  it('O3 falls back to estimateCost, else null cost without costSource', async () => {
+    createMock.mockResolvedValue(invalid(10, 5));
+    const est = vi.fn();
+    await expect(
+      new OpenRouterProvider('k', { estimateCost: () => 0.5 }).completeStructured({ ...req, maxRetries: 0, onUsage: est }),
+    ).rejects.toBeInstanceOf(LlmOutputInvalidError);
+    expect(est).toHaveBeenCalledWith({ tokensIn: 10, tokensOut: 5, costUsd: 0.5, costSource: 'estimate' });
+    const none = vi.fn();
+    await expect(
+      new OpenRouterProvider('k').completeStructured({ ...req, maxRetries: 0, onUsage: none }),
+    ).rejects.toBeInstanceOf(LlmOutputInvalidError);
+    expect(none).toHaveBeenCalledWith({ tokensIn: 10, tokensOut: 5, costUsd: null });
+  });
+
+  it('O4 three invalid rounds report per-round, not cumulative, numbers', async () => {
+    createMock
+      .mockResolvedValueOnce(invalid(10, 1, 0.01))
+      .mockResolvedValueOnce(invalid(20, 2, 0.02))
+      .mockResolvedValueOnce(invalid(30, 3, 0.03));
+    const onUsage = vi.fn();
+    await expect(new OpenRouterProvider('k').completeStructured({ ...req, onUsage })).rejects.toBeInstanceOf(
+      LlmOutputInvalidError,
+    );
+    expect(onUsage.mock.calls.map((c) => [c[0].tokensIn, c[0].tokensOut])).toEqual([[10, 1], [20, 2], [30, 3]]);
+  });
+});

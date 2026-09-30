@@ -51,7 +51,7 @@ describe('callWithDeadline', () => {
     const { llm, reqs } = fake((req, n) => (n === 1 ? hang(req, n) : Promise.resolve(ok)));
     const p = callWithDeadline<number>({ llm, request: base, retryRouting: {}, deadlineMs: 1000, label: 'x', emit: () => {} });
     await vi.advanceTimersByTimeAsync(1500);
-    await expect(p).resolves.toBe(ok);
+    await expect(p).resolves.toMatchObject({ data: 1, costSource: 'estimate', tokensIn: 1, tokensOut: 17 });
     expect(reqs[0].routing).toEqual({ sort: 'throughput' });
     expect(reqs[1].routing).toEqual({});
   });
@@ -100,5 +100,84 @@ describe('callWithDeadline', () => {
     const { llm, reqs } = fake(() => Promise.reject(new LlmOutputTruncatedError('m', 10, 10)));
     await expect(callWithDeadline<number>({ llm, request: base, label: 'x', emit: () => {} })).rejects.toBeInstanceOf(LlmOutputTruncatedError);
     expect(reqs).toHaveLength(1);
+  });
+
+  describe('failed-attempt usage', () => {
+    const res = (tokensIn: number, tokensOut: number, costUsd: number | null, costSource?: 'api' | 'estimate') =>
+      ({ ...ok, tokensIn, tokensOut, costUsd, ...(costSource ? { costSource } : {}) }) as StructuredResult<number>;
+    const transient = () => Object.assign(new Error('boom'), { status: 503 });
+
+    it('L1 merges reported rounds of a transient failure into the retry', async () => {
+      const { llm } = fake(async (req, n) => {
+        if (n === 1) {
+          req.onUsage!({ tokensIn: 1000, tokensOut: 200, costUsd: 0.002, costSource: 'api' });
+          throw transient();
+        }
+        return res(1200, 300, 0.003, 'api');
+      });
+      const lines: string[] = [];
+      const r = await callWithDeadline<number>({ llm, request: base, label: 'x', emit: (_k, m) => lines.push(m) });
+      expect(r.tokensIn).toBe(2200);
+      expect(r.tokensOut).toBe(500);
+      expect(r.costUsd).toBeCloseTo(0.005);
+      expect(r.costSource).toBe('api');
+      expect(lines.filter((l) => l.includes('counted failed attempt'))).toHaveLength(1);
+    });
+
+    it('L2 estimates a deadline-aborted round with a known price', async () => {
+      vi.useFakeTimers();
+      const { llm } = fake((req, n) => (n === 1 ? hang(req, n) : Promise.resolve(res(1, 1, 0.01, 'api'))));
+      const p = callWithDeadline<number>({
+        llm, request: base, deadlineMs: 60_000, label: 'x', emit: () => {},
+        countTokens: () => 100, estimateCost: (_m, i, o) => (i + o) / 1e6,
+      });
+      await vi.advanceTimersByTimeAsync(61_000);
+      const r = await p;
+      expect(r.tokensIn).toBe(101);
+      expect(r.tokensOut).toBe(961);
+      expect(r.costUsd).toBeCloseTo(0.01106);
+      expect(r.costSource).toBe('estimate');
+    });
+
+    it('L3 counts tokens unpriced when the price book has no price', async () => {
+      vi.useFakeTimers();
+      const { llm } = fake((req, n) => (n === 1 ? hang(req, n) : Promise.resolve(res(1, 1, 0.01, 'api'))));
+      const lines: string[] = [];
+      const p = callWithDeadline<number>({
+        llm, request: base, deadlineMs: 60_000, label: 'x', emit: (_k, m) => lines.push(m),
+        countTokens: () => 100, estimateCost: () => null,
+      });
+      await vi.advanceTimersByTimeAsync(61_000);
+      const r = await p;
+      expect(r).toMatchObject({ tokensIn: 101, tokensOut: 961, costUsd: 0.01, costSource: 'estimate' });
+      expect(lines.some((l) => l.includes('could not be priced'))).toBe(true);
+    });
+
+    it('L4 uses the last round as input and caps output at maxTokens', async () => {
+      vi.useFakeTimers();
+      const { llm } = fake((req, n) => {
+        if (n === 1) {
+          req.onUsage!({ tokensIn: 500, tokensOut: 50, costUsd: 0.001, costSource: 'api' });
+          return hang(req, n);
+        }
+        return Promise.resolve(res(0, 0, 0, 'api'));
+      });
+      const p = callWithDeadline<number>({
+        llm, request: { ...base, maxTokens: 100 }, deadlineMs: 60_000, label: 'x', emit: () => {},
+        estimateCost: () => 0,
+      });
+      await vi.advanceTimersByTimeAsync(61_000);
+      const r = await p;
+      expect(r.tokensIn).toBe(500 + 550);
+      expect(r.tokensOut).toBe(50 + 100);
+    });
+
+    it('L5 returns a first-attempt success unchanged, with no counted line', async () => {
+      const { llm } = fake(async () => ok);
+      const lines: string[] = [];
+      const r = await callWithDeadline<number>({ llm, request: base, label: 'x', emit: (_k, m) => lines.push(m) });
+      expect(r).toBe(ok);
+      expect(lines.some((l) => l.includes('counted'))).toBe(false);
+    });
   });
 });

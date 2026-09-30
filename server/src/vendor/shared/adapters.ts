@@ -64,6 +64,14 @@ export interface LlmRouting {
   sort?: 'throughput' | 'latency' | 'price';
 }
 
+/** Usage of ONE completed round, reported as soon as the response arrives. */
+export interface LlmUsageReport {
+  tokensIn: number;
+  tokensOut: number;
+  costUsd: number | null;
+  costSource?: CostSource;
+}
+
 /**
  * Structured-output request. `schema` is a Zod schema; `schemaName` names the
  * tool / json_schema. `maxRetries` controls reprompt-on-error.
@@ -97,6 +105,12 @@ export interface StructuredRequest<T> {
    * serialised into the request body.
    */
   signal?: AbortSignal;
+  /**
+   * Called once per completed round with that round's own usage (not
+   * cumulative), before any throw that follows the round. Never serialised
+   * into the request body; providers that don't support it ignore it.
+   */
+  onUsage?: (u: LlmUsageReport) => void;
 }
 
 export interface StructuredResult<T> {
