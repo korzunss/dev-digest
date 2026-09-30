@@ -24,7 +24,7 @@ export function registerRunAgentOnPr(server: McpServer, deps: ToolDeps): void {
         openWorldHint: true,
       },
     },
-    ({ repo, pr, agent }) =>
+    ({ repo, pr, agent }, extra) =>
       guard(deps, async () => {
         const r = await resolveRepo(deps.api, repo);
         if (!r.ok) return fail(resolutionText(r, { repo }));
@@ -37,7 +37,7 @@ export function registerRunAgentOnPr(server: McpServer, deps: ToolDeps): void {
           deps.api,
           deps.clock,
           { pullId: p.pullId, agentId: a.agent.id },
-          { budgetMs: deps.waitMs, pollMs: deps.pollMs },
+          { budgetMs: deps.waitMs, pollMs: deps.pollMs, signal: extra.signal },
         );
         switch (out.status) {
           case 'done':

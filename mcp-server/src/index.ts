@@ -10,7 +10,8 @@ const Env = z.object({
     .url()
     .refine((u) => /^https?:\/\//.test(u), 'must be http(s)')
     .default('http://127.0.0.1:3001'),
-  DEVDIGEST_MCP_WAIT_MS: z.coerce.number().int().min(0).max(600_000).default(45_000),
+  // Below the MCP SDK's 60 s default request timeout, leaving room for the resolve calls and the last poll.
+  DEVDIGEST_MCP_WAIT_MS: z.coerce.number().int().min(0).max(50_000).default(45_000),
   DEVDIGEST_MCP_POLL_MS: z.coerce.number().int().min(100).max(60_000).default(2_000),
 });
 

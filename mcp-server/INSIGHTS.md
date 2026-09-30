@@ -33,6 +33,12 @@ _Nothing yet._
 
 ## Tool & Library Notes
 
+### 2026-09-30 — a `run_agent_on_pr` wait budget above ~50 s loses the `run_id` of a paid run
+**Symptom:** with `DEVDIGEST_MCP_WAIT_MS` raised past a minute, a slow review ends on the agent side with a request timeout and no `run_id`. The review keeps running (and billing) on the server, and the agent's natural next move is to call the tool again, which starts a second paid run.
+**Cause:** the MCP SDK's client-side `DEFAULT_REQUEST_TIMEOUT_MSEC` is `60000` (`node_modules/@modelcontextprotocol/sdk/dist/esm/shared/protocol.js:8`). The tool's time is the wait budget, plus the resolve calls, plus the last poll (two 10 s HTTP calls). The poll loop also used to overrun the budget by up to one `pollMs`.
+**Rule:** keep the whole `run_agent_on_pr` call under 60 s. The env bound is `.max(50_000)`, and `runAndWait` clamps its sleep to the time left and stops on `extra.signal`. Any new blocking tool must return a handle (`run_id`) before the client's timeout, rather than wait for completion.
+**Evidence:** `src/index.ts:13-14` · `src/core/run-review.ts:44-46` · `docs/plans/06-mcp-server.md` → SR8, SR9
+
 ### 2026-09-29 — plain `import { z } from 'zod'` fails typecheck against the MCP SDK; use `zod/v3`
 **Symptom:** `registerTool` input schemas fail `pnpm typecheck` with TS2322 "ZodNumber not assignable to AnySchema", TS2589, and implicit-any handler args.
 **Cause:** `tsconfig.json:24-25` aliases `zod` → `./node_modules/zod`, so the `zod` types seen through the alias and the ones the SDK resolves have different identities. The alias is still required: `../server/src/vendor/shared` imports runtime `zod`, and the `mcp-server` CI job never installs `server/node_modules`, so without the alias the shared types would not resolve in CI.
@@ -44,6 +50,7 @@ _Nothing yet._
 **Cause:** Node's `AbortSignal.timeout(ms)` aborts with a `DOMException` named `TimeoutError`. Only a manual `controller.abort()` gives `AbortError`.
 **Rule:** map both names to `ApiError(0, 'timeout')`.
 **Evidence:** `src/http/client.ts:34`
+**Addendum (2026-09-30):** the same signal also covers reading the body. A header-then-stall response rejects inside `res.json()`, not `fetch()`, so that catch needs the same mapping. Swallowing it returned `undefined` on a 2xx, and a caller then crashed with "Unexpected error". Evidence: `src/http/client.ts:40-44` · `docs/plans/06-mcp-server.md` → SR7.
 
 ## Recurring Errors & Fixes
 

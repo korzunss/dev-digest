@@ -11,6 +11,7 @@ export type RunOutcome =
 export interface WaitOptions {
   budgetMs: number;
   pollMs: number;
+  signal?: AbortSignal;
 }
 
 /** Look at one run without triggering anything. `done` needs its review row; until it appears the run reads as `running`. */
@@ -40,7 +41,9 @@ export async function runAndWait(
   const deadline = clock.now() + opts.budgetMs;
 
   while (clock.now() < deadline) {
-    await clock.sleep(opts.pollMs);
+    if (opts.signal?.aborted) break;
+    await clock.sleep(Math.min(opts.pollMs, deadline - clock.now()));
+    if (opts.signal?.aborted) break;
     const outcome = await runStatus(api, target.pullId, runId);
     if (outcome && outcome.status !== 'running') return outcome;
   }

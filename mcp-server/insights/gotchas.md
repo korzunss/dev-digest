@@ -1,6 +1,6 @@
 # mcp-server — current gotchas
 
-Last reconciled with ../INSIGHTS.md: 2026-09-29
+Last reconciled with ../INSIGHTS.md: 2026-09-30
 
 This is a curated index of rules still in force. Full write-ups live in
 [`../INSIGHTS.md`](../INSIGHTS.md) (append-only log). A rule that stops holding
@@ -14,4 +14,5 @@ is edited or removed here. Items are added or updated by the
 - **Every model- or PR-written string a tool returns goes through `cut()` (200 chars)** — spot it: a new output field copied straight from a `ReviewRecord`/convention — [INSIGHTS: 2026-09-29 — cap every model-written string](../INSIGHTS.md#2026-09-29--cap-every-model-written-string-before-it-reaches-the-agent-not-just-rationale)
 
 ## Tooling
-- **Map both `TimeoutError` and `AbortError` to `ApiError(0, 'timeout')`** — spot it: an HTTP timeout surfaces as "DevDigest API error …" instead of "not reachable" — [INSIGHTS: 2026-09-29 — `AbortSignal.timeout` rejects with `TimeoutError`](../INSIGHTS.md#2026-09-29--abortsignaltimeout-rejects-with-timeouterror-not-aborterror)
+- **Keep a blocking tool call under the MCP client's 60 s request timeout** (`DEVDIGEST_MCP_WAIT_MS` ≤ 50 000, poll sleep clamped to the deadline, stop on `extra.signal`) — spot it: `run_agent_on_pr` times out on the client with no `run_id` while a paid run keeps going — [INSIGHTS: 2026-09-30 — a `run_agent_on_pr` wait budget above ~50 s loses the `run_id` of a paid run](../INSIGHTS.md#2026-09-30--a-run_agent_on_pr-wait-budget-above-50-s-loses-the-run_id-of-a-paid-run)
+- **Map both `TimeoutError` and `AbortError` to `ApiError(0, 'timeout')`, in the `fetch()` catch *and* the `res.json()` catch** — spot it: an HTTP timeout surfaces as "DevDigest API error …" instead of "not reachable", or a 2xx turns into "Unexpected error" — [INSIGHTS: 2026-09-29 — `AbortSignal.timeout` rejects with `TimeoutError`](../INSIGHTS.md#2026-09-29--abortsignaltimeout-rejects-with-timeouterror-not-aborterror)

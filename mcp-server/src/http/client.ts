@@ -37,7 +37,9 @@ export function createHttpApi(baseUrl: string, fetchImpl: typeof fetch = fetch):
     let json: unknown;
     try {
       json = await res.json();
-    } catch {
+    } catch (err) {
+      const name = (err as { name?: string } | null)?.name;
+      if (name === 'TimeoutError' || name === 'AbortError') throw new ApiError(0, 'timeout');
       json = undefined;
     }
     if (!res.ok) {
@@ -46,6 +48,7 @@ export function createHttpApi(baseUrl: string, fetchImpl: typeof fetch = fetch):
       }
       throw new ApiError(res.status, res.status === 404 ? 'not_found' : 'http_error');
     }
+    if (json === undefined) throw new ApiError(res.status, 'bad_response');
     return json as T;
   }
 

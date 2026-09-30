@@ -25,6 +25,19 @@ describe('runAndWait', () => {
     expect(triggers(api.calls)).toBe(1);
   });
 
+  it('clamps the last sleep to the time left in the budget', async () => {
+    const clock = fakeClock();
+    await runAndWait(fakeApi(), clock, target, { budgetMs: 5000, pollMs: 3000 });
+    expect(clock.t).toBe(5000);
+  });
+
+  it('stops without polling when the signal is already aborted', async () => {
+    const api = fakeApi();
+    const out = await runAndWait(api, fakeClock(), target, { ...opts, signal: AbortSignal.abort() });
+    expect(out).toEqual({ status: 'running', runId: 'run-1' });
+    expect(api.calls.some((c) => c.startsWith('listRuns'))).toBe(false);
+  });
+
   it('keeps polling when done but the review is not visible yet', async () => {
     const api = fakeApi({ runs: [[makeRun({ status: 'done' })]] });
     expect((await runAndWait(api, fakeClock(), target, opts)).status).toBe('running');

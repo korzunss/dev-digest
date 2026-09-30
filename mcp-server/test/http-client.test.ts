@@ -59,4 +59,24 @@ describe('createHttpApi', () => {
     expect((await createHttpApi('http://x', down).listRepos().catch((e) => e)).code).toBe('unreachable');
     expect((await createHttpApi('http://x', slow).listRepos().catch((e) => e)).code).toBe('timeout');
   });
+
+  it('maps a timeout while reading the body to timeout', async () => {
+    const res = {
+      ok: true,
+      status: 200,
+      json: async () => {
+        throw Object.assign(new Error('t'), { name: 'TimeoutError' });
+      },
+    } as unknown as Response;
+    const err = await createHttpApi('http://x', (async () => res) as unknown as typeof fetch).listRepos().catch((e) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err).toMatchObject({ status: 0, code: 'timeout' });
+  });
+
+  it('maps a 2xx non-JSON body to bad_response', async () => {
+    const f = (async () => new Response('<html>', { status: 200 })) as unknown as typeof fetch;
+    const err = await createHttpApi('http://x', f).listRepos().catch((e) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err).toMatchObject({ status: 200, code: 'bad_response' });
+  });
 });
