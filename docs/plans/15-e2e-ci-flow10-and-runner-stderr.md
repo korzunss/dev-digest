@@ -1,5 +1,5 @@
 # Development Plan: e2e — stabilise flow 10's sidebar click on CI, surface agent-browser stderr
-Status: in-progress
+Status: done
 Save as: docs/plans/15-e2e-ci-flow10-and-runner-stderr.md
 Spec: none
 
@@ -177,3 +177,14 @@ The wording differs from a real miss (`N elements have role "link", but none mat
 - **Investigation SC2 (read-only, researcher):** find what re-mounts the sidebar nav link after the PR list has loaded (e.g. a `key` or wrapper change after the repos or sync status fetch). If it is a client bug, fixing it touches `client/`, which is outside this plan's steps, so it would be a plan change needing the user's approval.
 - **SC2 result (researcher, 2026-09-30, medium confidence, nothing executed):** no client code remounts the Conventions `<a>` after the PR list renders. There is no data-derived `key`, no loading/loaded wrapper switch, and no nested `Suspense`/`loading.tsx`. `usePulls` refetches only update in place, and `useRepos` has no interval. The only remount is the `/` → `/repos/<id>/pulls` page swap (each page renders its own `AppShell`), which commits with the URL that flow 10 already waits for. Conclusion: the "remount between resolve and click" theory is not supported by the code. The likelier cause is agent-browser's `find role … --name` resolve/ref path (the link's name comes from a nested `div > span`). SC1's click-time CSS selector is the right mitigation either way. No `client/` change is warranted, so there is no plan change.
 - **Fix mode SC1 (2026-09-30):** implementer done. `10-conventions.flow.json` step 10 is now `["click", "a[href$='/conventions']"]` (0.38.1 `click --help`: "a CSS selector, XPath, or an element reference"). Both guards are kept. Checks: `jq` ✅, `./scripts/e2e.sh` 11/11 ×3 ✅ (after the edit landed; 3 earlier runs came before a failed BSD `sed -i` and are discounted), prod variant 11/11 ✅. AC5 is pending CI after push.
+- **AC5 met (2026-09-30):** on PR #13 at commit `8541592`, all 7 checks passed, including `e2e web / browser flows` (user's screenshot of the PR checks).
+
+### Sign-off (2026-09-30)
+User: "R3 підтверджую, R4 приймаю".
+- R3 signed off: after approval, only the main session edited this plan file (Status, Decisions recorded, handoffs, Verification log).
+- R4 accepted: no test-writer run; e2e has no test runner. The evidence is the negative-locator check (stderr shown, reverted) and CI.
+
+### Final (2026-09-30)
+Verification complete: AC5 met on CI (`8541592`, 7/7 checks green), SC1 fixed, SC2 found no client bug. The user signed off R3 and accepted R4. Status → `done`. Open follow-ups (not decided):
+- CI installs `agent-browser` latest, unpinned;
+- the exact cause of the CI-only `find role … click` failure is not established.
