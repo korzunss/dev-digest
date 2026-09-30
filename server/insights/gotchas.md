@@ -1,6 +1,6 @@
 # server — current gotchas
 
-Last reconciled with ../INSIGHTS.md: 2026-09-29
+Last reconciled with ../INSIGHTS.md: 2026-09-30
 
 This is a curated index of rules still in force. Full write-ups live in
 [`server/INSIGHTS.md`](../INSIGHTS.md) (append-only log). A rule that stops
@@ -39,4 +39,5 @@ holding is edited or removed here. Items are added or updated by the
 
 ## Tooling
 
+- **`loadConfig()` defaults `DATABASE_URL` to the local Postgres, so it never fails on a missing URL.** Moving a script's manual env check onto `loadConfig()` (right for the chokepoint rule) turns "unset → error" into "unset → local DB"; keep an explicit check if the script must refuse to run. — spot it: a CLI run with no `DATABASE_URL` quietly reads or writes the dev database. — [INSIGHTS: 2026-09-30 — `loadConfig()` never fails on a missing `DATABASE_URL`; it falls back to local Postgres](../INSIGHTS.md#2026-09-30--loadconfig-never-fails-on-a-missing-database_url-it-falls-back-to-local-postgres)
 - **An HTTP adapter without an SDK must throw an error carrying a numeric `status`** (`Object.assign(new Error(msg), { status: res.status })`) or pass its own `opts.isRetryable` — otherwise `withRetry` silently retries nothing, because `fetch` resolves instead of throwing on 4xx/5xx and `defaultIsRetryable` classifies purely by `err.status`/`err.statusCode`/`err.response.status`. — spot it: a hand-rolled `fetch`-based adapter wrapped in `withRetry(() => withTimeout(...))` looks fully resilient but never retries a 429 or a 502. — [INSIGHTS: 2026-09-23 — `withRetry` is a silent no-op for an adapter built on raw `fetch`](../INSIGHTS.md#2026-09-23--withretry-is-a-silent-no-op-for-an-adapter-built-on-raw-fetch)

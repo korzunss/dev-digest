@@ -186,6 +186,12 @@ foreign key POINTS AT"
 
 ## Tool & Library Notes
 
+### 2026-09-30 — `loadConfig()` never fails on a missing `DATABASE_URL`; it falls back to local Postgres
+**Symptom:** moving the eval CLI's manual `if (!process.env.DATABASE_URL) throw …` onto `loadConfig().databaseUrl` (architecture F1) silently changed "unset → error" into "unset → connect to the local default".
+**Cause:** `EnvSchema` gives `DATABASE_URL` a default (`postgres://devdigest:devdigest@localhost:5432/devdigest`).
+**Rule:** replacing a direct env read with `loadConfig()` is right for the chokepoint rule, but check the schema for a default first; if a script must refuse to run without an explicit URL, keep that check separately.
+**Evidence:** `server/src/platform/config.ts:16-18,82-88` · `server/src/modules/eval/cli.ts`
+
 ### 2026-09-29 — simple-git `raw(['merge-base', a, b])` resolves empty instead of throwing when there is no merge base
 **Symptom:** a merge-base check wrapped in `try/catch` "passed" on a shallow repo, then the following `git diff a...b` failed with `fatal: a...b: no merge base` (exit 128).
 **Cause:** `git merge-base` exits 1 with no stderr when it finds nothing; simple-git's `raw` only rejects when stderr has content, so it resolves with `''`.

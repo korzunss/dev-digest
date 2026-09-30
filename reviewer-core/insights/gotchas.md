@@ -20,11 +20,26 @@ is edited or removed here. Items are added or updated by the
 
 ## LLM transport
 
-- **The `openai` SDK `timeout` (90 s in `OpenRouterProvider`) only bounds the
-  wait for response headers, not the body** — OpenRouter sends `200` at once and
-  holds the body open while the model reasons, so a stalled call hangs until a
-  socket timeout (1–2 h). For a real deadline pass an `AbortSignal` as
-  `req.signal` to `completeStructured`; nothing passes one yet (fix deferred). —
-  spot it: a run stuck on `Reviewing … in one pass` with one unchanged socket to
-  OpenRouter, ending in `Invalid response body … Socket timeout` with 0 tokens.
-  [INSIGHTS: 2026-09-30 — the `openai` SDK `timeout` stops at the response headers; a stalled OpenRouter body hangs for 1–2 hours](../INSIGHTS.md#2026-09-30--the-openai-sdk-timeout-stops-at-the-response-headers-a-stalled-openrouter-body-hangs-for-12-hours)
+- **Every review LLM call goes through `callWithDeadline`; the SDK `timeout`
+  only bounds the wait for response headers** — the deadline (10 min) and the
+  run's cancel signal reach the call only via `req.signal`. A deadline abort of a
+  non-streaming call is still billed in full. — spot it: a new call site that
+  awaits `llm.completeStructured` directly can hang for 1–2 h and ends in
+  `Invalid response body … Socket timeout` with 0 tokens.
+  [INSIGHTS: 2026-09-30 — correction: the stalled-body hang is now bounded by `callWithDeadline` (plan 08)](../INSIGHTS.md#2026-09-30--correction-the-stalled-body-hang-is-now-bounded-by-callwithdeadline-plan-08)
+- **Speed comes from the routed OpenRouter provider, not from
+  `reasoning.effort`** — keep `provider: { require_parameters: true, sort:
+  'throughput' }` (without `require_parameters` strict JSON is only a soft
+  preference) and log `res.provider`; `max_tokens` counts reasoning too. — spot
+  it: the same prompt takes 94 s on one call and 530 s on the next; the run log's
+  "served by" names the slow provider.
+  [INSIGHTS: 2026-09-30 — on OpenRouter, duration is set by the routed provider; `reasoning.effort` does nothing for `deepseek-v4-flash`](../INSIGHTS.md#2026-09-30--on-openrouter-duration-is-set-by-the-routed-provider-reasoningeffort-does-nothing-for-deepseek-v4-flash)
+
+## Findings
+
+- **On a newly added file, finding line numbers drift 2–8 lines and grounding
+  still passes them** (one hunk covers the whole file). Anything matching
+  findings to known locations there needs ~8 lines of tolerance; don't tighten
+  grounding for it. — spot it: an eval or dedup misses a finding whose title
+  clearly names the planted issue but whose lines sit a few rows away.
+  [INSIGHTS: 2026-09-30 — on a newly added file, a finding's line numbers drift 2–8 lines and grounding can't tell](../INSIGHTS.md#2026-09-30--on-a-newly-added-file-a-findings-line-numbers-drift-28-lines-and-grounding-cant-tell)
