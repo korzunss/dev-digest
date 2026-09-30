@@ -80,8 +80,8 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
               set: {
                 title: pr.title,
                 base: pr.base,
-                // D7: keep the stored base SHA while the head is unchanged, clear it once the head moved.
-                baseSha: sql`coalesce(excluded.base_sha, case when ${t.pullRequests.headSha} = excluded.head_sha then ${t.pullRequests.baseSha} end)`,
+                // D7: keep the stored base SHA while the head and base branch are unchanged, clear it once either moved.
+                baseSha: sql`coalesce(excluded.base_sha, case when ${t.pullRequests.headSha} = excluded.head_sha and ${t.pullRequests.base} = excluded.base then ${t.pullRequests.baseSha} end)`,
                 headSha: pr.head_sha,
                 status: pr.status,
                 updatedAt: pr.updated_at ? new Date(pr.updated_at) : null,

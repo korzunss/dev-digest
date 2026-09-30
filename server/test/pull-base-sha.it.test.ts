@@ -1,7 +1,8 @@
 /**
  * PR base SHA persistence (plan 07, S4): list sync + poll write `base_sha`,
- * a GitLab-style list (no base_sha) keeps it while the head is unchanged and
- * clears it once the head moved, and the detail refresh sets base/head/files_head.
+ * a GitLab-style list (no base_sha) keeps it while the head and base branch are
+ * unchanged and clears it once either moved (retarget), and the detail refresh
+ * sets base/head/files_head.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { eq } from 'drizzle-orm';
@@ -98,6 +99,30 @@ d('PR base_sha persistence (Testcontainers pg)', () => {
     const r = await row(repo.id);
     expect(r.baseSha).toBeNull();
     expect(r.headSha).toBe('head2');
+  });
+
+  it('a re-sync without base_sha, the same head and a new base clears it (list)', async () => {
+    const repo = await newRepo();
+    await list(repo.id, [pr()]);
+    await list(repo.id, [pr({ base_sha: null, base: 'develop' })]);
+    const r = await row(repo.id);
+    expect(r.baseSha).toBeNull();
+    expect(r.base).toBe('develop');
+  });
+
+  it('a poll without base_sha, the same head and a new base clears it', async () => {
+    const repo = await newRepo();
+    await list(repo.id, [pr()]);
+    const app = await buildApp({
+      config: config(),
+      db: pg.handle.db,
+      overrides: { forge: new MockForgeClient({ pulls: [pr({ base_sha: null, base: 'develop' })] }) },
+    });
+    const res = await app.inject({ method: 'POST', url: `/repos/${repo.id}/poll` });
+    expect(res.statusCode).toBe(200);
+    const r = await row(repo.id);
+    expect(r.baseSha).toBeNull();
+    expect(r.base).toBe('develop');
   });
 
   it('POST /repos/:id/poll persists base_sha', async () => {

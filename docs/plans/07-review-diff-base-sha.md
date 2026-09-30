@@ -336,3 +336,15 @@ User: "a, прибирай zod з S2–S4". `zod` removed from *Skills to apply*
 
 ### Final (2026-09-29)
 plan-verifier (delta after CH2): **complete** — 86/86 met; no gaps, no sign-off open, no unplanned changes. Status → `done`.
+
+### Post-done gap (2026-09-30, pr-self-review)
+Found by `/pr-self-review` on branch L04 (HIGH, items 2–3) and confirmed against the code. The user approved the fix ("так, виправь"). Status `done` → `in-progress`.
+
+- **SR2 — a retargeted GitLab MR keeps the old target's `base_sha`** (S4). The D7 upsert expression `coalesce(excluded.base_sha, case when pull_requests.head_sha = excluded.head_sha then pull_requests.base_sha end)` (`server/src/modules/pulls/routes.ts:84`, `server/src/modules/polling/routes.ts:57`) keeps the stored SHA whenever the head is unchanged, even though the same statement overwrites `base`. The GitLab list payload has no `diff_refs` (`gitlab/mappers.ts:160-161`), so `excluded.base_sha` is NULL. After a retarget with no new push, `base` is the new branch but `base_sha` still points into the old one. `diffCommits` then diffs against the wrong base, and `prFilesAreFresh` can't tell, because `files_head_sha` still equals `head_sha`. GitHub is unaffected: `octokit.ts:59,102` always sends `base_sha`.
+  - **Fix:** in both routes, keep the stored SHA only when the head **and** the base branch are unchanged: `case when ${t.pullRequests.headSha} = excluded.head_sha and ${t.pullRequests.base} = excluded.base then ${t.pullRequests.baseSha} end`. Update both D7 comments to match. Stay within the two route files: extracting a shared helper would need a new file outside S4, so it is out of scope here.
+  - **Done when:** `cd server && pnpm typecheck && pnpm vitest run test/pull-base-sha.it.test.ts`. `pull-base-sha.it.test.ts` gains a case for each route: a stored row with `base_sha` set is re-synced with the same `head_sha`, a different `base` and a NULL `base_sha` → `base_sha` becomes NULL. The existing "same head, same base → kept" case stays green.
+- **SR2 implementer (fix mode, 2026-09-30):** done. Files: `server/src/modules/pulls/routes.ts`, `server/src/modules/polling/routes.ts` (the CASE also requires `base = excluded.base`; D7 comments updated), `server/test/pull-base-sha.it.test.ts` (+2 retarget cases, one per route). Checks: server typecheck ✅, `pull-base-sha.it` 7/7 ✅. Main-session review: correct, because `ON CONFLICT … DO UPDATE SET` expressions read the old row, so `pull_requests.base` is the pre-update branch.
+- **Full server suite (main session, 2026-09-30, after SR2 and plan 06's SR7–SR9):** `cd server && pnpm test` → 52 files / 512 tests, exit 0, including all 18 `.it` files (`pull-base-sha.it` 7).
+- **plan-verifier (delta, SR2):** complete: 7/7 delta items met, no gaps, no unplanned changes, nothing to sign off. Handoff: the stale header comment in `server/test/pull-base-sha.it.test.ts:1-4`.
+- **main-session fix: SR2-doc**: the `pull-base-sha.it.test.ts` header comment now names the base-branch condition (comment-only, 1 file in S4). Done-when re-run: `pull-base-sha.it` 7/7 ✅.
+- Status `in-progress` → `done`.
