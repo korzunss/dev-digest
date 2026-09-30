@@ -22,11 +22,26 @@ export class RunBus {
   private seq = new Map<string, number>();
   private completed = new Set<string>();
   private cancelled = new Set<string>();
+  private controllers = new Map<string, AbortController>();
 
-  /** Request cancellation of an in-flight run. The runner checks `isCancelled`
-   *  at its next checkpoint (between map-reduce files) and stops. */
+  /** Request cancellation of an in-flight run. Aborts the run's signal (see
+   *  `signalFor`) so the in-flight LLM call stops, and flags the run so the
+   *  runner's `isCancelled` checkpoint (between map-reduce files) stops too. */
   cancel(runId: string): void {
     this.cancelled.add(runId);
+    this.controllers.get(runId)?.abort(new Error('Run cancelled'));
+  }
+
+  /** Per-run abort signal, created lazily. Already aborted when the run was
+   *  cancelled before the signal was first requested. */
+  signalFor(runId: string): AbortSignal {
+    let c = this.controllers.get(runId);
+    if (!c) {
+      c = new AbortController();
+      this.controllers.set(runId, c);
+      if (this.cancelled.has(runId)) c.abort(new Error('Run cancelled'));
+    }
+    return c.signal;
   }
 
   /** Whether cancellation has been requested for a run. */
@@ -77,6 +92,7 @@ export class RunBus {
     const e = this.emitters.get(runId);
     this.completed.add(runId);
     this.cancelled.delete(runId);
+    this.controllers.delete(runId);
     e?.emit('done');
     // Keep the buffer briefly available for late subscribers; clear emitter.
     this.emitters.delete(runId);

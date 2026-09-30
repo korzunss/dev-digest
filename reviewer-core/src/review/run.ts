@@ -4,6 +4,7 @@ import type {
   Finding,
   Intent,
   LLMProvider,
+  LlmRouting,
   PromptAssembly,
   Review,
   RunEventKind,
@@ -13,6 +14,7 @@ import { Review as ReviewSchema } from '@devdigest/shared';
 import { assemblePrompt } from '../prompt.js';
 import { groundFindings, groundingSummary } from '../grounding.js';
 import { reduceReviews, scoreFromFindings, sliceDiff } from './reduce.js';
+import { callWithDeadline, describeRouting } from './llm-call.js';
 import { applyScopeFilter, ScopedReview, type ScopedFinding } from './scope.js';
 
 /**
@@ -34,6 +36,11 @@ import { applyScopeFilter, ScopedReview, type ScopedFinding } from './scope.js';
 export const DEFAULT_MAP_THRESHOLD_LINES = 400;
 /** Default structured-output reprompt retries (matches REVIEW_MAX_RETRIES). */
 export const DEFAULT_REVIEW_MAX_RETRIES = 2;
+/**
+ * Default diff size (tokens) above which a multi-file diff is reviewed
+ * map-reduce even for a `single-pass` agent (assumption: 100k).
+ */
+export const DEFAULT_SINGLE_PASS_MAX_DIFF_TOKENS = 100_000;
 
 export type ReviewStrategy = 'auto' | 'single-pass' | 'map-reduce';
 export type ReviewMode = 'single-pass' | 'map-reduce';
@@ -107,6 +114,20 @@ export interface ReviewInput {
    * type, e.g. the server's RunCancelledError); the engine stays agnostic.
    */
   checkCancelled?: () => void;
+  /** Run-level cancellation; aborts the in-flight LLM call (passed as `req.signal`). */
+  signal?: AbortSignal;
+  /** Per-call deadline in ms (no answer → abort + one retry). Unset = none. */
+  callDeadlineMs?: number;
+  /** Output-token safety cap sent as `max_tokens` on every call. Unset = none. */
+  maxOutputTokens?: number;
+  /** OpenRouter: only route to endpoints supporting every request parameter. */
+  requireParameters?: boolean;
+  /** Gateway routing hint for the first attempt. */
+  routing?: LlmRouting;
+  /** Gateway routing hint for the single retry (e.g. `{}` = default balancing). */
+  retryRouting?: LlmRouting;
+  /** Override DEFAULT_SINGLE_PASS_MAX_DIFF_TOKENS. */
+  singlePassMaxDiffTokens?: number;
 }
 
 export interface ReviewOutcome {
@@ -135,18 +156,44 @@ export interface ReviewOutcome {
   raw: string;
 }
 
-function selectMode(strategy: ReviewStrategy, diff: UnifiedDiff, threshold: number): ReviewMode {
-  if (strategy === 'single-pass') return 'single-pass';
-  if (strategy === 'map-reduce') return diff.files.length > 1 ? 'map-reduce' : 'single-pass';
-  // auto: map-reduce only when the diff is both large AND multi-file (else 1 call).
-  const totalLines = diff.files.reduce((n, f) => n + f.additions + f.deletions, 0);
-  return totalLines > threshold && diff.files.length > 1 ? 'map-reduce' : 'single-pass';
+type ModeReason = 'strategy' | 'size-guard' | 'oversize-single-file';
+
+function selectMode(
+  strategy: ReviewStrategy,
+  diff: UnifiedDiff,
+  threshold: number,
+  diffTokens: number,
+  maxSinglePassTokens: number,
+): { mode: ReviewMode; reason: ModeReason } {
+  let mode: ReviewMode;
+  if (strategy === 'single-pass') mode = 'single-pass';
+  else if (strategy === 'map-reduce') mode = diff.files.length > 1 ? 'map-reduce' : 'single-pass';
+  else {
+    // auto: map-reduce only when the diff is both large AND multi-file (else 1 call).
+    const totalLines = diff.files.reduce((n, f) => n + f.additions + f.deletions, 0);
+    mode = totalLines > threshold && diff.files.length > 1 ? 'map-reduce' : 'single-pass';
+  }
+  // Size guard: no single call for a huge diff, whatever the strategy.
+  if (mode === 'single-pass' && diffTokens > maxSinglePassTokens) {
+    return diff.files.length > 1
+      ? { mode: 'map-reduce', reason: 'size-guard' }
+      : { mode, reason: 'oversize-single-file' };
+  }
+  return { mode, reason: 'strategy' };
 }
 
 export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutcome> {
   const threshold = input.mapThresholdLines ?? DEFAULT_MAP_THRESHOLD_LINES;
   const maxRetries = input.maxRetries ?? DEFAULT_REVIEW_MAX_RETRIES;
-  const mode = selectMode(input.strategy ?? 'auto', input.diff, threshold);
+  const diffTokens = input.countTokens?.(input.diff.raw) ?? Math.ceil(input.diff.raw.length / 4);
+  const maxSinglePass = input.singlePassMaxDiffTokens ?? DEFAULT_SINGLE_PASS_MAX_DIFF_TOKENS;
+  const { mode, reason } = selectMode(
+    input.strategy ?? 'auto',
+    input.diff,
+    threshold,
+    diffTokens,
+    maxSinglePass,
+  );
   const emit = (kind: RunEventKind, msg: string, data?: unknown) =>
     input.onEvent?.({ kind, msg, data });
 
@@ -178,6 +225,19 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
       ? input.diff.files.map((f) => ({ label: f.path, diffText: sliceDiff(input.diff, f.path) }))
       : [{ label: 'all files', diffText: input.diff.raw }];
 
+  const k = (n: number) => Math.round(n / 1000);
+  if (reason === 'size-guard') {
+    emit(
+      'info',
+      `Diff is ~${k(diffTokens)}k tokens (> ${k(maxSinglePass)}k) → map-reduce over ${input.diff.files.length} files instead of one pass`,
+    );
+  } else if (reason === 'oversize-single-file') {
+    emit('info', `Warning: diff is ~${k(diffTokens)}k tokens in one file — cannot split; reviewing in one pass`);
+  }
+  emit(
+    'info',
+    `LLM call: ${input.model} · routing ${describeRouting(input.routing, input.requireParameters)} · max_tokens=${input.maxOutputTokens ?? 'none'} · deadline ${input.callDeadlineMs != null ? `${Math.round((input.callDeadlineMs / 60_000) * 10) / 10} min` : 'none'}`,
+  );
   emit(
     'info',
     mode === 'map-reduce'
@@ -204,13 +264,26 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
     );
     const a = assemblePrompt({ ...promptParts, diff: chunk.diffText }, assembleOpts);
     if (mode === 'single-pass') assembly = a.assembly;
-    const res = await input.llm.completeStructured<Review>({
-      model: input.model,
-      schema: reviewSchema,
-      schemaName: 'Review',
-      messages: a.messages,
-      maxRetries,
-      ...(input.sessionId ? { sessionId: input.sessionId } : {}),
+    const startedAt = Date.now();
+    const res = await callWithDeadline<Review>({
+      llm: input.llm,
+      request: {
+        model: input.model,
+        schema: reviewSchema,
+        schemaName: 'Review',
+        messages: a.messages,
+        maxRetries,
+        ...(input.sessionId ? { sessionId: input.sessionId } : {}),
+        ...(input.maxOutputTokens != null ? { maxTokens: input.maxOutputTokens } : {}),
+        ...(input.requireParameters != null ? { requireParameters: input.requireParameters } : {}),
+        ...(input.routing ? { routing: input.routing } : {}),
+      },
+      ...(input.retryRouting ? { retryRouting: input.retryRouting } : {}),
+      ...(input.callDeadlineMs != null ? { deadlineMs: input.callDeadlineMs } : {}),
+      ...(input.signal ? { signal: input.signal } : {}),
+      ...(input.checkCancelled ? { checkCancelled: input.checkCancelled } : {}),
+      label: chunk.label,
+      emit,
     });
     tokensIn += res.tokensIn;
     tokensOut += res.tokensOut;
@@ -220,7 +293,10 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
     else if (res.costSource === 'api' && costSource !== 'estimate') costSource = 'api';
     raws.push(res.raw);
     partials.push(res.data);
-    emit('result', `${chunk.label}: ${res.data.findings.length} candidate finding(s)`);
+    emit(
+      'result',
+      `${chunk.label}: ${res.data.findings.length} candidate finding(s) · ${res.tokensOut} output tokens · ${Math.round((Date.now() - startedAt) / 1000)} s${res.servedBy ? ` · served by ${res.servedBy}` : ''}`,
+    );
   }
 
   const merged = reduceReviews(partials);

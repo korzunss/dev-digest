@@ -24,6 +24,7 @@ vi.mock('openai', () => ({
 }));
 
 import { OpenRouterProvider } from '../src/llm/openrouter.js';
+import { LlmOutputInvalidError, LlmOutputTruncatedError } from '../src/llm/errors.js';
 
 const TestSchema = z.object({ ok: z.boolean() });
 
@@ -131,5 +132,72 @@ describe('OpenRouterProvider.completeStructured — signal (S16b)', () => {
       }),
     ).rejects.toThrow();
     expect(createMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('OpenRouterProvider.completeStructured — routing, served-by, failures', () => {
+  const base = {
+    model: 'm/x',
+    schema: TestSchema,
+    schemaName: 'Test',
+    messages: [{ role: 'user' as const, content: 'hi' }],
+  };
+
+  it('sends provider { require_parameters, sort } for openrouter', async () => {
+    respondOk();
+    await new OpenRouterProvider('k').completeStructured({
+      ...base,
+      requireParameters: true,
+      routing: { sort: 'throughput' },
+    });
+    const body = createMock.mock.calls[0]![0] as { provider?: unknown };
+    expect(body.provider).toEqual({ require_parameters: true, sort: 'throughput' });
+  });
+
+  it('omits provider for id openai or when nothing is set', async () => {
+    respondOk();
+    await new OpenRouterProvider('k', { id: 'openai' }).completeStructured({
+      ...base,
+      requireParameters: true,
+      routing: { sort: 'throughput' },
+    });
+    await new OpenRouterProvider('k').completeStructured({ ...base, routing: {} });
+    expect((createMock.mock.calls[0]![0] as { provider?: unknown }).provider).toBeUndefined();
+    expect((createMock.mock.calls[1]![0] as { provider?: unknown }).provider).toBeUndefined();
+  });
+
+  it('servedBy mirrors the top-level provider field', async () => {
+    createMock.mockResolvedValue({
+      provider: 'AtlasCloud',
+      choices: [{ message: { content: JSON.stringify({ ok: true }) } }],
+      usage: { prompt_tokens: 1, completion_tokens: 1 },
+    });
+    const r = await new OpenRouterProvider('k').completeStructured(base);
+    expect(r.servedBy).toBe('AtlasCloud');
+    respondOk();
+    const r2 = await new OpenRouterProvider('k').completeStructured(base);
+    expect(r2.servedBy).toBeUndefined();
+  });
+
+  it('finish_reason length throws LlmOutputTruncatedError after one call', async () => {
+    createMock.mockResolvedValue({
+      choices: [{ finish_reason: 'length', message: { content: '{"ok' } }],
+      usage: { prompt_tokens: 1, completion_tokens: 32000 },
+    });
+    await expect(
+      new OpenRouterProvider('k').completeStructured({ ...base, maxTokens: 32000 }),
+    ).rejects.toBeInstanceOf(LlmOutputTruncatedError);
+    expect(createMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('three invalid answers throw LlmOutputInvalidError', async () => {
+    createMock.mockResolvedValue({
+      choices: [{ finish_reason: 'stop', message: { content: '{"nope":1}' } }],
+      usage: { prompt_tokens: 1, completion_tokens: 1 },
+    });
+    await expect(new OpenRouterProvider('k').completeStructured(base)).rejects.toBeInstanceOf(
+      LlmOutputInvalidError,
+    );
+    expect(createMock).toHaveBeenCalledTimes(3);
   });
 });

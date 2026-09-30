@@ -71,12 +71,15 @@ export {
   reviewPullRequest,
   DEFAULT_MAP_THRESHOLD_LINES,
   DEFAULT_REVIEW_MAX_RETRIES,
+  DEFAULT_SINGLE_PASS_MAX_DIFF_TOKENS,
   type ReviewInput,
   type ReviewOutcome,
   type ReviewEvent,
   type ReviewStrategy,
   type ReviewMode,
 } from './review/run.js';
+
+export { callWithDeadline, describeRouting, LLM_WAIT_HEARTBEAT_MS, type CallWithDeadlineOptions } from './review/llm-call.js';
 
 // Output: grounded Review → GitHubReviewPayload (body + inline comments + event).
 export {
@@ -89,6 +92,12 @@ export {
 // The single OpenAI-compatible structured provider (OpenRouter), shared by the
 // CI runner and the server's openrouter path. Owns session grouping + guards.
 export { OpenRouterProvider, type OpenRouterProviderOptions } from './llm/openrouter.js';
+export {
+  LlmDeadlineError,
+  LlmOutputTruncatedError,
+  LlmOutputInvalidError,
+  isTransientLlmError,
+} from './llm/errors.js';
 
 // Smart Diff (L03) — pure path -> role classification for the reviewer-ordered
 // Files changed tab. No I/O; the rules are data so a later prompt filter can

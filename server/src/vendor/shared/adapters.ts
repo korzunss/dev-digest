@@ -57,6 +57,14 @@ export interface CompletionResult {
 }
 
 /**
+ * Routing hint for gateway providers (OpenRouter maps it into its `provider`
+ * object). Direct providers ignore it; `{}` = the gateway's default balancing.
+ */
+export interface LlmRouting {
+  sort?: 'throughput' | 'latency' | 'price';
+}
+
+/**
  * Structured-output request. `schema` is a Zod schema; `schemaName` names the
  * tool / json_schema. `maxRetries` controls reprompt-on-error.
  */
@@ -81,6 +89,8 @@ export interface StructuredRequest<T> {
    * (e.g. structured outputs). Other providers ignore it.
    */
   requireParameters?: boolean;
+  /** Gateway routing hint; see LlmRouting. Ignored by direct providers. */
+  routing?: LlmRouting;
   /**
    * Caller-owned cancellation. Providers pass it to the SDK request and check
    * it before each reprompt attempt; an aborted call rejects. Never
@@ -97,6 +107,8 @@ export interface StructuredResult<T> {
   costUsd: number | null;
   /** See CompletionResult.costSource. Undefined ⇒ unknown. */
   costSource?: CostSource;
+  /** Upstream provider that answered, when the gateway reports it; undefined otherwise. */
+  servedBy?: string;
   raw: string;
   attempts: number;
 }

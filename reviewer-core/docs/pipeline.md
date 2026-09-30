@@ -20,10 +20,16 @@ resolved by the caller; the engine only ever sees strings.
 
 ### Mode selection
 
-`selectMode` (`src/review/run.ts:122-128`) picks `single-pass` unless the
+`selectMode` (`src/review/run.ts:161-183`) picks `single-pass` unless the
 caller forces `map-reduce`, or the strategy is `auto` **and** the diff is both
 larger than the threshold (`mapThresholdLines`, default `DEFAULT_MAP_THRESHOLD_LINES
 = 400`, `src/review/run.ts:31`) and touches more than one file.
+
+**Size guard.** After that, a `single-pass` result whose diff exceeds
+`singlePassMaxDiffTokens` (default `DEFAULT_SINGLE_PASS_MAX_DIFF_TOKENS`
+= 100 000 tokens; counted with `countTokens`, else chars/4) becomes `map-reduce`
+when the diff has more than one file (reason `size-guard`, logged). A single
+oversized file stays single-pass with a warning line (`oversize-single-file`).
 
 ### Prompt assembly — `src/prompt.ts`
 
@@ -55,7 +61,25 @@ every section, persisted verbatim in the run trace (`PromptAssembly` contract,
 
 `reviewPullRequest` never talks to a model directly. For each chunk it calls
 `input.llm.completeStructured<Review>({ model, schema: ReviewSchema, schemaName:
-'Review', messages, maxRetries, sessionId? })` (`src/review/run.ts:182-189`).
+'Review', messages, maxRetries, sessionId? })` (`src/review/run.ts:268`), but wrapped in `callWithDeadline`
+(`src/review/llm-call.ts`), which adds:
+
+- a **per-call deadline** (`callDeadlineMs`): a deadline `AbortController`
+  combined with the run's `signal` via `AbortSignal.any`; on expiry it logs an
+  `error` line and throws `LlmDeadlineError`;
+- a **heartbeat** `info` line every `LLM_WAIT_HEARTBEAT_MS` (2 min) while waiting;
+- **one retry** on a deadline or a transient error (`isTransientLlmError`), with
+  `retryRouting` replacing `routing` (`requireParameters` kept); cancel,
+  truncation and invalid output are never retried;
+- request options `maxTokens` (`maxOutputTokens`), `requireParameters` and
+  `routing` (OpenRouter maps them into its `provider` object); the run log
+  states them once, and each chunk's result line shows output tokens, seconds
+  and `served by <servedBy>` when the gateway reports it.
+
+`OpenRouterProvider` defaults the SDK `maxRetries` to 0 (the engine owns
+retries) and throws typed errors from `src/llm/errors.ts`:
+`LlmOutputTruncatedError` on `finish_reason: "length"` and
+`LlmOutputInvalidError` after the reprompts are spent.
 `LLMProvider`, `StructuredRequest`, and `StructuredResult` are interfaces from
 `@devdigest/shared` (`server/src/vendor/shared/adapters.ts:63-97`); the engine
 only depends on the interface, not on any implementation.
@@ -275,7 +299,10 @@ a new slot without breaking existing callers:
 
 `npm test` runs vitest hermetically — no network, no keys
 (`reviewer-core/package.json`'s `test` script; `reviewer-core/AGENTS.md`).
-There are three suites in `test/`:
+There are several suites in `test/`; the reliability ones are
+`test/llm-call.test.ts` (deadline, heartbeat, retry, fake timers),
+`test/run-reliability.test.ts` (size guard, caps, served-by, cancel) and
+`test/llm-errors.test.ts` (error classification):
 
 - `test/prompt.test.ts` — pins the injection guard's presence and wording, and
   the PR-description slot's rendering, omission, and truncation

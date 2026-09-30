@@ -86,3 +86,5 @@ result to the verifier.
 | [05-decisions-first-planning](05-decisions-first-planning.md) | done | none | `.claude/agents`, repo docs |
 | [06-mcp-server](06-mcp-server.md) | done | none | mcp-server (new), repo config (`.mcp.json`, `.claude/settings.json`, CI) |
 | [07-review-diff-base-sha](07-review-diff-base-sha.md) | done | none | shared, server, client (contract mirror) |
+| [08-llm-call-reliability](08-llm-call-reliability.md) | done | none | shared, reviewer-core, server, client (contract mirror) |
+| [09-review-eval-fixture](09-review-eval-fixture.md) | done | none | server (new `modules/eval`, `eval:review` script) |

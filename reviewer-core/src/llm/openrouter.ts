@@ -8,6 +8,7 @@ import type {
   StructuredRequest,
   StructuredResult,
 } from '@devdigest/shared';
+import { LlmOutputInvalidError, LlmOutputTruncatedError } from './errors.js';
 import { toJsonSchema, parseWithRepair } from './structured.js';
 
 /**
@@ -30,8 +31,13 @@ export interface OpenRouterProviderOptions {
   baseURL?: string;
   /** Provider id for traces/gating (default 'openrouter'). */
   id?: 'openai' | 'openrouter';
-  /** Per-request timeout (ms) — the SDK retries on timeout/5xx/429 with backoff. */
+  /**
+   * Per-request timeout (ms). Bounds the wait for response HEADERS only, not the
+   * body — use `req.signal` for a real deadline. The SDK no longer retries by
+   * default (`maxRetries` 0): the engine owns and logs retries.
+   */
   timeoutMs?: number;
+  /** SDK-level retries (default 0). */
   maxRetries?: number;
   /** Injected cost estimator; returns USD or null when the model is unknown. */
   estimateCost?: (model: string, tokensIn: number, tokensOut: number) => number | null;
@@ -53,7 +59,7 @@ export class OpenRouterProvider implements LLMProvider {
       apiKey,
       baseURL: this.baseURL,
       timeout: opts.timeoutMs ?? 90_000,
-      maxRetries: opts.maxRetries ?? 2,
+      maxRetries: opts.maxRetries ?? 0,
     });
   }
 
@@ -65,6 +71,7 @@ export class OpenRouterProvider implements LLMProvider {
     let tokensOut = 0;
     let costFromApi: number | null = null;
     let lastRaw = '';
+    let servedBy: string | undefined;
 
     for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
       req.signal?.throwIfAborted();
@@ -81,11 +88,15 @@ export class OpenRouterProvider implements LLMProvider {
           // OpenRouter session grouping — extra body field (spread is exempt from
           // excess-property checks). Only sent when talking to OpenRouter.
           ...(this.id === 'openrouter' && req.sessionId ? { session_id: req.sessionId } : {}),
-          // OpenRouter provider routing — restrict to endpoints that support
-          // structured outputs (some, e.g. Relace/GMICloud, don't). Requested per
-          // model (spec 006 D2), not global, since most models don't need it.
-          ...(this.id === 'openrouter' && req.requireParameters
-            ? { provider: { require_parameters: true } }
+          // OpenRouter provider routing: `require_parameters` restricts to
+          // endpoints that support structured outputs; `sort` picks the order.
+          ...(this.id === 'openrouter' && (req.requireParameters || req.routing?.sort)
+            ? {
+                provider: {
+                  ...(req.requireParameters ? { require_parameters: true } : {}),
+                  ...(req.routing?.sort ? { sort: req.routing.sort } : {}),
+                },
+              }
             : {}),
           // OpenRouter usage accounting — ask it to return the REAL generation
           // cost (USD) in `usage.cost`, instead of estimating from a price book.
@@ -110,6 +121,14 @@ export class OpenRouterProvider implements LLMProvider {
       const apiCost = (res.usage as { cost?: number } | null | undefined)?.cost;
       if (typeof apiCost === 'number') costFromApi = (costFromApi ?? 0) + apiCost;
 
+      // The model ran out of output budget: a reprompt would burn the same cap.
+      if (choice.finish_reason === 'length') {
+        throw new LlmOutputTruncatedError(req.model, req.maxTokens, tokensOut);
+      }
+      // Undocumented top-level `provider` = upstream endpoint that answered.
+      const served = (res as { provider?: unknown }).provider;
+      if (typeof served === 'string' && served) servedBy = served;
+
       const parsed = parseWithRepair(req.schema, lastRaw);
       if (parsed.ok) {
         // Cost attribution, and — just as important — its PROVENANCE. This is
@@ -128,6 +147,7 @@ export class OpenRouterProvider implements LLMProvider {
           ...(costUsd == null
             ? {}
             : { costSource: (costFromApi != null ? 'api' : 'estimate') as CostSource }),
+          ...(servedBy ? { servedBy } : {}),
           raw: lastRaw,
           attempts: attempt,
         };
@@ -135,7 +155,7 @@ export class OpenRouterProvider implements LLMProvider {
       messages.push({ role: 'assistant', content: lastRaw });
       messages.push({ role: 'user', content: parsed.repromptMessage });
     }
-    throw new Error(`OpenRouter structured output failed schema validation for ${req.schemaName}`);
+    throw new LlmOutputInvalidError(req.model, req.schemaName, maxRetries + 1);
   }
 
   /**

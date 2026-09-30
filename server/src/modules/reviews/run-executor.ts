@@ -6,7 +6,14 @@ import { RunLogger } from '../../platform/run-logger.js';
 import * as schema from '../../db/schema.js';
 import type { AgentRow } from '../../db/rows.js';
 import type { ReviewRepository, FindingRow, PullRow, ReviewRow } from './repository.js';
-import { REVIEW_STRATEGY } from './constants.js';
+import {
+  REVIEW_STRATEGY,
+  REVIEW_CALL_DEADLINE_MS,
+  REVIEW_MAX_OUTPUT_TOKENS,
+  REVIEW_ROUTING,
+  REVIEW_RETRY_ROUTING,
+  REVIEW_SINGLE_PASS_MAX_DIFF_TOKENS,
+} from './constants.js';
 import { taskLine } from './helpers.js';
 import { loadDiff, type LoadedDiff } from './diff-loader.js';
 // The path guard is a pure function owned by the context module; importing it
@@ -15,7 +22,7 @@ import { resolveDocPath } from '../context/helpers.js';
 import { renderSkillBlock } from '../skills/helpers.js';
 import { MAX_DOC_BYTES } from '../context/constants.js';
 
-/** Thrown by a run when the user cancels it mid-flight (between map files). */
+/** Thrown by a run when the user cancels it mid-flight (between chunks or mid-call). */
 export class RunCancelledError extends Error {
   constructor() {
     super('Run cancelled');
@@ -248,6 +255,7 @@ export class ReviewRunExecutor {
       // The pure review pipeline lives in @devdigest/reviewer-core (shared with
       // the CI runner). The service owns only I/O: repo-intel context resolution
       // above, and persistence + observability below.
+      const cancelSignal = this.container.runBus.signalFor(runId);
       const outcome = await reviewPullRequest({
         systemPrompt: agent.systemPrompt,
         model: agent.model,
@@ -278,8 +286,17 @@ export class ReviewRunExecutor {
         task,
         sessionId: `${repo.owner}/${repo.name}#${pull.number}:${agent.name}`,
         onEvent: (e) => runLog.event(e.kind, e.msg, e.data),
+        signal: cancelSignal,
+        callDeadlineMs: REVIEW_CALL_DEADLINE_MS,
+        maxOutputTokens: REVIEW_MAX_OUTPUT_TOKENS,
+        requireParameters: true,
+        routing: REVIEW_ROUTING,
+        retryRouting: REVIEW_RETRY_ROUTING,
+        singlePassMaxDiffTokens: REVIEW_SINGLE_PASS_MAX_DIFF_TOKENS,
         checkCancelled: () => {
-          if (this.container.runBus.isCancelled(runId)) throw new RunCancelledError();
+          if (cancelSignal.aborted || this.container.runBus.isCancelled(runId)) {
+            throw new RunCancelledError();
+          }
         },
       });
       const { tokensIn, tokensOut, costUsd, costSource, grounding } = outcome;
