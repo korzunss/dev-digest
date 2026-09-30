@@ -5,6 +5,8 @@
     { "cmd": ["open", "{BASE}/"], "label": "load the app root" },
     { "cmd": ["wait", "--url", "/pulls"], "label": "root redirects to the seeded repo's PR list" },
     { "cmd": ["wait", "--text", "Add rate limiting to public API endpoints"], "label": "active repo resolved, so the nav href has a real repoId" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "PR list and repo fetches settle" },
+    { "cmd": ["wait", "--fn", "[...document.querySelectorAll('a[href*=conventions]')].some(a => (h => h.startsWith('/repos/') && h.endsWith('/conventions') && !h.startsWith('/repos/_/') && !h.includes(':repoId'))(a.getAttribute('href') || ''))"], "label": "the sidebar Conventions link carries a real repoId" },
     { "cmd": ["find", "role", "link", "click", "--name", "Conventions"], "label": "follow the SKILLS LAB sidebar entry" },
     { "cmd": ["wait", "--url", "/conventions"], "label": ":repoId resolved into a real route" },
     { "cmd": ["wait", "--load", "networkidle"], "label": "latest-scan fetch settles" },

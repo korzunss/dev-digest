@@ -9,7 +9,7 @@ is edited or removed here. Items are added or updated by the
 
 ## Flow grammar (agent-browser 0.38)
 
-- **No `click --text`: click with `find text|role … click` (`--exact` for substring clashes) or `click xpath=//…`; assert text as *rendered* (CSS uppercase included); wait for the click target before `find … click`** — spot it: `✗ Element not found: --text`, or a `wait --text` timeout while the text is visibly on screen. The runner hides the CLI's stderr; wrap `AGENT_BROWSER_BIN` to see it. — [INSIGHTS: 2026-09-30 — agent-browser 0.38 locator grammar](../INSIGHTS.md#2026-09-30--agent-browser-038-locator-grammar-no-click---text-xpath-prefix-wait---text-sees-css-uppercased-text)
+- **No `click --text`: click with `find text|role … click` (`--exact` for substring clashes) or `click xpath=//…`; assert text as *rendered* (CSS uppercase included); wait for the click target before `find … click`** — spot it: `✗ Element not found: --text`, or a `wait --text` timeout while the text is visibly on screen. The real cause is in the `— stderr:` part of the failed step's line (the runner prints it since plan 15). — [INSIGHTS: 2026-09-30 — correction: the runner now prints agent-browser's stderr](../INSIGHTS.md#2026-09-30--correction-the-runner-now-prints-agent-browsers-stderr-on-a-failed-step-plan-15) (original: [agent-browser 0.38 locator grammar](../INSIGHTS.md#2026-09-30--agent-browser-038-locator-grammar-no-click---text-xpath-prefix-wait---text-sees-css-uppercased-text))
 
 ## Local runs and seed data
 

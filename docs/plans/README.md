@@ -92,3 +92,4 @@ result to the verifier.
 | [12-eval-write-integrity](12-eval-write-integrity.md) | done | none | server (eval module, schema + 2 migrations, `db/client.ts` type) |
 | [13-count-failed-llm-attempt-usage](13-count-failed-llm-attempt-usage.md) | done | none | shared (port; client mirror), reviewer-core, server (run-executor wiring) |
 | [14-e2e-flows-agent-browser](14-e2e-flows-agent-browser.md) | done | none | e2e (flows 02/04/05/08/09/10 + docs), server (CLI-only conventions seed + tests) |
+| [15-e2e-ci-flow10-and-runner-stderr](15-e2e-ci-flow10-and-runner-stderr.md) | in-progress | none | e2e (flow 10 guard, runner stderr, one `flows.md` citation) |

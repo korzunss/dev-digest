@@ -73,7 +73,7 @@ someone adds later.
 The ordering also has to protect against flows that mutate shared, persisted
 state. `10-conventions.flow.json` is the only flow that writes anything: it
 rejects and accepts convention candidates and creates a real skill row (steps
-at `e2e/specs/10-conventions.flow.json:14-32`). It runs after every flow that
+at `e2e/specs/10-conventions.flow.json:16-34`). It runs after every flow that
 enumerates skills or agents by name (`03-agents`, `09-skills`), so the skill it
 creates (`payments-api-conventions`) can't appear as noise in an assertion that
 doesn't expect it. Flows `02`, `04`, `05` and `08` additionally assume the

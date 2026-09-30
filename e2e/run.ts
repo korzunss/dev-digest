@@ -78,7 +78,7 @@ async function runFlow(file: string, flow: Flow): Promise<FlowResult> {
       steps.push({ label, ok: true });
       console.log(`   ✓ ${label}`);
     } catch (e) {
-      const msg = (e as Error).message.split("\n")[0];
+      const msg = stepFailureDetail(e);
       steps.push({ label, ok: false, detail: msg });
       console.log(`   ✗ ${label} — ${msg}`);
       // Best-effort failure screenshot for the artifact upload.
@@ -118,3 +118,16 @@ main().catch((e) => {
   console.error(`e2e runner crashed: ${(e as Error).message}`);
   process.exit(1);
 });
+
+/** First line of the error plus up to 5 non-empty lines of the child's stderr. */
+function stepFailureDetail(e: unknown): string {
+  const head = e instanceof Error ? e.message.split("\n")[0] : String(e);
+  const stderr =
+    typeof e === "object" && e !== null && "stderr" in e && typeof e.stderr === "string" ? e.stderr : "";
+  const lines = stderr
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0)
+    .slice(0, 5);
+  return lines.length === 0 ? head : `${head} — stderr: ${lines.join(" | ")}`;
+}

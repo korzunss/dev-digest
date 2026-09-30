@@ -29,6 +29,12 @@ _Nothing yet._
 
 ## Tool & Library Notes
 
+### 2026-09-30 — correction: the runner now prints agent-browser's stderr on a failed step (plan 15)
+**Symptom:** the entry below says `e2e/run.ts` drops the CLI's stderr, and that seeing the real error needs an `AGENT_BROWSER_BIN` wrapper. After plan 14, CI's only failure (flow 10's sidebar click) passed 7/7 locally in dev and prod builds, and with no error text its cause could not be found.
+**Cause:** plan 15 added `stepFailureDetail` (`e2e/run.ts`). It appends up to 5 non-empty lines of the child's stderr to the `✗` line, e.g. `— stderr: ✗ 6 elements have role "link", but none match name "…". Names seen: …`.
+**Rule:** read the `— stderr:` part of a failed step, locally and in the CI log. The wrapper is no longer needed. A CI-only failure that passes locally (dev and `next build && next start`) is diagnosed from that line, not guessed at.
+**Evidence:** `e2e/run.ts` (`stepFailureDetail`) · `docs/plans/15-e2e-ci-flow10-and-runner-stderr.md` → Handoffs → verification (negative locator check)
+
 ### 2026-09-30 — agent-browser 0.38 locator grammar: no `click --text`, `xpath=` prefix, `wait --text` sees CSS-uppercased text
 **Symptom:** `e2e web` had never passed in CI (runs #1–#3 all red, 8/11). The runner printed only `Command failed: agent-browser …`. Flows 09/10 failed on `click --text X`, and flow 08 timed out on `wait --text "CRITICAL only"` although the chip was on screen.
 **Cause:** in agent-browser 0.38 (CI installs `latest`, unpinned):
