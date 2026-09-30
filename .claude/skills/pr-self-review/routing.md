@@ -32,7 +32,7 @@ code the author didn't write. Use the hunk ranges from `git diff "$BASE"` to bou
 | Bucket | Path globs |
 |--------|-----------|
 | **UI / frontend** | `client/**/*.{tsx,ts,css}` |
-| **Backend / domain** | `server/**/*.ts`, `reviewer-core/**/*.ts` |
+| **Backend / domain** | `server/**/*.ts`, `reviewer-core/**/*.ts`, `mcp-server/**/*.ts` |
 | **E2E / tests** | `e2e/**`, `**/*.test.ts(x)`, `**/*.it.test.ts` |
 
 A `.ts`/`.tsx` file is always *also* in the full-stack pass (TS / Zod / security).
@@ -57,7 +57,7 @@ A `.ts`/`.tsx` file is always *also* in the full-stack pass (TS / Zod / security
 - `typescript-expert` · `zod` · `security`.
 
 ### Always feed
-- The touched package's `insights/gotchas.md` (`client/`, `server/`, `reviewer-core/`, `e2e/`) —
+- The touched package's `insights/gotchas.md` (`client/`, `server/`, `reviewer-core/`, `mcp-server/`, `e2e/`) —
   the rules in force for that code become extra review criteria. Open the linked
   `INSIGHTS.md` entry only when a finding needs its reasoning.
 

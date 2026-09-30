@@ -84,3 +84,5 @@ result to the verifier.
 | [03-brainstormer-agent](03-brainstormer-agent.md) | done | none | `.claude/agents`, repo docs |
 | [04-security-reviewer-agent](04-security-reviewer-agent.md) | done | none | `.claude/agents`, `.claude/skills`, repo docs |
 | [05-decisions-first-planning](05-decisions-first-planning.md) | done | none | `.claude/agents`, repo docs |
+| [06-mcp-server](06-mcp-server.md) | done | none | mcp-server (new), repo config (`.mcp.json`, `.claude/settings.json`, CI) |
+| [07-review-diff-base-sha](07-review-diff-base-sha.md) | done | none | shared, server, client (contract mirror) |

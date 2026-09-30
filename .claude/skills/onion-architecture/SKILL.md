@@ -1,6 +1,6 @@
 ---
 name: onion-architecture
-description: "Onion / ports-and-adapters layering for the DevDigest backend (server/ + reviewer-core/). Use when adding or reviewing a backend module — placing routes/services/repositories/adapters, deciding where a DB query or an external SDK call (LLM, GitHub, git, ripgrep, ast-grep) may live, wiring DI in platform/container.ts, defining a new port in @devdigest/shared, or keeping reviewer-core pure. Enforces the dependency rule (imports point inward) and ships a dependency-cruiser gate. NOT for the client/ frontend (use frontend-architecture) or React code."
+description: "Onion / ports-and-adapters layering for the DevDigest backend (server/ + reviewer-core/ + the mcp-server/ package, layout in layer-map.md section 7). Use when adding or reviewing a backend module — placing routes/services/repositories/adapters, deciding where a DB query or an external SDK call (LLM, GitHub, git, ripgrep, ast-grep) may live, wiring DI in platform/container.ts, defining a new port in @devdigest/shared, or keeping reviewer-core pure. Enforces the dependency rule (imports point inward) and ships a dependency-cruiser gate. NOT for the client/ frontend (use frontend-architecture) or React code."
 version: "1.0.0"
 ---
 
@@ -8,7 +8,7 @@ version: "1.0.0"
 
 The backend **already is** an onion / ports-and-adapters architecture; this skill names it,
 maps it onto our files, and **forces** it with a `dependency-cruiser` gate. Use it whenever
-you add or review code under `server/` or `reviewer-core/`.
+you add or review code under `server/`, `reviewer-core/` or `mcp-server/` (its layout: layer-map.md §7).
 
 For provenance and the full reading list, see [README.md](README.md).
 
