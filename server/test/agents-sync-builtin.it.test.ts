@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { startPg, dockerAvailable, type PgFixture } from './helpers/pg.js';
 import { isolatedTestConfig } from './helpers/config.js';
 import { seed } from '../src/db/seed.js';
@@ -62,6 +62,21 @@ d('agents:sync-builtin', () => {
       })
       .returning();
     return row!.id;
+  }
+
+  /** Poll pg_stat_activity until another backend is waiting on a lock in a query on `agents`. */
+  async function waitForBlockedAgentsQuery(timeoutMs = 5000): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const rows = await db().execute(sql`
+        SELECT 1 FROM pg_stat_activity
+        WHERE pid <> pg_backend_pid()
+          AND wait_event_type = 'Lock'
+          AND query ILIKE '%"agents"%'`);
+      if (rows.length > 0) return;
+      await new Promise((res) => setTimeout(res, 5));
+    }
+    throw new Error(`no backend blocked on a lock for the agents table within ${timeoutMs}ms`);
   }
 
   beforeAll(async () => {
@@ -165,5 +180,28 @@ d('agents:sync-builtin', () => {
       }),
     ).rejects.toThrow('boom');
     expect(await skillNamesOf(generalId)).toEqual(before);
+  });
+
+  it('syncBuiltin waits on a concurrent writer and reads its committed version (row lock)', async () => {
+    const before = await service.get(workspaceId, generalId);
+    const versions = await versionCount(generalId);
+    const repo = new AgentsRepository(db());
+    let sync!: ReturnType<AgentsService['syncBuiltin']>;
+
+    await repo.transaction(async (r) => {
+      await r.lockById(workspaceId, generalId);
+      sync = service.syncBuiltin(workspaceId, generalId, {
+        systemPrompt: 'after lock',
+        detachSkillNames: [],
+      });
+      // Unlocked, the sync would read the old version here: wait until its backend is blocked on our row lock.
+      await waitForBlockedAgentsQuery();
+      await r.update(workspaceId, generalId, { systemPrompt: 'writer' });
+    });
+
+    const res = await sync;
+    expect(res).toMatchObject({ changed: true, fromVersion: before!.version + 1, toVersion: before!.version + 2 });
+    expect((await service.get(workspaceId, generalId))!.version).toBe(before!.version + 2);
+    expect(await versionCount(generalId)).toBe(versions + 2);
   });
 });

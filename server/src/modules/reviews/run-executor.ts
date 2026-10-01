@@ -127,6 +127,9 @@ export class ReviewRunExecutor {
 
     let diff: UnifiedDiff;
     let diffSource: LoadedDiff['source'];
+    // One batch signal for the pre-work (diff + repo rules): each signalForAll
+    // call adds an abort listener to every run's signal.
+    const batchSignal = this.container.runBus.signalForAll(jobs.map((j) => j.runId));
     try {
       const loaded = await runLog.step(
         'Loading PR diff',
@@ -136,7 +139,7 @@ export class ReviewRunExecutor {
             this.repo,
             pull,
             { owner: repo.owner, name: repo.name },
-            { signal: this.container.runBus.signalForAll(jobs.map((j) => j.runId)), logger },
+            { signal: batchSignal, logger },
           ),
         { kind: 'tool' },
       );
@@ -179,7 +182,7 @@ export class ReviewRunExecutor {
           'Loading repo rules',
           () =>
             loadRepoRules(this.container.git, { owner: repo.owner, name: repo.name }, pull.baseSha, changedPaths, {
-              signal: this.container.runBus.signalForAll(jobs.map((j) => j.runId)),
+              signal: batchSignal,
             }),
           { kind: 'tool' },
         );

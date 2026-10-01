@@ -9,7 +9,7 @@ import type {
   ReviewStrategy,
 } from '@devdigest/shared';
 import { AgentsRepository } from './repository.js';
-import { ValidationError } from '../../platform/errors.js';
+import { NotFoundError, ValidationError } from '../../platform/errors.js';
 import { toAgentDto, toAgentVersionDto } from './helpers.js';
 
 /**
@@ -175,7 +175,8 @@ export class AgentsService {
     { detached: string[]; changed: boolean; fromVersion: number; toVersion: number } | undefined
   > {
     return this.repo.transaction(async (repo) => {
-      const agent = await repo.getById(workspaceId, agentId);
+      // Row lock: a concurrent sync/edit waits here, so `version` below is current.
+      const agent = await repo.lockById(workspaceId, agentId);
       if (!agent) return undefined;
       const links = await repo.linkedSkills(agentId);
       const drop = new Set(input.detachSkillNames);
@@ -197,7 +198,9 @@ export class AgentsService {
         promptChanged ? { systemPrompt: input.systemPrompt } : {},
         { bumpVersion: true },
       );
-      return { detached, changed, fromVersion: v, toVersion: row?.version ?? v + 1 };
+      // Throw, don't return: a vanished row must roll back the detach above.
+      if (!row) throw new NotFoundError(`agent ${agentId} vanished during sync`);
+      return { detached, changed, fromVersion: v, toVersion: row.version };
     });
   }
 

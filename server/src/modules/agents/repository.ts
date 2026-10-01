@@ -78,6 +78,20 @@ export class AgentsRepository {
     return row;
   }
 
+  /**
+   * `getById` that takes a row lock (`SELECT … FOR UPDATE`). Call it first in
+   * a transaction that read-modify-writes `version`: a concurrent editor then
+   * waits for commit and reads the bumped version instead of racing it.
+   */
+  async lockById(workspaceId: string, id: string): Promise<AgentRow | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(t.agents)
+      .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.id, id)))
+      .for('update');
+    return row;
+  }
+
   /** Delete an agent (scoped to workspace). Versions/skill-links cascade;
    *  agent_runs keep their history with agent_id set null. Returns false if
    *  no such agent existed in the workspace. */
