@@ -16,6 +16,7 @@ export {
   assemblePrompt,
   wrapUntrusted,
   INJECTION_GUARD,
+  REPO_RULES_GUARD,
   type PromptParts,
   type AssembledPrompt,
 } from './prompt.js';
@@ -34,6 +35,18 @@ export {
 
 // Map-reduce helpers (reduce partials, slice a file's diff).
 export { reduceReviews, sliceDiff } from './review/reduce.js';
+
+// Per-chunk repo-rule selection (plan 10) — pure, path-prefix based.
+export {
+  buildRepoContext,
+  selectRepoRules,
+  renderChangedFiles,
+  DEFAULT_REPO_RULES_MAX_CHARS,
+  DEFAULT_CHANGED_FILES_MAX,
+  DEFAULT_CHANGED_FILES_MAX_CHARS,
+  type RepoRuleSet,
+  type RepoContextCaps,
+} from './review/repo-rules.js';
 
 // Out-of-scope filter (spec 006 D6) — runs after grounding, wired into
 // reviewPullRequest when ReviewInput.intent is set.

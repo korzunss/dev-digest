@@ -14,8 +14,10 @@ import {
   REVIEW_RETRY_ROUTING,
   REVIEW_SINGLE_PASS_MAX_DIFF_TOKENS,
   REVIEW_MAX_SKIPPED_CHUNK_FRACTION,
+  REVIEW_REPO_RULES_MAX_CHARS,
 } from './constants.js';
 import { taskLine } from './helpers.js';
+import { loadRepoRules, type LoadedRepoRules } from './repo-rules.js';
 import { loadDiff, type LoadedDiff } from './diff-loader.js';
 // The path guard is a pure function owned by the context module; importing it
 // keeps ONE definition of "which files may be read out of a clone".
@@ -165,6 +167,28 @@ export class ReviewRunExecutor {
       { kind: 'tool' },
     );
 
+    // Repo rules at the PR's BASE sha (the head is author-controlled), loaded
+    // ONCE for every agent. Never fails the run: a failure means no rules.
+    const changedPaths = diff.files.map((f) => f.path);
+    let repoRules: LoadedRepoRules = { sets: [], read: 0, missing: 0 };
+    if (!pull.baseSha) {
+      runLog.info('repo rules: skipped (no base SHA)');
+    } else {
+      try {
+        repoRules = await runLog.step(
+          'Loading repo rules',
+          () => loadRepoRules(this.container.git, { owner: repo.owner, name: repo.name }, pull.baseSha, changedPaths),
+          { kind: 'tool' },
+        );
+        runLog.info(
+          `repo rules: ${repoRules.sets.length} file(s) from base ${pull.baseSha.slice(0, 7)} (${repoRules.read} read, ${repoRules.missing} missing)`,
+        );
+      } catch {
+        // step() already logged the failure line; carry on without rules.
+        runLog.info('repo rules: skipped (load failed)');
+      }
+    }
+
     for (const { agent, runId } of jobs) {
       const agentStart = Date.now();
       logger?.info(
@@ -172,7 +196,7 @@ export class ReviewRunExecutor {
         `review: agent "${agent.name}" started (${agent.provider}/${agent.model})`,
       );
       try {
-        const outcome = await this.runOneAgent(workspaceId, pull, repo, diff, intent, agent, runId, runLog);
+        const outcome = await this.runOneAgent(workspaceId, pull, repo, diff, intent, agent, runId, runLog, repoRules, changedPaths);
         logger?.info(
           {
             runId,
@@ -205,6 +229,8 @@ export class ReviewRunExecutor {
     agent: AgentRow,
     runId: string,
     parentLog: RunLogger,
+    repoRules: LoadedRepoRules,
+    changedPaths: string[],
   ): Promise<RunOutcome> {
     const start = Date.now();
     // Narrow the fanned-out pre-work logger to THIS run; the shared diff/intent
@@ -290,6 +316,11 @@ export class ReviewRunExecutor {
         // Structured PR intent (spec 006), resolved once for all jobs above.
         // Absent ⇒ identical prompt/schema to today's (AC12).
         ...(intent ? { intent } : {}),
+        // Untrusted repo rules (base SHA) + the PR's full changed-file list; the
+        // engine scopes the rules per chunk. Omitted when empty ⇒ today's prompt.
+        ...(repoRules.sets.length > 0 ? { repoRules: repoRules.sets } : {}),
+        ...(changedPaths.length > 0 ? { changedFiles: changedPaths } : {}),
+        repoRulesMaxChars: REVIEW_REPO_RULES_MAX_CHARS,
         countTokens: (s) => this.container.tokenizer.count(s),
         estimateCost: (model, tokensIn, tokensOut) => this.container.priceBook.estimate(model, tokensIn, tokensOut),
         task,

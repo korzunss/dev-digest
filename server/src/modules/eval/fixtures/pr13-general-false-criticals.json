@@ -1,0 +1,359 @@
+{
+  "id": "pr13-general-false-criticals-v1",
+  "repo": "korzunss/dev-digest",
+  "pr": 13,
+  "base_sha": "6d6fb39dbaae8bd35f036d4fea036e07e96088f2",
+  "head_sha": "bda81c99219d718c3d0b96abe41597946e33b260",
+  "line_tolerance": 3,
+  "lanes": {
+    "general": "General Reviewer"
+  },
+  "issues": [],
+  "acceptable_extras": [
+    {
+      "id": "cb829b46-2538-4bb4-a9ed-7d727d2bfa34",
+      "lane": "general",
+      "title": "asserted on `s`, not `e` (fixed 2026-10-01)",
+      "locations": [
+        {
+          "file": "server/test/eval-helpers.test.ts",
+          "start_line": 107,
+          "end_line": 108
+        }
+      ],
+      "categories": [
+        "test"
+      ],
+      "keywords": [
+        "wrong variable",
+        "formatReport"
+      ]
+    },
+    {
+      "id": "159add2f-4559-4cca-a552-6e2ed745da12",
+      "lane": "general",
+      "title": "note claimed a legacy diff that failed (fixed 2026-10-01)",
+      "locations": [
+        {
+          "file": "server/src/modules/reviews/diff-loader.ts",
+          "start_line": 95,
+          "end_line": 101
+        }
+      ],
+      "categories": [
+        "bug"
+      ],
+      "keywords": [
+        "misleading",
+        "note",
+        "legacy"
+      ]
+    },
+    {
+      "id": "350722f9-f91e-40f7-aeea-0ff3b193d03e",
+      "lane": "general",
+      "title": "any `merge-base` error reads as \"no merge base\"",
+      "locations": [
+        {
+          "file": "server/src/adapters/git/simple-git.ts",
+          "start_line": 196,
+          "end_line": 203
+        }
+      ],
+      "categories": [
+        "bug"
+      ],
+      "keywords": [
+        "merge-base",
+        "masking"
+      ]
+    }
+  ],
+  "false_positives": [
+    {
+      "id": "a3ea634a-4fb1-46d6-a105-6cc4aa5ab449",
+      "lane": "general",
+      "title": "Claude Code expands `${VAR:-default}` in `.mcp.json`",
+      "locations": [
+        {
+          "file": ".mcp.json",
+          "start_line": 3,
+          "end_line": 11
+        }
+      ],
+      "categories": [
+        "bug"
+      ],
+      "keywords": [
+        "shell",
+        "variable",
+        "expansion"
+      ]
+    },
+    {
+      "id": "3486890c-62f7-4a0d-ae16-c9aa656d5c0a",
+      "lane": "general",
+      "title": "`^3.25.0` resolves (3.25.76 installed)",
+      "locations": [
+        {
+          "file": "mcp-server/package.json",
+          "start_line": 21,
+          "end_line": 21
+        }
+      ],
+      "categories": [
+        "bug"
+      ],
+      "keywords": [
+        "zod",
+        "version"
+      ]
+    },
+    {
+      "id": "2c565d9d-a24d-41eb-9acd-f8907b20f057",
+      "lane": "general",
+      "title": "standalone package; file holds `minimumReleaseAgeExclude`",
+      "locations": [
+        {
+          "file": "mcp-server/pnpm-workspace.yaml",
+          "start_line": 1,
+          "end_line": 4
+        }
+      ],
+      "categories": [
+        "bug"
+      ],
+      "keywords": [
+        "workspace",
+        "ignored"
+      ]
+    },
+    {
+      "id": "292b390e-c683-4da1-9531-7eddde908051",
+      "lane": "general",
+      "title": "`zod/v3` is mandatory (mcp-server gotchas)",
+      "locations": [
+        {
+          "file": "mcp-server/src/index.ts",
+          "start_line": 1,
+          "end_line": 2
+        }
+      ],
+      "categories": [
+        "security"
+      ],
+      "keywords": [
+        "zod/v3",
+        "import"
+      ]
+    },
+    {
+      "id": "a1b86424-21e9-4a50-a513-d3e8d92f5273",
+      "lane": "general",
+      "title": "`McpServer.registerTool` exists in the SDK",
+      "locations": [
+        {
+          "file": "mcp-server/src/tools/get-blast-radius.ts",
+          "start_line": 7,
+          "end_line": 7
+        }
+      ],
+      "categories": [
+        "security"
+      ],
+      "keywords": [
+        "registerTool"
+      ]
+    },
+    {
+      "id": "4fbaa157-02f8-4906-949c-9cc641dd79c6",
+      "lane": "general",
+      "title": "as above",
+      "locations": [
+        {
+          "file": "mcp-server/src/tools/get-blast-radius.ts",
+          "start_line": 2,
+          "end_line": 3
+        }
+      ],
+      "categories": [
+        "security"
+      ],
+      "keywords": [
+        "zod/v3",
+        "import"
+      ]
+    },
+    {
+      "id": "fff4d5e4-bc46-4052-aacd-2f548ca05e4c",
+      "lane": "general",
+      "title": "as above",
+      "locations": [
+        {
+          "file": "mcp-server/src/tools/get-conventions.ts",
+          "start_line": 8,
+          "end_line": 8
+        }
+      ],
+      "categories": [
+        "bug"
+      ],
+      "keywords": [
+        "registerTool"
+      ]
+    },
+    {
+      "id": "0a0857a1-5824-4cb4-9550-a3fcdae30434",
+      "lane": "general",
+      "title": "`registerTool` takes a zod raw shape",
+      "locations": [
+        {
+          "file": "mcp-server/src/tools/get-conventions.ts",
+          "start_line": 13,
+          "end_line": 13
+        }
+      ],
+      "categories": [
+        "bug"
+      ],
+      "keywords": [
+        "inputSchema",
+        "z.object"
+      ]
+    },
+    {
+      "id": "0d3eff8c-e1b3-442f-ad3d-bb40ae2e1c41",
+      "lane": "general",
+      "title": "every caller passes an object (unreachable)",
+      "locations": [
+        {
+          "file": "mcp-server/src/tools/result.ts",
+          "start_line": 22,
+          "end_line": 24
+        }
+      ],
+      "categories": [
+        "bug"
+      ],
+      "keywords": [
+        "ok",
+        "undefined"
+      ]
+    },
+    {
+      "id": "e2162e08-1903-4cdc-b2d7-bb4631af3fee",
+      "lane": "general",
+      "title": "as above",
+      "locations": [
+        {
+          "file": "mcp-server/src/tools/run-agent-on-pr.ts",
+          "start_line": 1,
+          "end_line": 1
+        }
+      ],
+      "categories": [
+        "bug"
+      ],
+      "keywords": [
+        "zod/v3",
+        "import"
+      ]
+    },
+    {
+      "id": "bff087c0-bbfa-4a46-a502-2ca5d4183d4f",
+      "lane": "general",
+      "title": "worst-wins by design (plans 08/13)",
+      "locations": [
+        {
+          "file": "reviewer-core/src/review/run.ts",
+          "start_line": 299,
+          "end_line": 300
+        }
+      ],
+      "categories": [
+        "bug"
+      ],
+      "keywords": [
+        "costSource",
+        "estimate"
+      ]
+    },
+    {
+      "id": "5638f215-42cf-4d3d-9876-c7664d2116a9",
+      "lane": "general",
+      "title": "migration 0020 dedupes before 0021, in one transaction",
+      "locations": [
+        {
+          "file": "server/src/db/schema/eval.ts",
+          "start_line": 21,
+          "end_line": 24
+        }
+      ],
+      "categories": [
+        "bug"
+      ],
+      "keywords": [
+        "unique",
+        "index",
+        "duplicate"
+      ]
+    },
+    {
+      "id": "950f116a-0bb6-4ba2-85a1-4d744bb8229b",
+      "lane": "general",
+      "title": "only if a fixture names one agent twice; a known MEDIUM, not CRITICAL",
+      "locations": [
+        {
+          "file": "server/src/modules/eval/helpers.ts",
+          "start_line": 107,
+          "end_line": 108
+        }
+      ],
+      "categories": [
+        "bug"
+      ],
+      "keywords": [
+        "foundBy",
+        "duplicate"
+      ]
+    },
+    {
+      "id": "db9cbfec-ab1a-4b24-b07d-87fbe4b70c6b",
+      "lane": "general",
+      "title": "callers updated; typecheck passes",
+      "locations": [
+        {
+          "file": "server/src/modules/reviews/diff-loader.ts",
+          "start_line": 20,
+          "end_line": 24
+        }
+      ],
+      "categories": [
+        "security"
+      ],
+      "keywords": [
+        "signature",
+        "callers"
+      ]
+    },
+    {
+      "id": "207154b8-e7da-4f1d-a24d-6a0faf5632ca",
+      "lane": "general",
+      "title": "`logger` is a method parameter",
+      "locations": [
+        {
+          "file": "server/src/modules/reviews/run-executor.ts",
+          "start_line": 138,
+          "end_line": 138
+        }
+      ],
+      "categories": [
+        "bug"
+      ],
+      "keywords": [
+        "logger",
+        "undefined"
+      ]
+    }
+  ]
+}

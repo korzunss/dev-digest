@@ -18,6 +18,7 @@ export interface FindingRow {
   startLine: number;
   endLine: number;
   category: string;
+  severity: string;
   title: string;
   rationale: string;
 }
@@ -84,6 +85,16 @@ export class EvalRepository {
     return row ?? null;
   }
 
+  /** The full pull row (replay reads its title, author and body), or null. */
+  async getPullRow(pullId: string): Promise<typeof t.pullRequests.$inferSelect | null> {
+    const [row] = await this.db
+      .select()
+      .from(t.pullRequests)
+      .where(eq(t.pullRequests.id, pullId))
+      .limit(1);
+    return row ?? null;
+  }
+
   async findAgentsByName(
     workspaceId: string,
     names: string[],
@@ -96,8 +107,8 @@ export class EvalRepository {
       .orderBy(t.agents.id);
   }
 
-  /** Newest `done` run per agent on the PR. */
-  async latestDoneRuns(prId: string, agentIds: string[]): Promise<RunRow[]> {
+  /** Up to `n` newest `done` runs per agent on the PR (newest first). One query, sliced per agent. */
+  async latestDoneRuns(prId: string, agentIds: string[], n = 1): Promise<RunRow[]> {
     if (agentIds.length === 0) return [];
     const rows = await this.db
       .select(runColumns)
@@ -110,11 +121,13 @@ export class EvalRepository {
         ),
       )
       .orderBy(desc(t.agentRuns.ranAt));
-    const seen = new Set<string>();
+    const taken = new Map<string, number>();
     const latest: RunRow[] = [];
     for (const r of rows) {
-      if (!r.agentId || seen.has(r.agentId)) continue;
-      seen.add(r.agentId);
+      if (!r.agentId) continue;
+      const k = taken.get(r.agentId) ?? 0;
+      if (k >= n) continue;
+      taken.set(r.agentId, k + 1);
       latest.push(r);
     }
     return latest;
@@ -140,6 +153,7 @@ export class EvalRepository {
         startLine: t.findings.startLine,
         endLine: t.findings.endLine,
         category: t.findings.category,
+        severity: t.findings.severity,
         title: t.findings.title,
         rationale: t.findings.rationale,
       })

@@ -2,6 +2,7 @@
   "id": "pr-export-planted-v1",
   "repo": "korzunss/dev-digest",
   "pr": 12,
+  "base_sha": "6d6fb39dbaae8bd35f036d4fea036e07e96088f2",
   "head_sha": "3b8ea1e1a9d665bd3ac1d973fd9e9c423b4ab50c",
   "line_tolerance": 8,
   "lanes": {

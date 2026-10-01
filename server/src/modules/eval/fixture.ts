@@ -35,10 +35,13 @@ export const ReviewEvalFixture = z
     repo: z.string().regex(/^[^/\s]+\/[^/\s]+$/, 'expected owner/name'),
     pr: z.number().int().min(1),
     head_sha: z.string().regex(/^[0-9a-f]{40}$/, 'expected 40-hex sha'),
+    base_sha: z.string().regex(/^[0-9a-f]{40}$/, 'expected 40-hex sha').optional(),
     line_tolerance: z.number().int().min(0),
     lanes: z.record(Lane, z.string().min(1)),
     issues: z.array(EvalIssue),
     acceptable_extras: z.array(EvalIssue),
+    /** Known-wrong findings (human-triaged); reported separately, never scored as hits. */
+    false_positives: z.array(EvalIssue).default([]),
   })
   .strict()
   .superRefine((f, ctx) => {
@@ -46,6 +49,7 @@ export const ReviewEvalFixture = z
     for (const [key, list] of [
       ['issues', f.issues],
       ['acceptable_extras', f.acceptable_extras],
+      ['false_positives', f.false_positives],
     ] as const) {
       list.forEach((it, i) => {
         if (seen.has(it.id)) {

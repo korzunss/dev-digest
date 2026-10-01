@@ -362,3 +362,61 @@ describe('reviewPullRequest — cost provenance', () => {
     expect(outcome.costSource).toBeNull();
   });
 });
+
+describe('reviewPullRequest — per-chunk repo context', () => {
+  const clean = { verdict: 'approve', summary: 'ok', score: 100, findings: [] };
+  const DIFF = [
+    'diff --git a/server/a.ts b/server/a.ts',
+    '--- a/server/a.ts',
+    '+++ b/server/a.ts',
+    '@@ -1,2 +1,3 @@',
+    ' const a = 1;',
+    '+const b = 2;',
+    ' export { a };',
+    'diff --git a/client/b.ts b/client/b.ts',
+    '--- a/client/b.ts',
+    '+++ b/client/b.ts',
+    '@@ -1,2 +1,3 @@',
+    ' const c = 3;',
+    '+const d = 4;',
+    ' export { c };',
+  ].join('\n');
+  const repoRules = [
+    { scope: 'server', source: 'server/AGENTS.md', text: 'SERVER-RULE' },
+    { scope: 'client', source: 'client/AGENTS.md', text: 'CLIENT-RULE' },
+    { scope: '', source: 'AGENTS.md', text: 'ROOT-RULE' },
+  ];
+
+  async function userPrompts(extra: Record<string, unknown>): Promise<string[]> {
+    const llm = new MockLLMProvider('openai', { structured: clean });
+    const diff = await new MockGitClient({ diff: DIFF }).diff();
+    await reviewPullRequest({ systemPrompt: 's', model: 'm', diff, llm, strategy: 'map-reduce', ...extra });
+    return llm.calls
+      .filter((c) => c.method === 'completeStructured')
+      .map((c) => (c.req as { messages: { content: string }[] }).messages[1]!.content);
+  }
+
+  it('scopes rules per chunk and lists every changed path in both', async () => {
+    const [one, two] = await userPrompts({
+      repoRules,
+      changedFiles: ['server/a.ts', 'client/b.ts'],
+    });
+    expect(one).toContain('SERVER-RULE');
+    expect(one).toContain('ROOT-RULE');
+    expect(one).not.toContain('CLIENT-RULE');
+    expect(two).toContain('CLIENT-RULE');
+    expect(two).toContain('ROOT-RULE');
+    expect(two).not.toContain('SERVER-RULE');
+    for (const u of [one, two]) {
+      expect(u).toContain('- server/a.ts');
+      expect(u).toContain('- client/b.ts');
+      expect(u).toContain('<untrusted source="repo-context">');
+    }
+  });
+
+  it('is byte-identical to the baseline when both fields are absent', async () => {
+    const base = await userPrompts({});
+    expect(base.every((u) => !u.includes('Repo context'))).toBe(true);
+    expect(await userPrompts({ repoRules: undefined, changedFiles: undefined })).toEqual(base);
+  });
+});

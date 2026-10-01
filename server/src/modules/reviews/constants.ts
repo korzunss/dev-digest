@@ -32,3 +32,15 @@ export const REVIEW_SINGLE_PASS_MAX_DIFF_TOKENS = 100_000;
 
 /** Map-reduce: share of chunks that may be skipped on truncated/invalid output before the run fails (assumption: 10%). */
 export const REVIEW_MAX_SKIPPED_CHUNK_FRACTION = 0.1;
+
+/** Cap on the repo-rules block handed to the engine per chunk (chars; passed as `repoRulesMaxChars`). */
+export const REVIEW_REPO_RULES_MAX_CHARS = 8000;
+
+/** Repo rules: ancestor directories of a changed path searched for rule files (assumption: 2). */
+export const REPO_RULES_MAX_DIR_DEPTH = 2;
+
+/** Repo rules: max rule files read per PR (assumption: 40). */
+export const REPO_RULES_MAX_FILES = 40;
+
+/** Repo rules: max chars kept from one rule file (assumption: 12000). */
+export const REPO_RULES_MAX_FILE_CHARS = 12_000;

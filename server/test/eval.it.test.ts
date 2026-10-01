@@ -56,7 +56,7 @@ async function addRun(
   pg: PgFixture,
   ids: { workspaceId: string; prId: string; agentId: string },
   opts: { status: string; ranAt: Date; costUsd: number; durationMs: number },
-  found: { file: string; line: number; category: string; title: string }[] = [],
+  found: { file: string; line: number; category: string; title: string; severity?: string }[] = [],
 ): Promise<string> {
   const { db } = pg.handle;
   const [run] = await db
@@ -74,7 +74,7 @@ async function addRun(
         file: f.file,
         startLine: f.line,
         endLine: f.line,
-        severity: 'high',
+        severity: f.severity ?? 'high',
         category: f.category,
         title: f.title,
         rationale: 'r',
@@ -226,5 +226,83 @@ d('EvalService (real Postgres)', () => {
     const sec = res.agents.find((a) => a.agentName === 'Security Reviewer')!;
     expect(sec.runId).toBe(secOlder);
     expect(sec.precision).toBeNull();
+  });
+
+  describe('rounds', () => {
+    const secFixture = (id: string): ReviewEvalFixture => ({
+      ...fixture,
+      id,
+      lanes: { security: 'Security Reviewer' },
+      issues: fixture.issues.filter((i) => i.lane === 'security'),
+    });
+    const counts = async () => ({
+      runs: (await pg.handle.db.select().from(t.evalRuns)).length,
+      cases: (await pg.handle.db.select().from(t.evalCases)).length,
+    });
+
+    beforeAll(async () => {
+      // Security now has 4 done runs: the two seeded above plus two newer ones.
+      const sec = { workspaceId, prId, agentId: secId };
+      await addRun(pg, sec, { status: 'done', ranAt: new Date('2026-02-01'), costUsd: 0.3, durationMs: 1 }, [
+        { file: 'src/a.ts', line: 11, category: 'security', title: 'SQL injection', severity: 'CRITICAL' },
+        { file: 'src/q.ts', line: 9, category: 'bug', title: 'wrong thing', severity: 'CRITICAL' },
+      ]);
+      await addRun(pg, sec, { status: 'done', ranAt: new Date('2026-02-02'), costUsd: 0.4, durationMs: 1 });
+    });
+
+    it('rounds: 2 scores the 2 newest runs, with 2 eval_runs rows and 1 eval_cases row per agent', async () => {
+      const before = await counts();
+      const res = await service.scoreReviewFixture(secFixture('eval-it-rounds'), {
+        workspaceName: DEFAULT_WORKSPACE_NAME,
+        rounds: 2,
+      });
+      expect(res.rounds).toHaveLength(2);
+      expect(res.summary.rounds).toBe(2);
+      expect(res.evalRunIds).toHaveLength(2);
+      expect(res.rounds[0]!.agents[0]!.costUsd).toBe(0.4);
+      expect(res.rounds[1]!.agents[0]!.costUsd).toBe(0.3);
+      expect(res.rounds[1]!.agents[0]!.criticals).toBe(2);
+      const after = await counts();
+      expect(after.runs - before.runs).toBe(2);
+      expect(after.cases - before.cases).toBe(1);
+    });
+
+    it('an unmatched seeded CRITICAL shows up in false_criticals of the stored row', async () => {
+      const res = await service.scoreReviewFixture(secFixture('eval-it-false-crit'), {
+        workspaceName: DEFAULT_WORKSPACE_NAME,
+        rounds: 2,
+        baseline: { falseCriticals: 4 },
+      });
+      const { db } = pg.handle;
+      const rows = await db.select().from(t.evalRuns).where(inArray(t.evalRuns.id, res.evalRunIds));
+      const outs = rows.map((r) => r.actualOutput as Record<string, unknown>);
+      const second = outs.find((o) => o.round === 2)!;
+      expect(second.false_criticals).toBe(1);
+      expect(second.unlabelled_criticals).toHaveLength(1);
+      expect(res.gate).toHaveLength(1);
+    });
+
+    it('rounds: 3 with an agent that has 1 run throws and writes nothing', async () => {
+      const before = await counts();
+      await expect(
+        service.scoreReviewFixture(
+          { ...fixture, id: 'eval-it-too-few' },
+          { workspaceName: DEFAULT_WORKSPACE_NAME, rounds: 3 },
+        ),
+      ).rejects.toThrow(/has 1 done run\(s\).*--runs needs 3/);
+      expect(await counts()).toEqual(before);
+    });
+
+    it('rounds together with runIds throws before any write', async () => {
+      const before = await counts();
+      await expect(
+        service.scoreReviewFixture(secFixture('eval-it-both'), {
+          workspaceName: DEFAULT_WORKSPACE_NAME,
+          rounds: 2,
+          runIds: [secOlder],
+        }),
+      ).rejects.toThrow(/--runs > 1/);
+      expect(await counts()).toEqual(before);
+    });
   });
 });

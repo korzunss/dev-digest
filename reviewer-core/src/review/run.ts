@@ -16,6 +16,7 @@ import { groundFindings, groundingSummary } from '../grounding.js';
 import { reduceReviews, scoreFromFindings, sliceDiff } from './reduce.js';
 import { callWithDeadline, describeRouting, type FailedCallUsage } from './llm-call.js';
 import { LlmOutputInvalidError, LlmOutputTruncatedError } from '../llm/errors.js';
+import { buildRepoContext, type RepoRuleSet } from './repo-rules.js';
 import { applyScopeFilter, ScopedReview, type ScopedFinding } from './scope.js';
 
 /**
@@ -66,8 +67,20 @@ export interface ReviewInput {
   strategy?: ReviewStrategy;
   /** Resolved skill bodies (NOT slugs). */
   skills?: string[];
-  /** Curated memory items. */
+  /** Repo context items (untrusted; rendered as `## Repo context`). */
   memory?: string[];
+  /**
+   * Repo rule sets (plan 10), loaded by the caller at the PR's base SHA. Each
+   * chunk gets the root sets plus those whose `scope` prefixes one of its paths.
+   */
+  repoRules?: RepoRuleSet[];
+  /**
+   * The PR's FULL changed-path list (even when the caller reviews a subset of
+   * the diff). Rendered into every chunk's repo context. Absent ⇒ no list.
+   */
+  changedFiles?: string[];
+  /** Cap on the rule text per chunk. Default `DEFAULT_REPO_RULES_MAX_CHARS`. */
+  repoRulesMaxChars?: number;
   /** Project-context spec chunks (untrusted; delimiter-wrapped downstream). */
   specs?: string[];
   /**
@@ -222,10 +235,24 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
   const emit = (kind: RunEventKind, msg: string, data?: unknown) =>
     input.onEvent?.({ kind, msg, data });
 
+  const allPaths = input.diff.files.map((f) => f.path);
+  const hasRepoContext = input.repoRules !== undefined || input.changedFiles !== undefined;
+  // Per-chunk memory: caller memory + the rule sets scoped to the chunk's paths
+  // + the changed-file list. With neither field set, `memory` passes through.
+  const memoryFor = (chunkPaths: string[]): string[] | undefined => {
+    if (!hasRepoContext) return input.memory;
+    const items = [
+      ...(input.memory ?? []),
+      ...buildRepoContext(input.repoRules ?? [], chunkPaths, input.changedFiles, {
+        ...(input.repoRulesMaxChars != null ? { rulesMaxChars: input.repoRulesMaxChars } : {}),
+      }),
+    ];
+    return items.length > 0 ? items : undefined;
+  };
+
   const promptParts = {
     system: input.systemPrompt,
     skills: input.skills,
-    memory: input.memory,
     specs: input.specs,
     callers: input.callers,
     repoMap: input.repoMap,
@@ -241,14 +268,18 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
 
   // Whole-diff assembly is the trace default; overwritten below for single-pass.
   let assembly: PromptAssembly = assemblePrompt(
-    { ...promptParts, diff: input.diff.raw },
+    { ...promptParts, memory: memoryFor(allPaths), diff: input.diff.raw },
     assembleOpts,
   ).assembly;
 
   const chunks =
     mode === 'map-reduce'
-      ? input.diff.files.map((f) => ({ label: f.path, diffText: sliceDiff(input.diff, f.path) }))
-      : [{ label: 'all files', diffText: input.diff.raw }];
+      ? input.diff.files.map((f) => ({
+          label: f.path,
+          paths: [f.path],
+          diffText: sliceDiff(input.diff, f.path),
+        }))
+      : [{ label: 'all files', paths: allPaths, diffText: input.diff.raw }];
 
   const k = (n: number) => Math.round(n / 1000);
   if (reason === 'size-guard') {
@@ -292,7 +323,10 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
       mode === 'map-reduce' ? `map: reviewing ${chunk.label}` : `Reviewing ${chunk.label} in one pass`,
       { file: chunk.label },
     );
-    const a = assemblePrompt({ ...promptParts, diff: chunk.diffText }, assembleOpts);
+    const a = assemblePrompt(
+      { ...promptParts, memory: memoryFor(chunk.paths), diff: chunk.diffText },
+      assembleOpts,
+    );
     if (mode === 'single-pass') assembly = a.assembly;
     const startedAt = Date.now();
     // A box, not a `let`: a closure assignment to a `let` is invisible to narrowing in the catch below.

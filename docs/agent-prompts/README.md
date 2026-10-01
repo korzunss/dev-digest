@@ -46,7 +46,7 @@ delimiter-wrapped (`prompt.ts:104-122`):
 <task line, e.g. "Review PR #7 '…'">
 ## PR description        (untrusted, author-controlled, truncated to 4000 chars)
 ## Skills / rules        (linked skill bodies)
-## Relevant memory       (curated memory items)
+## Repo context (untrusted: repo rules at base SHA + changed files) + trusted repo-rules guard
 ## Repo skeleton         (untrusted, repo-derived)
 ## Project context       (untrusted spec chunks)
 ## Callers of changed symbols  (untrusted, repo-derived)
@@ -113,9 +113,16 @@ Every reviewer prompt must end with three blocks, because the engine derives
 numbers and gates from what the model returns:
 
 1. **Severity rubric** mapped to the three enum levels, with an explicit
-   anti-inflation rule. Only `CRITICAL` blocks merge, so a model that calls
+   anti-inflation rule. All five built-in prompts share one section,
+   `SEVERITY_SECTION` (`server/src/db/seed-prompts.ts`): `CRITICAL` is a demonstrated
+   failure on the main path (a named trigger and the wrong result it causes, shown
+   by code in the diff or the provided context), and only it blocks merge. A failure
+   that depends on code you cannot see is at most `WARNING`. A model that calls
    everything CRITICAL turns every PR into a blocker. State plainly that speculative
    issues ("might be", "if not already handled") are at most `WARNING`.
+
+   Each prompt also has a `# Your lane` section naming the other four reviewers and
+   an "empty findings list is a valid and good answer" line.
 
 2. **Verdict semantics.** The model owns `verdict`, so it must be told the mapping:
    `request_changes` ⇔ at least one CRITICAL; `comment` ⇔ only non-blocking

@@ -15,7 +15,13 @@ document only covers what the engine does with that prompt once it has one.
 already-parsed `UnifiedDiff`, an agent's `systemPrompt` and `model`, an
 **injected** `llm: LLMProvider`, and a bag of optional, pre-resolved prompt
 slots — `skills`, `memory`, `specs`, `callers`, `repoMap`, `prDescription`,
-`task` (`src/review/run.ts:45-94`). Slugs, DB rows, and file reads are already
+`task` (`src/review/run.ts:45-94`). Plan 10 adds `repoRules` (scoped
+`RepoRuleSet[]` the caller loaded at the PR's base SHA), `changedFiles` (the PR's
+full path list) and `repoRulesMaxChars`; per chunk, `buildRepoContext`
+(`src/review/repo-rules.ts`) picks the root rules plus the sets whose `scope`
+is a directory prefix of the chunk's paths (deepest first) and feeds them, with
+the file list, into the `memory` slot. With both fields absent the prompt is
+unchanged. Slugs, DB rows, and file reads are already
 resolved by the caller; the engine only ever sees strings.
 
 ### Mode selection
@@ -39,7 +45,7 @@ the model:
 - the **system** message is the agent's `system` string with
   `INJECTION_GUARD` appended (`src/prompt.ts:86`);
 - the **user** message is built from an ordered list of optional sections —
-  task line, `## PR description`, `## Skills / rules`, `## Relevant memory`,
+  task line, `## PR description`, `## Skills / rules`, `## Repo context (untrusted)` (the `memory` slot, delimiter-wrapped and followed by the trusted `REPO_RULES_GUARD`),
   `## Repo skeleton`, `## Project context` (specs), `## Callers of changed
   symbols`, and always last, `## Diff to review` (`src/prompt.ts:104-122`). A
   slot that is `undefined` or blank is simply not appended — "no behaviour

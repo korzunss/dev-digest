@@ -160,6 +160,32 @@ export class AgentsService {
     return this.skillLinks(agentId);
   }
 
+  /**
+   * Detach the linked skills whose NAME is in `names`, keeping the others in
+   * their current order. Returns the names actually detached (empty when none was
+   * attached, in which case nothing is written; `dryRun` reports without
+   * writing), or undefined when the agent
+   * isn't in this workspace.
+   */
+  async detachSkillsByName(
+    workspaceId: string,
+    agentId: string,
+    names: readonly string[],
+    opts: { dryRun?: boolean } = {},
+  ): Promise<string[] | undefined> {
+    const agent = await this.repo.getById(workspaceId, agentId);
+    if (!agent) return undefined;
+    const links = await this.repo.linkedSkills(agentId);
+    const drop = new Set(names);
+    const detached = links.filter((l) => drop.has(l.skill.name)).map((l) => l.skill.name);
+    if (detached.length === 0 || opts.dryRun) return detached;
+    await this.repo.setSkills(
+      agentId,
+      links.filter((l) => !drop.has(l.skill.name)).map((l) => l.skill.id),
+    );
+    return detached;
+  }
+
   /** Link a single skill (append or set order) — additive to existing links. */
   async linkSkill(
     workspaceId: string,
