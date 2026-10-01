@@ -95,3 +95,4 @@ result to the verifier.
 | [14-e2e-flows-agent-browser](14-e2e-flows-agent-browser.md) | done | none | e2e (flows 02/04/05/08/09/10 + docs), server (CLI-only conventions seed + tests) |
 | [15-e2e-ci-flow10-and-runner-stderr](15-e2e-ci-flow10-and-runner-stderr.md) | done | none | e2e (flow 10 guard, runner stderr, one `flows.md` citation) |
 | [16-sync-atomicity-and-rules-abort](16-sync-atomicity-and-rules-abort.md) | in-progress | none | shared (`GitClient.readFileAt`; client mirror), server (agents sync/repository, reviews repo-rules + executor, git adapter) |
+| [17-map-reduce-summary](17-map-reduce-summary.md) | in-progress | none | reviewer-core (`run.ts` summary + verdict from final findings, new `summary.ts`), docs (`pipeline.md`, `agent-prompts/README.md`) |

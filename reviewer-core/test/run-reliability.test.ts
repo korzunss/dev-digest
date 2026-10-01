@@ -154,6 +154,8 @@ describe('reviewPullRequest reliability', () => {
       expect(out.tokensOut).toBe(14 + 64000);
       expect(out.costSource).toBe('api');
       expect(out.review.summary.startsWith('Partial review: 1 of 3')).toBe(true);
+      expect(out.review.summary).toContain('Reviewed 2 files in 2 chunks: no findings.');
+      expect(out.review.verdict).toBe('comment');
       expect(msgs.some((m) => m.includes('Reviewed 2/3 files'))).toBe(true);
     });
 

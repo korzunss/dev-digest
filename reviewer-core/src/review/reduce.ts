@@ -1,4 +1,4 @@
-import type { Finding, Review, UnifiedDiff } from '@devdigest/shared';
+import type { Finding, Review, UnifiedDiff, Verdict } from '@devdigest/shared';
 
 /**
  * Reduce + slice helpers for map-reduce reviews. Pure (no DB / `this`), so they
@@ -27,6 +27,26 @@ const SEVERITY_PENALTY: Record<Finding['severity'], number> = {
 export function scoreFromFindings(findings: Finding[]): number {
   const penalty = findings.reduce((sum, f) => sum + (SEVERITY_PENALTY[f.severity] ?? 0), 0);
   return Math.max(0, Math.min(100, 100 - penalty));
+}
+
+/**
+ * Verdict derived from the (grounded, scope-filtered) findings, so the banner can
+ * never contradict the list beneath it. Mirrors the prompt convention (any CRITICAL
+ * ⇒ request_changes, otherwise findings ⇒ comment, none ⇒ approve —
+ * `server/src/db/seed-prompts.ts:96-104`, `docs/agent-prompts/README.md:127-131`)
+ * and the `toReviewPayload` event under the default `failOn: 'critical'`
+ * (`src/output/to-review.ts:154-160`).
+ *
+ * `partial` (some chunks were skipped) never yields `approve`: a clean banner over
+ * files nobody reviewed would claim more than was checked.
+ */
+export function verdictFromFindings(
+  findings: Finding[],
+  opts: { partial?: boolean } = {},
+): Verdict {
+  if (findings.some((f) => f.severity === 'CRITICAL')) return 'request_changes';
+  if (findings.length > 0) return 'comment';
+  return opts.partial ? 'comment' : 'approve';
 }
 
 /** Verdict severity order for the reduce step (worst verdict wins). */

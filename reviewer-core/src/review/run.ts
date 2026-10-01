@@ -13,7 +13,8 @@ import type {
 import { Review as ReviewSchema } from '@devdigest/shared';
 import { assemblePrompt } from '../prompt.js';
 import { groundFindings, groundingSummary } from '../grounding.js';
-import { reduceReviews, scoreFromFindings, sliceDiff } from './reduce.js';
+import { reduceReviews, scoreFromFindings, sliceDiff, verdictFromFindings } from './reduce.js';
+import { summarizeFindings } from './summary.js';
 import { callWithDeadline, describeRouting, type FailedCallUsage } from './llm-call.js';
 import { LlmOutputInvalidError, LlmOutputTruncatedError } from '../llm/errors.js';
 import { buildRepoContext, type RepoRuleSet } from './repo-rules.js';
@@ -167,7 +168,10 @@ export class ReviewChunksSkippedError extends Error {
 }
 
 export interface ReviewOutcome {
-  /** The reduced, GROUNDED review (findings that survived the citation gate). */
+  /**
+   * The reduced, GROUNDED review (findings that survived the citation gate). Verdict, score
+   * and the map-reduce summary are derived from those final findings, not from model output.
+   */
   review: Review;
   /** Human-readable grounding summary, e.g. "3/4 passed". */
   grounding: string;
@@ -420,7 +424,7 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
   }
   emit(
     'result',
-    `Reduced to ${merged.findings.length} finding(s); verdict=${merged.verdict}, score=${merged.score}`,
+    `Reduced to ${merged.findings.length} finding(s); model verdict=${merged.verdict}, score=${merged.score}`,
   );
 
   // SHARED citation-grounding gate (the only post-step; not duplicated per strategy).
@@ -444,19 +448,26 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
     finalFindings = scoped.kept;
   }
 
-  // Score is derived from the findings that SURVIVED grounding (+ scope) (not
-  // the model's self-reported number) so the score, the findings list, and the
-  // deterministic event always agree.
+  // Score, verdict and (map-reduce) summary are derived from the findings that
+  // SURVIVED grounding (+ scope), not from model output, so they, the findings
+  // list, and the deterministic event always agree. Single-pass keeps the
+  // model's own summary; map-reduce would otherwise glue N chunk summaries.
+  const skippedLabels = new Set(skipped.map((x) => x.label));
+  const reviewedFiles = new Set(chunks.filter((c) => !skippedLabels.has(c.label)).flatMap((c) => c.paths)).size;
+  const baseSummary =
+    mode === 'map-reduce'
+      ? summarizeFindings(finalFindings, { files: reviewedFiles, chunks: chunks.length - skipped.length })
+      : merged.summary;
   return {
     review: {
       ...merged,
       findings: finalFindings,
       score: scoreFromFindings(finalFindings),
-      ...(skipped.length > 0
-        ? {
-            summary: `Partial review: ${skipped.length} of ${chunks.length} files not reviewed (model output cap / invalid output): ${paths}.${merged.summary ? ` ${merged.summary}` : ''}`,
-          }
-        : {}),
+      verdict: verdictFromFindings(finalFindings, { partial: skipped.length > 0 }),
+      summary:
+        skipped.length > 0
+          ? `Partial review: ${skipped.length} of ${chunks.length} files not reviewed (model output cap / invalid output): ${paths}.${baseSummary ? ` ${baseSummary}` : ''}`
+          : baseSummary,
     },
     grounding,
     dropped: ground.dropped,

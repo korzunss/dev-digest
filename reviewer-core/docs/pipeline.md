@@ -11,11 +11,11 @@ document only covers what the engine does with that prompt once it has one.
 
 ### Input — `ReviewInput`
 
-`reviewPullRequest(input: ReviewInput)` (`src/review/run.ts:130`) takes an
+`reviewPullRequest(input: ReviewInput)` (`src/review/run.ts:227`) takes an
 already-parsed `UnifiedDiff`, an agent's `systemPrompt` and `model`, an
 **injected** `llm: LLMProvider`, and a bag of optional, pre-resolved prompt
 slots — `skills`, `memory`, `specs`, `callers`, `repoMap`, `prDescription`,
-`task` (`src/review/run.ts:45-94`). Plan 10 adds `repoRules` (scoped
+`task` (`ReviewInput`, `src/review/run.ts:58-156`). Plan 10 adds `repoRules` (scoped
 `RepoRuleSet[]` the caller loaded at the PR's base SHA), `changedFiles` (the PR's
 full path list) and `repoRulesMaxChars`; per chunk, `buildRepoContext`
 (`src/review/repo-rules.ts`) picks the root rules plus the sets whose `scope`
@@ -26,10 +26,10 @@ resolved by the caller; the engine only ever sees strings.
 
 ### Mode selection
 
-`selectMode` (`src/review/run.ts:161-183`) picks `single-pass` unless the
+`selectMode` (`src/review/run.ts:203-225`) picks `single-pass` unless the
 caller forces `map-reduce`, or the strategy is `auto` **and** the diff is both
 larger than the threshold (`mapThresholdLines`, default `DEFAULT_MAP_THRESHOLD_LINES
-= 400`, `src/review/run.ts:31`) and touches more than one file.
+= 400`, `src/review/run.ts:39`) and touches more than one file.
 
 **Size guard.** After that, a `single-pass` result whose diff exceeds
 `singlePassMaxDiffTokens` (default `DEFAULT_SINGLE_PASS_MAX_DIFF_TOKENS`
@@ -52,7 +52,7 @@ the model:
   change" is a comment at `src/prompt.ts:52,59` and is pinned by
   `test/prompt.test.ts:50-56`.
 - untrusted content — the PR description, the repo map, specs, callers digest,
-  and the diff itself — is passed through `wrapUntrusted(label, content)`
+  and the diff itself — goes through `wrapUntrusted(label, content)`
   (`src/prompt.ts:30-34`), which fences it as `<untrusted source="…">…</untrusted>`
   and neutralizes any attempt to close the tag early (`content.replaceAll('</untrusted>', ...)`).
 - the PR description is additionally capped at `MAX_PR_DESCRIPTION_CHARS = 4000`
@@ -67,7 +67,7 @@ every section, persisted verbatim in the run trace (`PromptAssembly` contract,
 
 `reviewPullRequest` never talks to a model directly. For each chunk it calls
 `input.llm.completeStructured<Review>({ model, schema: ReviewSchema, schemaName:
-'Review', messages, maxRetries, sessionId? })` (`src/review/run.ts:302`), but wrapped in `callWithDeadline`
+'Review', messages, maxRetries, sessionId? })` (`src/review/run.ts:340`, via `src/review/llm-call.ts:131`), but wrapped in `callWithDeadline`
 (`src/review/llm-call.ts`), which adds:
 
 - a **per-call deadline** (`callDeadlineMs`): a deadline `AbortController`
@@ -122,12 +122,12 @@ user turn (`src/llm/openrouter.ts:123-124`) up to `maxRetries` times.
 ### Per-chunk loop and reduce — `src/review/reduce.ts`
 
 For `single-pass`, there is exactly one chunk: the whole diff
-(`src/review/run.ts:251`). For `map-reduce`, `reviewPullRequest` builds one
-chunk per changed file using `sliceDiff(diff, path)` (`src/review/reduce.ts:58-72`,
-called at `src/review/run.ts:250`), which extracts that file's `diff --git …`
+(`src/review/run.ts:286`). For `map-reduce`, `reviewPullRequest` builds one
+chunk per changed file using `sliceDiff(diff, path)` (`src/review/reduce.ts:78-92`,
+called at `src/review/run.ts:284`), which extracts that file's `diff --git …`
 block from the raw unified diff (falling back to a synthesized 3-line header
 if the file isn't found verbatim). Each chunk gets its own `assemblePrompt`
-call and its own `completeStructured` call (`src/review/run.ts:295-326`); the
+call and its own `completeStructured` call (`src/review/run.ts:330-364`); the
 results are accumulated as `partials: Review[]`.
 
 **Skip policy.** In `map-reduce`, when the caller passes
@@ -135,30 +135,35 @@ results are accumulated as `partials: Review[]`.
 `LlmOutputTruncatedError` or `LlmOutputInvalidError` is skipped instead of
 failing the run: an `error` line, an entry in `ReviewOutcome.skipped`, and the
 chunk's failed usage (from `onFinalFailure`) added to tokens and cost
-(`src/review/run.ts:327-357`). The limit is
-`max(1, floor(chunks × fraction))` (`src/review/run.ts:280`); once more chunks
+(`src/review/run.ts:365-395`). The limit is
+`max(1, floor(chunks × fraction))` (`src/review/run.ts:315-318`); once more chunks
 are skipped, the run throws `ReviewChunksSkippedError` at once. Single-pass
 never skips, deadline/transient/cancel errors are rethrown unchanged, and
 without the field nothing is skipped. If no chunk produced a partial, the run
 throws `ReviewChunksSkippedError` rather than returning an empty `approve`
-(`src/review/run.ts:372-374`). When something was skipped, a `result` line
-`Reviewed N/M files — K skipped: <paths>` is logged and `review.summary` starts
-with `Partial review: K of M files not reviewed (…): <paths>.`
-(`src/review/run.ts:377-386,421-425`). Score and verdict cover reviewed files only.
+(`src/review/run.ts:410-412`). When something was skipped, a `result` line
+`Reviewed N/M files — K skipped: <paths>` is logged (`src/review/run.ts:419-423`)
+and `review.summary` starts with `Partial review: K of M files not reviewed (…):
+<paths>.` followed by the computed summary line below (`src/review/run.ts:467-470`).
+Score and verdict cover reviewed files only.
 
-After the loop, `reduceReviews(partials)` (`src/review/reduce.ts:43-55`) merges
-the per-chunk `Review`s: findings are concatenated, the verdict is the worst
-one seen (`request_changes` > `comment` > `approve`, `VERDICT_RANK` at
-`src/review/reduce.ts:33-37`), and the summary is the space-joined per-chunk
-summaries. So this genuinely is a map-reduce over chunks when the mode is
-`map-reduce`, and a no-op single-partial pass otherwise (`reduceReviews`
-returns `partials[0]` unchanged when there is only one, `src/review/reduce.ts:44`).
+After the loop, `reduceReviews(partials)` (`src/review/reduce.ts:63-75`, called at
+`src/review/run.ts:414`) merges the per-chunk `Review`s: findings are
+concatenated, the verdict is the worst one seen (`request_changes` > `comment` >
+`approve`, `VERDICT_RANK` at `src/review/reduce.ts:53-57`), and the summary is
+the per-chunk summaries joined with a single space. That is the function's public
+behaviour and it is unchanged, but `reviewPullRequest` no longer ships its
+`verdict` or (in map-reduce) its `summary`: both are overridden from the final
+findings in the return block (`src/review/run.ts:461-471`, see *Verdict and
+summary* below). So the map-reduce step still runs over chunks when the mode is
+`map-reduce`, and is a no-op single-partial pass otherwise (`reduceReviews`
+returns `partials[0]` unchanged when there is only one, `src/review/reduce.ts:64`).
 
 ### Grounding — `src/grounding.ts`
 
-`groundFindings(merged.findings, input.diff)` (`src/review/run.ts:208`) is the
+`groundFindings(merged.findings, input.diff)` (`src/review/run.ts:431`) is the
 one gate applied after reduce, regardless of which mode ran — "not duplicated
-per strategy" per the comment at `src/review/run.ts:207`. It builds a
+per strategy" per the comment at `src/review/run.ts:430`. It builds a
 `file → Set<new-side line numbers>` index from the diff's hunks
 (`buildLineIndex`, `src/grounding.ts:24-39`) and keeps a finding only if:
 
@@ -180,9 +185,35 @@ The score is **not** the model's self-reported number. `scoreFromFindings`
 grounded survivors only, subtracting a fixed per-severity penalty
 (`SEVERITY_PENALTY`: `CRITICAL` 35, `WARNING` 12, `SUGGESTION` 3,
 `src/review/reduce.ts:13-17`) from 100. `reviewPullRequest` returns
-`{ ...merged, findings: ground.kept, score: scoreFromFindings(ground.kept) }`
-(`src/review/run.ts:219`) — the score always agrees with the findings list
-that ships in the same `Review`.
+`{ ...merged, findings: finalFindings, score: scoreFromFindings(finalFindings), … }`
+(`src/review/run.ts:461-466`, where `finalFindings` is the grounding survivors
+after the optional scope filter) — the score always agrees with the findings
+list that ships in the same `Review`.
+
+### Verdict and summary
+
+Like the score, both are derived from the final findings (grounded, then
+scope-filtered), not from model output:
+
+- **Verdict** — `verdictFromFindings(finalFindings, { partial })`
+  (`src/review/reduce.ts:43-50`, called at `src/review/run.ts:466`), in both
+  modes. Any `CRITICAL` → `request_changes`; otherwise any finding → `comment`;
+  otherwise `approve`. A partial run (skipped chunks > 0) never gets `approve`:
+  with no findings left it gets `comment`, because an `approve` over "N of M
+  files not reviewed" would claim a PR nobody fully read. The model's `verdict`
+  and `reduceReviews`' worst verdict are ignored.
+- **Summary, map-reduce** — `summarizeFindings(finalFindings, { files, chunks })`
+  (`src/review/summary.ts`, called at `src/review/run.ts:457-460`) returns one
+  plain-text line with no model text:
+  `Reviewed F files in C chunks: N findings (c critical · w warning · s suggestion). Critical: <title> (<file>:<line>); … +k more.`
+  It names at most 3 CRITICAL titles (whitespace collapsed, capped at 80
+  characters), and `no findings.` replaces the counts when nothing survived. A
+  partial run keeps the `Partial review: …` prefix in front of this line. A
+  finding that grounding or the scope filter dropped never appears in it.
+- **Summary, single-pass** — the model's own `summary`, unchanged.
+
+Every chunk's raw model output, summaries included, stays in
+`ReviewOutcome.raw` for the run trace.
 
 ### Output — `src/output/to-review.ts`
 
@@ -205,12 +236,13 @@ so GitHub doesn't reject the whole review with a 422 on an unchanged
 ### Purity: the only side effect is the injected `LLMProvider`
 
 `reviewPullRequest` and everything it calls directly (`assemblePrompt`,
-`groundFindings`, `reduceReviews`, `sliceDiff`, `scoreFromFindings`) import only
+`groundFindings`, `reduceReviews`, `sliceDiff`, `scoreFromFindings`,
+`verdictFromFindings`, `summarizeFindings`) import only
 from `@devdigest/shared` and from each other — no `fs`, `db`, GitHub client, or
 `process.env` read anywhere in `src/` (confirmed by grepping `src/` for those
 symbols; the only match for `fetch` in the whole package is
 `src/llm/openrouter.ts:135`). The one place I/O happens is the call through
-`input.llm.completeStructured(...)` (`src/review/run.ts:182`), where `llm` is a
+`input.llm.completeStructured(...)` (`src/review/llm-call.ts:131`, reached from `src/review/run.ts:340`), where `llm` is a
 constructor argument, not something the engine constructs itself.
 
 The package does ship one concrete `LLMProvider`, `OpenRouterProvider`
@@ -225,8 +257,8 @@ and never performs I/O on its own.
 ### Grounding is a mandatory gate, never loosened
 
 `groundFindings` runs unconditionally after every reduce, for both modes
-(`src/review/run.ts:207-208`), and the score is derived only from what survives
-it (`src/review/run.ts:219`). There is no option on `ReviewInput` to skip or
+(`src/review/run.ts:431`), and the score, verdict and map-reduce summary are
+derived only from what survives it (`src/review/run.ts:461-471`). There is no option on `ReviewInput` to skip or
 weaken it. `reviewer-core/AGENTS.md` states this as a convention ("Grounding is
 a mandatory gate, not a filter to tune"), and `reviewer-core/INSIGHTS.md`'s
 2026-09-17 entry records a session where findings vanishing turned out to be
@@ -305,7 +337,7 @@ undefined-or-blank check before it's appended (`src/prompt.ts:88-119`). To add
 a new slot without breaking existing callers:
 
 1. Add it as an optional field on `PromptParts` (`src/prompt.ts:39-73`) and on
-   `ReviewInput` if it should be settable per-run (`src/review/run.ts:45-94`),
+   `ReviewInput` if it should be settable per-run (`src/review/run.ts:58-156`),
    with a doc comment stating "empty/undefined → section omitted" like the
    existing ones.
 2. Build its section only inside an `if (parts.yourSlot && …)` block, appended
@@ -356,23 +388,24 @@ isolation.
 
 ```mermaid
 flowchart TD
-    IN["ReviewInput<br/>diff · systemPrompt · llm · slots<br/>src/review/run.ts:45"]
-    MODE{"selectMode()<br/>src/review/run.ts:122"}
+    IN["ReviewInput<br/>diff · systemPrompt · llm · slots<br/>src/review/run.ts:58"]
+    MODE{"selectMode()<br/>src/review/run.ts:203"}
     IN --> MODE
 
     subgraph PERCHUNK["per chunk (1 for single-pass, 1 per file for map-reduce)"]
-        SLICE["sliceDiff()<br/>src/review/reduce.ts:58"]
+        SLICE["sliceDiff()<br/>src/review/reduce.ts:78"]
         PROMPT["assemblePrompt()<br/>src/prompt.ts:85<br/>wrapUntrusted + INJECTION_GUARD"]
-        LLMCALL["llm.completeStructured()<br/>injected LLMProvider<br/>src/review/run.ts:182"]
+        LLMCALL["llm.completeStructured()<br/>injected LLMProvider<br/>src/review/llm-call.ts:131"]
         SLICE --> PROMPT --> LLMCALL
     end
 
     MODE -->|map-reduce| SLICE
     MODE -->|single-pass| PROMPT
 
-    LLMCALL --> REDUCE["reduceReviews()<br/>src/review/reduce.ts:43<br/>worst verdict · concat findings"]
+    LLMCALL --> REDUCE["reduceReviews()<br/>src/review/reduce.ts:63<br/>concat findings (model verdict/summary overridden below)"]
     REDUCE --> GROUND["groundFindings()<br/>src/grounding.ts:52<br/>mandatory citation gate"]
     GROUND --> SCORE["scoreFromFindings()<br/>src/review/reduce.ts:27<br/>from survivors only"]
-    SCORE --> OUT["ReviewOutcome<br/>review · grounding · dropped"]
+    SCORE --> VERDICT["verdictFromFindings()<br/>src/review/reduce.ts:43<br/>map-reduce: summarizeFindings()<br/>src/review/summary.ts"]
+    VERDICT --> OUT["ReviewOutcome<br/>review · grounding · dropped"]
     OUT -.optional.-> TOREVIEW["toReviewPayload()<br/>src/output/to-review.ts:148<br/>deterministic event from severities"]
 ```

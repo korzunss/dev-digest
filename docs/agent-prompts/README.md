@@ -124,7 +124,9 @@ numbers and gates from what the model returns:
    Each prompt also has a `# Your lane` section naming the other four reviewers and
    an "empty findings list is a valid and good answer" line.
 
-2. **Verdict semantics.** The model owns `verdict`, so it must be told the mapping:
+2. **Verdict semantics.** The engine derives the stored `verdict` from the grounded
+   findings (`verdictFromFindings`, plan 17). The model still returns a `verdict`,
+   so it is told the same mapping, which keeps its severities consistent with it:
    `request_changes` ⇔ at least one CRITICAL; `comment` ⇔ only non-blocking
    findings; `approve` ⇔ empty findings list. **No findings ⇒ approve.** Without
    this, models default `verdict` arbitrarily (we have observed `request_changes`
@@ -146,9 +148,12 @@ numbers and gates from what the model returns:
 - **Findings are citation-grounded**: a finding whose line range doesn't intersect a
   real diff hunk is dropped (`grounding.ts`). Cite real `file:line` from the diff or
   the finding disappears.
-- **`verdict` is currently passed through from the model** (`run.ts:208`). That is
-  why a wrong verdict reaches the UI unchanged — and why the verdict convention
-  above is load-bearing until/unless the verdict is also derived deterministically.
+- **`verdict` is recomputed from the grounded findings** (`verdictFromFindings`,
+  `reduce.ts:43`, applied at `run.ts:466`): any CRITICAL ⇒ `request_changes`,
+  otherwise any finding ⇒ `comment`, otherwise `approve` (a partial run with no
+  findings gets `comment`). The model's `verdict` is ignored, so the convention in
+  section 2 still matters for the prompt but can no longer put a wrong verdict in
+  the UI.
 
 ## Severity / verdict / gate at a glance
 
@@ -156,7 +161,7 @@ numbers and gates from what the model returns:
 |---|---|
 | `findings[].severity` | recompute `score`; count CRITICAL as blockers |
 | `score` | **ignored** — recomputed from findings |
-| `verdict` | passed through to the review record (shown in the UI) |
+| `verdict` | **ignored** — recomputed from the grounded findings (`verdictFromFindings`) |
 | `findings[]` | citation-grounded; ungrounded ones dropped |
 
 The per-agent merge gate (`agents.ciFailOn`, default `critical`) decides when a CI

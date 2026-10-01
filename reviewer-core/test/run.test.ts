@@ -65,6 +65,8 @@ describe('reviewPullRequest (engine)', () => {
     // Score is derived from the SURVIVING findings, not the model's self-reported
     // 38: one CRITICAL remains after grounding ⇒ 100 − 35 = 65.
     expect(outcome.review.score).toBe(65);
+    expect(outcome.review.verdict).toBe('request_changes');
+    expect(outcome.review.summary).toBe('secret key committed');
     // progress is surfaced (server bridges this onto SSE; runner logs it)
     expect(events.some((m) => m.includes('Citation grounding'))).toBe(true);
   });
@@ -360,6 +362,60 @@ describe('reviewPullRequest — cost provenance', () => {
     });
     expect(outcome.costUsd).toBeNull();
     expect(outcome.costSource).toBeNull();
+  });
+});
+
+describe('reviewPullRequest — verdict and summary from final findings', () => {
+  const phantom = {
+    id: 'f-phantom',
+    severity: 'CRITICAL',
+    category: 'bug',
+    title: 'phantom critical on a line not in the diff',
+    file: 'src/config.ts',
+    start_line: 999,
+    end_line: 999,
+    rationale: 'not real',
+    confidence: 0.9,
+    kind: 'finding',
+  };
+
+  const TWO_FILE_DIFF = [
+    'diff --git a/src/a.ts b/src/a.ts',
+    '--- a/src/a.ts',
+    '+++ b/src/a.ts',
+    '@@ -1,2 +1,3 @@',
+    ' const a = 1;',
+    '+const b = 2;',
+    ' export { a };',
+    'diff --git a/src/b.ts b/src/b.ts',
+    '--- a/src/b.ts',
+    '+++ b/src/b.ts',
+    '@@ -1,2 +1,3 @@',
+    ' const c = 3;',
+    '+const d = 4;',
+    ' export { c };',
+  ].join('\n');
+
+  it('single-pass: a model request_changes whose only finding is grounded out becomes approve', async () => {
+    const llm = new MockLLMProvider('openai', {
+      structured: { verdict: 'request_changes', summary: 'bad', score: 10, findings: [phantom] },
+    });
+    const diff = await new MockGitClient().diff();
+    const outcome = await reviewPullRequest({ systemPrompt: 's', model: 'm', diff, llm });
+    expect(outcome.review.findings).toHaveLength(0);
+    expect(outcome.review.verdict).toBe('approve');
+  });
+
+  it('map-reduce: the summary is computed, with no model text and no dropped title', async () => {
+    const llm = new MockLLMProvider('openai', {
+      structured: { verdict: 'request_changes', summary: 'MODEL TEXT', score: 10, findings: [phantom] },
+    });
+    const diff = await new MockGitClient({ diff: TWO_FILE_DIFF }).diff();
+    const outcome = await reviewPullRequest({ systemPrompt: 's', model: 'm', diff, llm, strategy: 'map-reduce' });
+    expect(outcome.mode).toBe('map-reduce');
+    expect(outcome.review.summary.startsWith('Reviewed ')).toBe(true);
+    expect(outcome.review.summary).not.toContain('MODEL TEXT');
+    expect(outcome.review.summary).not.toContain(phantom.title);
   });
 });
 
