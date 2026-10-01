@@ -348,3 +348,6 @@ Found by `/pr-self-review` on branch L04 (HIGH, items 2–3) and confirmed again
 - **plan-verifier (delta, SR2):** complete: 7/7 delta items met, no gaps, no unplanned changes, nothing to sign off. Handoff: the stale header comment in `server/test/pull-base-sha.it.test.ts:1-4`.
 - **main-session fix: SR2-doc**: the `pull-base-sha.it.test.ts` header comment now names the base-branch condition (comment-only, 1 file in S4). Done-when re-run: `pull-base-sha.it` 7/7 ✅.
 - Status `in-progress` → `done`.
+
+### Post-done main-session fix (2026-10-01)
+- **main-session fix: DL1** (`server/src/modules/reviews/diff-loader.ts`, an S6 file, +2 lines). With no base SHA, no `pr_files` patches, and a failed legacy branch diff, `loadDiff` returned an empty diff, but its run-log note claimed "using the legacy branch diff". The note now says the legacy diff failed and that an empty diff is reviewed; behaviour is otherwise unchanged. This was found by the DevDigest General Reviewer run on PR #13 (2026-10-01) and confirmed by the main session. Server typecheck ✅; `diff-loader` tests ✅. Not yet seen by a plan-verifier run.

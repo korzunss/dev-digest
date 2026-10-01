@@ -94,7 +94,9 @@ export async function loadDiff(
   return {
     diff: legacy ?? fromFiles,
     source: 'legacy_branch',
-    note: 'no base SHA and no PR file patches — using the legacy branch diff (may include unrelated changes)',
+    note: legacy
+      ? 'no base SHA and no PR file patches — using the legacy branch diff (may include unrelated changes)'
+      : 'no base SHA, no PR file patches, and the legacy branch diff failed — reviewing an empty diff',
   };
 }
 

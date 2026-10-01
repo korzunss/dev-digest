@@ -102,8 +102,9 @@ describe('scoreSuite', () => {
     const e = scoreSuite(fixture, []);
     expect(e.agents).toEqual([]);
     expect(e.suiteRecall).toBe(0);
-    expect(formatReport(s)).toContain('suite recall: 67%');
-    expect(formatReport(s)).toContain('duplicates: sqli (G, S)');
+    const report = formatReport(e);
+    expect(report).toContain('suite recall: 0%');
+    expect(report).toContain('duplicates: none');
   });
 });
 

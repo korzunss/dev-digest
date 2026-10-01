@@ -336,3 +336,6 @@ User: "R3 підтверджую, R4 приймаю, F1 виправ, F2 від�
 
 ### Final (2026-09-30)
 User: "давай закриємо план 9" — T4 accepted: manual `pnpm eval:review` = **9/12 (75%)** is the baseline for plan 10. Verification complete — needs sign-off, all items signed off (R3, R4, T4). Status → `done`. F2 deferred; plan-10 ideas recorded in root `INSIGHTS.md` → Open Questions (2026-09-30).
+
+### Post-done main-session fix (2026-10-01)
+- **main-session fix: EH1** (`server/test/eval-helpers.test.ts`, a file in this plan's steps, 2 lines). The test "handles no runs and renders a report" built `e = scoreSuite(fixture, [])` but asserted on `formatReport(s)`, so the empty-suite report went untested. This was found by the DevDigest General Reviewer run on PR #13 (2026-10-01) and confirmed by the main session. Its assertions now target `formatReport(e)` (`suite recall: 0%`, `duplicates: none`). Server typecheck ✅; `eval-helpers` + `diff-loader` tests 20 ✅. Not yet seen by a plan-verifier run.
