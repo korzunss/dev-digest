@@ -121,6 +121,19 @@ describe('SimpleGitClient.readFileAt — argument guards (spec 006 S7)', () => {
   it('rejects an absolute path', async () => {
     await expect(git.readFileAt(repo, 'a1b2c3d', '/etc/passwd')).rejects.toThrow(/invalid path/);
   });
+
+  it('rejects with the signal reason when already aborted, spawning no git', async () => {
+    const reason = new Error('cancelled');
+    await expect(
+      git.readFileAt(repo, 'a1b2c3d', 'docs/plan.md', AbortSignal.abort(reason)),
+    ).rejects.toBe(reason);
+  });
+
+  it('runs the guards before the signal check', async () => {
+    await expect(
+      git.readFileAt(repo, 'a1b2c3d', '../x.md', AbortSignal.abort(new Error('cancelled'))),
+    ).rejects.toThrow(/invalid path/);
+  });
 });
 
 describe('MockGitClient.readFileAt — filesAt fixtures (spec 006 S7)', () => {
@@ -136,6 +149,14 @@ describe('MockGitClient.readFileAt — filesAt fixtures (spec 006 S7)', () => {
     await expect(
       git.readFileAt({ owner: 'a', name: 'b' }, 'a1b2c3d', 'docs/missing.md'),
     ).rejects.toThrow('not found');
+  });
+
+  it('rejects with the signal reason when already aborted', async () => {
+    const reason = new Error('cancelled');
+    const git = new MockGitClient({ filesAt: { 'a1b2c3d:docs/plan.md': 'x' } });
+    await expect(
+      git.readFileAt({ owner: 'a', name: 'b' }, 'a1b2c3d', 'docs/plan.md', AbortSignal.abort(reason)),
+    ).rejects.toBe(reason);
   });
 });
 

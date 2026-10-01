@@ -44,3 +44,6 @@ export const REPO_RULES_MAX_FILES = 40;
 
 /** Repo rules: max chars kept from one rule file (assumption: 12000). */
 export const REPO_RULES_MAX_FILE_CHARS = 12_000;
+
+/** Repo rules: deadline for the whole rule-file load (assumption: 10 s). */
+export const REPO_RULES_DEADLINE_MS = 10_000;

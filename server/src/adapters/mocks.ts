@@ -339,7 +339,13 @@ export class MockGitClient implements GitClient {
     return this.opts.files?.[path] ?? '';
   }
 
-  async readFileAt(_repo: RepoRef, ref: string, path: string): Promise<string> {
+  async readFileAt(
+    _repo: RepoRef,
+    ref: string,
+    path: string,
+    signal?: AbortSignal,
+  ): Promise<string> {
+    signal?.throwIfAborted();
     const content = this.opts.filesAt?.[`${ref}:${path}`];
     if (content === undefined) throw new Error('not found');
     return content;

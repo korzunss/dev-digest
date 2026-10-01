@@ -177,7 +177,10 @@ export class ReviewRunExecutor {
       try {
         repoRules = await runLog.step(
           'Loading repo rules',
-          () => loadRepoRules(this.container.git, { owner: repo.owner, name: repo.name }, pull.baseSha, changedPaths),
+          () =>
+            loadRepoRules(this.container.git, { owner: repo.owner, name: repo.name }, pull.baseSha, changedPaths, {
+              signal: this.container.runBus.signalForAll(jobs.map((j) => j.runId)),
+            }),
           { kind: 'tool' },
         );
         runLog.info(

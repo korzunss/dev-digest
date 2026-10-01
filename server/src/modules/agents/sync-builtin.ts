@@ -12,8 +12,9 @@ import { AgentsService } from './service.js';
  * prompts (`BUILTIN_AGENT_PROMPTS`) into the workspace's agents and detaches the
  * skills that moved into the repo-context block from General Reviewer. Manual
  * tool: no LLM call, no network. Prompts edited in the UI are overwritten; the
- * previous text stays in `agent_versions`. Writes go through `AgentsService`, so
- * every change is versioned by `AgentsRepository.update`.
+ * previous text stays in `agent_versions`. Each agent's sync is ONE transaction
+ * (`AgentsService.syncBuiltin`): detach, prompt, version bump and snapshot
+ * commit together or not at all.
  */
 export async function syncBuiltinAgents(
   service: AgentsService,
@@ -30,27 +31,23 @@ export async function syncBuiltinAgents(
       continue;
     }
 
-    // Detach before update: the version snapshot then records the final skill set.
-    if (name === GENERAL_AGENT_NAME) {
-      const detached = await service.detachSkillsByName(
-        workspaceId,
-        agent.id,
-        GENERAL_DETACHED_SKILLS,
-        { dryRun },
-      );
-      if (detached?.length) lines.push(`${name}: detached: ${detached.join(', ')}`);
+    const result = await service.syncBuiltin(workspaceId, agent.id, {
+      systemPrompt: prompt,
+      detachSkillNames: name === GENERAL_AGENT_NAME ? GENERAL_DETACHED_SKILLS : [],
+      dryRun,
+    });
+    if (!result) {
+      lines.push(`skip ${name}: not found in this workspace`);
+      continue;
     }
-
-    if (agent.system_prompt === prompt) {
+    if (result.detached.length) lines.push(`${name}: detached: ${result.detached.join(', ')}`);
+    if (!result.changed) {
       lines.push(`${name}: unchanged`);
       continue;
     }
-    if (dryRun) {
-      lines.push(`${name}: v${agent.version} → v${agent.version + 1} (dry run)`);
-      continue;
-    }
-    const updated = await service.update(workspaceId, agent.id, { system_prompt: prompt });
-    lines.push(`${name}: v${agent.version} → v${updated?.version ?? agent.version}`);
+    lines.push(
+      `${name}: v${result.fromVersion} → v${result.toVersion}${dryRun ? ' (dry run)' : ''}`,
+    );
   }
   return lines;
 }

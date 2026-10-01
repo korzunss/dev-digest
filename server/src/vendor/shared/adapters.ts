@@ -326,9 +326,10 @@ export interface GitClient {
    * Read `path` as it existed at `ref` (a commit SHA), without checking that
    * commit out (`git show <ref>:<path>`). Used to fetch a linked doc/spec at
    * the PR's head so the intent classifier sees the version the PR actually
-   * changed (spec 006).
+   * changed (spec 006). The optional `signal` kills the git process, as for
+   * `diffCommits`.
    */
-  readFileAt(repo: RepoRef, ref: string, path: string): Promise<string>;
+  readFileAt(repo: RepoRef, ref: string, path: string, signal?: AbortSignal): Promise<string>;
   clonePathFor(repo: RepoRef): string;
 }
 

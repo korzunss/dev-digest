@@ -5,6 +5,7 @@ import { isolatedTestConfig } from './helpers/config.js';
 import { seed } from '../src/db/seed.js';
 import * as t from '../src/db/schema.js';
 import { Container } from '../src/platform/container.js';
+import { AgentsRepository } from '../src/modules/agents/repository.js';
 import { AgentsService } from '../src/modules/agents/service.js';
 import { syncBuiltinAgents } from '../src/modules/agents/sync-builtin.js';
 import { GENERAL_DETACHED_SKILLS } from '../src/modules/agents/constants.js';
@@ -131,5 +132,38 @@ d('agents:sync-builtin', () => {
     expect(lines.every((l) => l.endsWith(': unchanged'))).toBe(true);
     expect((await service.get(workspaceId, generalId))!.version).toBe(before!.version);
     expect(await versionCount(generalId)).toBe(versions);
+  });
+
+  it('a detach-only sync still bumps the version once and snapshots without the skill', async () => {
+    const skill = GENERAL_DETACHED_SKILLS[0]!;
+    await service.linkSkill(workspaceId, generalId, await ensureSkill(skill), seedLinks.length);
+    const before = await service.get(workspaceId, generalId);
+    expect(before!.system_prompt).toBe(GENERAL_REVIEWER_PROMPT);
+
+    const lines = await syncBuiltinAgents(service, workspaceId, {});
+
+    expect(lines.join('\n')).toContain('General Reviewer: detached:');
+    expect(lines).toContain(`General Reviewer: v${before!.version} → v${before!.version + 1}`);
+    const after = await service.get(workspaceId, generalId);
+    expect(after!.version).toBe(before!.version + 1);
+    const [snap] = await db()
+      .select()
+      .from(t.agentVersions)
+      .where(and(eq(t.agentVersions.agentId, generalId), eq(t.agentVersions.version, after!.version)));
+    const skillIds = (snap!.configJson as { skills: string[] }).skills;
+    const names = await db().select({ id: t.skills.id, name: t.skills.name }).from(t.skills);
+    expect(skillIds.map((id) => names.find((n) => n.id === id)!.name)).not.toContain(skill);
+    expect(await skillNamesOf(generalId)).toEqual(seedLinks);
+  });
+
+  it('rolls back every write when the transaction callback throws', async () => {
+    const before = await skillNamesOf(generalId);
+    await expect(
+      new AgentsRepository(db()).transaction(async (r) => {
+        await r.setSkills(generalId, []);
+        throw new Error('boom');
+      }),
+    ).rejects.toThrow('boom');
+    expect(await skillNamesOf(generalId)).toEqual(before);
   });
 });

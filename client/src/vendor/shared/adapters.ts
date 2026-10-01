@@ -241,7 +241,7 @@ export interface GitClient {
    * the PR's head so the intent classifier sees the version the PR actually
    * changed (spec 006).
    */
-  readFileAt(repo: RepoRef, ref: string, path: string): Promise<string>;
+  readFileAt(repo: RepoRef, ref: string, path: string, signal?: AbortSignal): Promise<string>;
   clonePathFor(repo: RepoRef): string;
 }
 

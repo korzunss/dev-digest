@@ -156,34 +156,49 @@ export class AgentsService {
     const agent = await this.repo.getById(workspaceId, agentId);
     if (!agent) return undefined;
     await this.assertSkillsInWorkspace(workspaceId, skillIds);
-    await this.repo.setSkills(agentId, skillIds);
+    await this.repo.transaction((r) => r.setSkills(agentId, skillIds));
     return this.skillLinks(agentId);
   }
 
   /**
-   * Detach the linked skills whose NAME is in `names`, keeping the others in
-   * their current order. Returns the names actually detached (empty when none was
-   * attached, in which case nothing is written; `dryRun` reports without
-   * writing), or undefined when the agent
-   * isn't in this workspace.
+   * Built-in sync for one agent, in ONE transaction: detach the linked skills
+   * named in `detachSkillNames` (others keep their order), set the prompt, bump
+   * the version and snapshot. A detach alone also bumps the version, so the
+   * snapshot records the post-detach skill set. `dryRun` reports without
+   * writing. Returns undefined when the agent isn't in this workspace.
    */
-  async detachSkillsByName(
+  async syncBuiltin(
     workspaceId: string,
     agentId: string,
-    names: readonly string[],
-    opts: { dryRun?: boolean } = {},
-  ): Promise<string[] | undefined> {
-    const agent = await this.repo.getById(workspaceId, agentId);
-    if (!agent) return undefined;
-    const links = await this.repo.linkedSkills(agentId);
-    const drop = new Set(names);
-    const detached = links.filter((l) => drop.has(l.skill.name)).map((l) => l.skill.name);
-    if (detached.length === 0 || opts.dryRun) return detached;
-    await this.repo.setSkills(
-      agentId,
-      links.filter((l) => !drop.has(l.skill.name)).map((l) => l.skill.id),
-    );
-    return detached;
+    input: { systemPrompt: string; detachSkillNames: readonly string[]; dryRun?: boolean },
+  ): Promise<
+    { detached: string[]; changed: boolean; fromVersion: number; toVersion: number } | undefined
+  > {
+    return this.repo.transaction(async (repo) => {
+      const agent = await repo.getById(workspaceId, agentId);
+      if (!agent) return undefined;
+      const links = await repo.linkedSkills(agentId);
+      const drop = new Set(input.detachSkillNames);
+      const detached = links.filter((l) => drop.has(l.skill.name)).map((l) => l.skill.name);
+      const promptChanged = agent.systemPrompt !== input.systemPrompt;
+      const changed = detached.length > 0 || promptChanged;
+      const v = agent.version;
+      if (!changed) return { detached, changed, fromVersion: v, toVersion: v };
+      if (input.dryRun) return { detached, changed, fromVersion: v, toVersion: v + 1 };
+      if (detached.length > 0) {
+        await repo.setSkills(
+          agentId,
+          links.filter((l) => !drop.has(l.skill.name)).map((l) => l.skill.id),
+        );
+      }
+      const row = await repo.update(
+        workspaceId,
+        agentId,
+        promptChanged ? { systemPrompt: input.systemPrompt } : {},
+        { bumpVersion: true },
+      );
+      return { detached, changed, fromVersion: v, toVersion: row?.version ?? v + 1 };
+    });
   }
 
   /** Link a single skill (append or set order) — additive to existing links. */

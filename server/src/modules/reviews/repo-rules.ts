@@ -1,6 +1,7 @@
 import type { GitClient, RepoRef } from '@devdigest/shared';
 import type { RepoRuleSet } from '@devdigest/reviewer-core';
 import {
+  REPO_RULES_DEADLINE_MS,
   REPO_RULES_MAX_DIR_DEPTH,
   REPO_RULES_MAX_FILES,
   REPO_RULES_MAX_FILE_CHARS,
@@ -81,23 +82,29 @@ function scopeOf(path: string): string {
 /**
  * Read the repo's rule files at the PR's BASE sha (never head: the head is
  * author-controlled, so a PR could edit a gotchas file to excuse its own
- * defect). Never throws — an unreadable file only bumps `missing`.
+ * defect). Throws only when the signal or the deadline aborts; an unreadable
+ * file only bumps `missing`.
  */
 export async function loadRepoRules(
   git: Pick<GitClient, 'readFileAt'>,
   repo: RepoRef,
   baseSha: string | null | undefined,
   changedPaths: readonly string[],
+  opts: { signal?: AbortSignal; timeoutMs?: number } = {},
 ): Promise<LoadedRepoRules> {
   if (!baseSha) return { sets: [], read: 0, missing: 0 };
+  const deadline = AbortSignal.timeout(opts.timeoutMs ?? REPO_RULES_DEADLINE_MS);
+  const signal = opts.signal ? AbortSignal.any([deadline, opts.signal]) : deadline;
   const sets: RepoRuleSet[] = [];
   let read = 0;
   let missing = 0;
   for (const path of ruleCandidatePaths(changedPaths)) {
+    signal.throwIfAborted();
     let content: string;
     try {
-      content = await git.readFileAt(repo, baseSha, path);
+      content = await git.readFileAt(repo, baseSha, path, signal);
     } catch {
+      if (signal.aborted) throw signal.reason;
       missing++;
       continue;
     }

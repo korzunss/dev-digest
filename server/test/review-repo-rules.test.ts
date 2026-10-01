@@ -68,6 +68,44 @@ describe('loadRepoRules', () => {
     const out = await loadRepoRules(git, repo, BASE, ['a/b.ts']);
     expect(out).toEqual({ sets: [], read: 0, missing: 4 });
   });
+  it('stops reading and rethrows the reason when the caller aborts mid-load', async () => {
+    const ctrl = new AbortController();
+    const reason = new Error('cancelled');
+    let calls = 0;
+    const git = {
+      readFileAt: async () => {
+        calls++;
+        ctrl.abort(reason);
+        return '## Gotchas\n- a';
+      },
+    };
+    await expect(loadRepoRules(git, repo, BASE, ['a/b.ts'], { signal: ctrl.signal })).rejects.toBe(reason);
+    expect(calls).toBe(1);
+  });
+  it('makes no read for an already-aborted signal', async () => {
+    let calls = 0;
+    const git = { readFileAt: async () => { calls++; return ''; } };
+    await expect(
+      loadRepoRules(git, repo, BASE, ['a.ts'], { signal: AbortSignal.abort(new Error('x')) }),
+    ).rejects.toThrow('x');
+    expect(calls).toBe(0);
+  });
+  it('fires its own deadline with a TimeoutError', async () => {
+    const git = {
+      readFileAt: (_r: unknown, _ref: string, _p: string, signal?: AbortSignal) =>
+        new Promise<string>((_res, rej) => signal?.addEventListener('abort', () => rej(signal.reason))),
+    };
+    await expect(loadRepoRules(git, repo, BASE, ['a.ts'], { timeoutMs: 1 })).rejects.toMatchObject({
+      name: 'TimeoutError',
+    });
+  });
+  it('forwards the signal as the 4th argument', async () => {
+    const seen: unknown[] = [];
+    const git = { readFileAt: async (_r: unknown, _ref: string, _p: string, s?: AbortSignal) => { seen.push(s); return ''; } };
+    await loadRepoRules(git, repo, BASE, ['a.ts']);
+    expect(seen.length).toBeGreaterThan(0);
+    expect(seen.every((s) => s instanceof AbortSignal)).toBe(true);
+  });
   it('reads nothing without a base sha', async () => {
     let calls = 0;
     const git = { readFileAt: async () => { calls++; return ''; } };

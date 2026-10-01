@@ -278,7 +278,12 @@ export class SimpleGitClient implements GitClient {
    * normalisation never fires (server/insights/gotchas.md), and an
    * unvalidated leading `-` would be read as a `git show` option.
    */
-  async readFileAt(repo: RepoRef, ref: string, path: string): Promise<string> {
+  async readFileAt(
+    repo: RepoRef,
+    ref: string,
+    path: string,
+    signal?: AbortSignal,
+  ): Promise<string> {
     if (!/^[0-9a-f]{7,40}$/.test(ref)) {
       throw new Error(`readFileAt: invalid ref ${ref}`);
     }
@@ -290,10 +295,11 @@ export class SimpleGitClient implements GitClient {
     ) {
       throw new Error(`readFileAt: invalid path ${path}`);
     }
+    signal?.throwIfAborted();
     try {
-      return await this.git(repo).raw(['show', `${ref}:${path}`]);
+      return await this.git(repo, signal).raw(['show', `${ref}:${path}`]);
     } catch (err) {
-      throw toGitStopError(err);
+      throw toGitStopError(err, signal);
     }
   }
 }
