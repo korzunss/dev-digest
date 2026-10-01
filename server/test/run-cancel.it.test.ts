@@ -143,7 +143,9 @@ d('run cancel + truncation (Testcontainers pg)', () => {
   });
 
   it('an output-truncated call fails the run with the cap in the error', async () => {
+    let calls = 0;
     const llm = provider(async () => {
+      calls++;
       throw new LlmOutputTruncatedError('gpt-4.1', 32_000, 32_000);
     });
     const { app, prId, runId } = await setup(llm);
@@ -151,6 +153,8 @@ d('run cancel + truncation (Testcontainers pg)', () => {
     const [run] = await pg.handle.db.select().from(t.agentRuns).where(eq(t.agentRuns.id, runId));
     expect(run!.status).toBe('failed');
     expect(run!.error).toContain('output cap');
+    // single-pass: retried once, never skipped
+    expect(calls).toBe(2);
     await app.close();
   });
 });

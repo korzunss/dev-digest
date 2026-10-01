@@ -29,3 +29,6 @@ export const REVIEW_RETRY_ROUTING: LlmRouting = {};
 
 /** Above this many diff tokens a multi-file `single-pass` review switches to map-reduce. */
 export const REVIEW_SINGLE_PASS_MAX_DIFF_TOKENS = 100_000;
+
+/** Map-reduce: share of chunks that may be skipped on truncated/invalid output before the run fails (assumption: 10%). */
+export const REVIEW_MAX_SKIPPED_CHUNK_FRACTION = 0.1;

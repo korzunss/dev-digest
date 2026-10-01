@@ -52,6 +52,15 @@ checking purity, search for `\bfetch\(` and `process\.env` as well as imports.
 
 ## Tool & Library Notes
 
+### 2026-10-01 — a `deepseek-v4-flash` output-cap runaway is a re-roll, not the prompt; reasoning-off "fixes" it by finding nothing
+**Symptom:** on PR #13 (142-file map-reduce), one 50-line test file's call spent all 32k output tokens (`finish_reason: length`), and that failed the whole run. The obvious mitigations were to repeat the call, or to switch reasoning off for it.
+**Cause:** a live probe (plan 08 → *A1 live probe*, ~$0.003) replayed that exact chunk 5× on the retry routing: 0/5 hit `length`, and 4/5 returned valid JSON with 1–2 findings. Reasoning ranged from 0 tokens (DigitalOcean serves the model without reasoning) to ~4k (Venice). So the runaway is stochastic per call/provider. `reasoning: { enabled: false }` via OpenRouter really disables thinking (0 reasoning tokens, 2–3 s), but it returned **0 findings 5/5**. DeepSeek's thinking mode ignores `temperature` and the penalties, so `temperature: 0` neither causes nor prevents a runaway.
+**Rule:**
+- Handle a truncated review chunk with one re-roll on `retryRouting`, then skip it (plan 08 A1). Never retry with reasoning off: it marks the file reviewed-clean.
+- Before blaming the prompt or the model for a runaway, replay the stored prompt a few times; the trace keeps the system prompt (`run_traces.trace->prompt_assembly->system`), and the chunk's diff comes from git.
+- A live confirmation run (PR #13, 2026-10-01 13:33) logged `retrying once (LlmOutputTruncatedError)`, and the retry succeeded in 38 s.
+**Evidence:** `docs/plans/08-llm-call-reliability.md` → *A1 live probe*, *A1 live confirmation* · `docs/ideas/05-truncated-chunk-runaways.md` · `reviewer-core/src/review/llm-call.ts` (truncation in `retryable`)
+
 ### 2026-09-30 — `openai` error classes keep `name === "Error"`: classifying by `name` never matches
 **Symptom:** a socket drop or header timeout to OpenRouter failed the review call with no "retrying once" line, although `isTransientLlmError` listed `APIConnectionError` / `APIConnectionTimeoutError` as transient and `llm-errors.test.ts` was green.
 **Cause:** in openai@4.104.0 the error classes never assign `this.name`. It stays `"Error"`, and only `constructor.name` differs. Connection-level errors also carry no `status`. So a duck-typed `e.name === 'APIConnectionError'` check is dead code against the real SDK, and with SDK `maxRetries: 0` nothing retried. The unit test fed plain `{ name: 'APIConnectionTimeoutError' }` objects, which encoded the assumption instead of testing it.

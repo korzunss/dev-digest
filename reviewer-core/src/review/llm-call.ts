@@ -6,7 +6,7 @@ import type {
   StructuredRequest,
   StructuredResult,
 } from '@devdigest/shared';
-import { LlmDeadlineError, isTransientLlmError } from '../llm/errors.js';
+import { LlmDeadlineError, LlmOutputTruncatedError, isTransientLlmError } from '../llm/errors.js';
 
 /** How often an in-flight call logs "still waiting" (assumption: 2 min). */
 export const LLM_WAIT_HEARTBEAT_MS = 120_000;
@@ -39,10 +39,16 @@ export interface CallWithDeadlineOptions<T> {
   emit: (kind: RunEventKind, msg: string) => void;
   /** Throws the caller's cancel error when the run was cancelled. */
   checkCancelled?: () => void;
+  /**
+   * Called once, just before a non-cancel final throw, with the usage of every failed
+   * attempt of this call; not called when nothing was reported and no deadline fired,
+   * nor on cancel. Emits no run-log line: the caller decides whether it is counted.
+   */
+  onFinalFailure?: (u: FailedCallUsage) => void;
 }
 
 /** Usage of a failed attempt, to be merged into the retry's result. */
-interface FailedUsage {
+export interface FailedCallUsage {
   tokensIn: number;
   tokensOut: number;
   /** Sum of the priced parts. */
@@ -54,7 +60,19 @@ interface FailedUsage {
   unpriced: boolean;
 }
 
-function mergeFailedUsage<T>(res: StructuredResult<T>, f: FailedUsage): StructuredResult<T> {
+function sumFailed(a?: FailedCallUsage, b?: FailedCallUsage): FailedCallUsage | undefined {
+  if (!a || !b) return a ?? b;
+  return {
+    tokensIn: a.tokensIn + b.tokensIn,
+    tokensOut: a.tokensOut + b.tokensOut,
+    costUsd: a.costUsd + b.costUsd,
+    deadline: a.deadline || b.deadline,
+    estimated: a.estimated || b.estimated,
+    unpriced: a.unpriced || b.unpriced,
+  };
+}
+
+function mergeFailedUsage<T>(res: StructuredResult<T>, f: FailedCallUsage): StructuredResult<T> {
   const costSource =
     res.costSource === 'estimate' || f.estimated || f.unpriced ? ('estimate' as const) : res.costSource;
   return {
@@ -70,7 +88,8 @@ const minutes = (ms: number): string => String(Math.round((ms / 60_000) * 10) / 
 
 /**
  * One structured LLM call bounded by a deadline, with a heartbeat and at most
- * one retry (deadline or transient error). Cancel/truncated/invalid never retry.
+ * one retry (deadline, transient error or truncated output). Cancel and invalid
+ * output never retry. `onFinalFailure` reports the failed attempts' usage when the call ends in a throw.
  * A first-attempt success returns the provider's result unchanged; a successful
  * retry returns a merged copy that also counts the failed attempt's usage
  * (reported rounds plus, on a deadline, an `estimate` for the aborted round).
@@ -78,7 +97,12 @@ const minutes = (ms: number): string => String(Math.round((ms / 60_000) * 10) / 
 export async function callWithDeadline<T>(o: CallWithDeadlineOptions<T>): Promise<StructuredResult<T>> {
   const model = o.request.model;
 
-  let failed: FailedUsage | undefined;
+  let failed: FailedCallUsage | undefined;
+  const takeFailed = (): FailedCallUsage | undefined => {
+    const f = failed;
+    failed = undefined;
+    return f;
+  };
 
   const attempt = async (
     request: Omit<StructuredRequest<T>, 'signal' | 'onUsage'>,
@@ -137,8 +161,8 @@ export async function callWithDeadline<T>(o: CallWithDeadlineOptions<T>): Promis
     reports: LlmUsageReport[],
     deadline: boolean,
     lastReportAt: number,
-  ): FailedUsage | undefined => {
-    const f: FailedUsage = { tokensIn: 0, tokensOut: 0, costUsd: 0, deadline, estimated: false, unpriced: false };
+  ): FailedCallUsage | undefined => {
+    const f: FailedCallUsage = { tokensIn: 0, tokensOut: 0, costUsd: 0, deadline, estimated: false, unpriced: false };
     for (const r of reports) {
       f.tokensIn += r.tokensIn;
       f.tokensOut += r.tokensOut;
@@ -167,7 +191,14 @@ export async function callWithDeadline<T>(o: CallWithDeadlineOptions<T>): Promis
   try {
     return await attempt(o.request);
   } catch (err) {
-    if (!(err instanceof LlmDeadlineError) && !isTransientLlmError(err)) throw err;
+    const retryable =
+      err instanceof LlmDeadlineError || err instanceof LlmOutputTruncatedError || isTransientLlmError(err);
+    if (!retryable) {
+      const f = takeFailed();
+      if (f && !o.signal?.aborted) o.onFinalFailure?.(f);
+      throw err;
+    }
+    const first = takeFailed();
     const retryReq: Omit<StructuredRequest<T>, 'signal' | 'onUsage'> = {
       ...o.request,
       ...(o.retryRouting ? { routing: o.retryRouting } : {}),
@@ -177,8 +208,15 @@ export async function callWithDeadline<T>(o: CallWithDeadlineOptions<T>): Promis
       'info',
       `${o.label}: retrying once (${name}) · routing ${describeRouting(retryReq.routing, retryReq.requireParameters)}`,
     );
-    const res = await attempt(retryReq);
-    const f = failed;
+    let res: StructuredResult<T>;
+    try {
+      res = await attempt(retryReq);
+    } catch (retryErr) {
+      const total = sumFailed(first, takeFailed());
+      if (total && !o.signal?.aborted) o.onFinalFailure?.(total);
+      throw retryErr;
+    }
+    const f = first;
     if (!f) return res;
     o.emit(
       'info',

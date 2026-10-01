@@ -13,6 +13,7 @@ import {
   REVIEW_ROUTING,
   REVIEW_RETRY_ROUTING,
   REVIEW_SINGLE_PASS_MAX_DIFF_TOKENS,
+  REVIEW_MAX_SKIPPED_CHUNK_FRACTION,
 } from './constants.js';
 import { taskLine } from './helpers.js';
 import { loadDiff, type LoadedDiff } from './diff-loader.js';
@@ -301,6 +302,7 @@ export class ReviewRunExecutor {
         routing: REVIEW_ROUTING,
         retryRouting: REVIEW_RETRY_ROUTING,
         singlePassMaxDiffTokens: REVIEW_SINGLE_PASS_MAX_DIFF_TOKENS,
+        maxSkippedChunkFraction: REVIEW_MAX_SKIPPED_CHUNK_FRACTION,
         checkCancelled: () => {
           if (cancelSignal.aborted || this.container.runBus.isCancelled(runId)) {
             throw new RunCancelledError();

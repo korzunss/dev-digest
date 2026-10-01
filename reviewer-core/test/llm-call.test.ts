@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import type { LLMProvider, StructuredRequest, StructuredResult } from '@devdigest/shared';
-import { callWithDeadline, LLM_WAIT_HEARTBEAT_MS, LlmDeadlineError, LlmConnectionError, LlmOutputTruncatedError } from '../src/index.js';
+import { callWithDeadline, LLM_WAIT_HEARTBEAT_MS, LlmDeadlineError, LlmConnectionError, LlmOutputTruncatedError, LlmOutputInvalidError } from '../src/index.js';
 
 const ok = { data: 1, model: 'm', tokensIn: 1, tokensOut: 1, costUsd: null, raw: '', attempts: 1 } as StructuredResult<number>;
 
@@ -96,10 +96,115 @@ describe('callWithDeadline', () => {
     expect(lines.filter((l) => l.includes('retrying once'))).toHaveLength(1);
   });
 
-  it('truncation is not retried', async () => {
-    const { llm, reqs } = fake(() => Promise.reject(new LlmOutputTruncatedError('m', 10, 10)));
-    await expect(callWithDeadline<number>({ llm, request: base, label: 'x', emit: () => {} })).rejects.toBeInstanceOf(LlmOutputTruncatedError);
-    expect(reqs).toHaveLength(1);
+  describe('truncation and onFinalFailure', () => {
+    const report = { tokensIn: 1000, tokensOut: 32000, costUsd: 0.01, costSource: 'api' as const };
+
+    it('T1 truncation then success retries once with retryRouting and merges the usage', async () => {
+      const { llm, reqs } = fake(async (req, n) => {
+        if (n === 1) {
+          req.onUsage!(report);
+          throw new LlmOutputTruncatedError('m', 32000, 32000);
+        }
+        return { ...ok, tokensIn: 10, tokensOut: 20, costUsd: 0.001, costSource: 'api' } as StructuredResult<number>;
+      });
+      const lines: string[] = [];
+      const r = await callWithDeadline<number>({
+        llm, request: base, retryRouting: {}, label: 'x', emit: (_k, m) => lines.push(m),
+      });
+      expect(reqs).toHaveLength(2);
+      expect(reqs[1].routing).toEqual({});
+      expect(reqs[1].requireParameters).toBe(true);
+      expect(lines.filter((l) => l.includes('retrying once (LlmOutputTruncatedError)'))).toHaveLength(1);
+      expect(r.tokensIn).toBe(1010);
+      expect(r.tokensOut).toBe(32020);
+      expect(r.costUsd).toBeCloseTo(0.011);
+    });
+
+    it('T2 truncation twice rejects after 2 calls; onFinalFailure gets the sum', async () => {
+      const { llm, reqs } = fake(async (req) => {
+        req.onUsage!(report);
+        throw new LlmOutputTruncatedError('m', 32000, 32000);
+      });
+      const onFinalFailure = vi.fn();
+      await expect(
+        callWithDeadline<number>({ llm, request: base, label: 'x', emit: () => {}, onFinalFailure }),
+      ).rejects.toBeInstanceOf(LlmOutputTruncatedError);
+      expect(reqs).toHaveLength(2);
+      expect(onFinalFailure).toHaveBeenCalledTimes(1);
+      expect(onFinalFailure.mock.calls[0][0]).toMatchObject({ tokensIn: 2000, tokensOut: 64000, deadline: false });
+      expect(onFinalFailure.mock.calls[0][0].costUsd).toBeCloseTo(0.02);
+    });
+
+    it('T3 invalid output is not retried; onFinalFailure gets that attempt', async () => {
+      const { llm, reqs } = fake(async (req) => {
+        req.onUsage!(report);
+        throw new LlmOutputInvalidError('m', 'S', 3);
+      });
+      const onFinalFailure = vi.fn();
+      await expect(
+        callWithDeadline<number>({ llm, request: base, label: 'x', emit: () => {}, onFinalFailure }),
+      ).rejects.toBeInstanceOf(LlmOutputInvalidError);
+      expect(reqs).toHaveLength(1);
+      expect(onFinalFailure).toHaveBeenCalledTimes(1);
+      expect(onFinalFailure.mock.calls[0][0]).toMatchObject({ tokensIn: 1000, tokensOut: 32000 });
+    });
+
+    it('T4 external cancel does not call onFinalFailure', async () => {
+      const { llm } = fake(hang);
+      const ac = new AbortController();
+      const onFinalFailure = vi.fn();
+      const p = callWithDeadline<number>({
+        llm, request: base, signal: ac.signal, label: 'x', emit: () => {}, onFinalFailure,
+        checkCancelled: () => { throw new Error('cancelled!'); },
+      });
+      ac.abort();
+      await expect(p).rejects.toThrow('cancelled!');
+      expect(onFinalFailure).not.toHaveBeenCalled();
+    });
+
+    it('T4b a cancel after a reported round does not call onFinalFailure', async () => {
+      // cancel wins even when the aborted attempt already reported usage
+      const { llm } = fake((req) => {
+        req.onUsage!(report);
+        return hang(req, 1);
+      });
+      const ac = new AbortController();
+      const onFinalFailure = vi.fn();
+      const p = callWithDeadline<number>({
+        llm, request: base, signal: ac.signal, label: 'x', emit: () => {}, onFinalFailure,
+        checkCancelled: () => { throw new Error('cancelled!'); },
+      });
+      ac.abort();
+      await expect(p).rejects.toThrow('cancelled!');
+      expect(onFinalFailure).not.toHaveBeenCalled();
+    });
+
+    it('T6 a first-attempt usage is not counted twice when the retry also fails', async () => {
+      // first attempt reports, the retry reports nothing: the total is the first attempt only
+      const { llm } = fake(async (req, n) => {
+        if (n === 1) {
+          req.onUsage!(report);
+          throw new LlmOutputTruncatedError('m', 32000, 32000);
+        }
+        throw new LlmOutputInvalidError('m', 'S', 3);
+      });
+      const onFinalFailure = vi.fn();
+      await expect(
+        callWithDeadline<number>({ llm, request: base, label: 'x', emit: () => {}, onFinalFailure }),
+      ).rejects.toBeInstanceOf(LlmOutputInvalidError);
+      expect(onFinalFailure).toHaveBeenCalledTimes(1);
+      expect(onFinalFailure.mock.calls[0][0]).toMatchObject({ tokensIn: 1000, tokensOut: 32000 });
+    });
+
+    it('T5 transient twice with no reports does not call onFinalFailure', async () => {
+      const { llm, reqs } = fake(() => Promise.reject(Object.assign(new Error('boom'), { status: 503 })));
+      const onFinalFailure = vi.fn();
+      await expect(
+        callWithDeadline<number>({ llm, request: base, label: 'x', emit: () => {}, onFinalFailure }),
+      ).rejects.toThrow('boom');
+      expect(reqs).toHaveLength(2);
+      expect(onFinalFailure).not.toHaveBeenCalled();
+    });
   });
 
   describe('failed-attempt usage', () => {

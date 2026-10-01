@@ -63,3 +63,4 @@ why, in one or two lines.
 | [02-cheaper-review-runs](02-cheaper-review-runs.md) | open | go (Opt1) | — |
 | [03-catch-more-real-bugs](03-catch-more-real-bugs.md) | open | needs-clarification (Opt1) | — |
 | [04-count-failed-llm-attempt-usage](04-count-failed-llm-attempt-usage.md) | chosen | go (Opt3) | [plan 13](../plans/13-count-failed-llm-attempt-usage.md) |
+| [05-truncated-chunk-runaways](05-truncated-chunk-runaways.md) | chosen | go (Opt1) | [plan 08](../plans/08-llm-call-reliability.md) Amendment A1 |

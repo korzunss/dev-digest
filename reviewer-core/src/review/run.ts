@@ -14,7 +14,8 @@ import { Review as ReviewSchema } from '@devdigest/shared';
 import { assemblePrompt } from '../prompt.js';
 import { groundFindings, groundingSummary } from '../grounding.js';
 import { reduceReviews, scoreFromFindings, sliceDiff } from './reduce.js';
-import { callWithDeadline, describeRouting } from './llm-call.js';
+import { callWithDeadline, describeRouting, type FailedCallUsage } from './llm-call.js';
+import { LlmOutputInvalidError, LlmOutputTruncatedError } from '../llm/errors.js';
 import { applyScopeFilter, ScopedReview, type ScopedFinding } from './scope.js';
 
 /**
@@ -133,6 +134,23 @@ export interface ReviewInput {
   retryRouting?: LlmRouting;
   /** Override DEFAULT_SINGLE_PASS_MAX_DIFF_TOKENS. */
   singlePassMaxDiffTokens?: number;
+  /**
+   * Map-reduce only: a chunk whose final error is truncated/invalid output is skipped while
+   * skipped ≤ max(1, floor(chunks × fraction)); unset = never skip (any final error fails the run).
+   */
+  maxSkippedChunkFraction?: number;
+}
+
+/** Thrown when too many chunks were skipped, or when no chunk produced a review at all. */
+export class ReviewChunksSkippedError extends Error {
+  constructor(
+    readonly skipped: number,
+    readonly total: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'ReviewChunksSkippedError';
+  }
 }
 
 export interface ReviewOutcome {
@@ -159,6 +177,8 @@ export interface ReviewOutcome {
   costSource: CostSource | null;
   /** Joined raw model outputs (for the run trace). */
   raw: string;
+  /** Chunks skipped on truncated/invalid output (empty when nothing was skipped). */
+  skipped: { label: string; reason: string }[];
 }
 
 type ModeReason = 'strategy' | 'size-guard' | 'oversize-single-file';
@@ -256,6 +276,11 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
   let costUsd: number | null = 0;
   let costSource: CostSource | undefined;
   const raws: string[] = [];
+  const skipped: { label: string; reason: string }[] = [];
+  const allowed =
+    mode === 'map-reduce' && input.maxSkippedChunkFraction != null
+      ? Math.max(1, Math.floor(chunks.length * input.maxSkippedChunkFraction))
+      : 0;
 
   for (const chunk of chunks) {
     // Cancellation checkpoint — stop before the next (expensive) LLM call.
@@ -270,28 +295,66 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
     const a = assemblePrompt({ ...promptParts, diff: chunk.diffText }, assembleOpts);
     if (mode === 'single-pass') assembly = a.assembly;
     const startedAt = Date.now();
-    const res = await callWithDeadline<Review>({
-      llm: input.llm,
-      request: {
-        model: input.model,
-        schema: reviewSchema,
-        schemaName: 'Review',
-        messages: a.messages,
-        maxRetries,
-        ...(input.sessionId ? { sessionId: input.sessionId } : {}),
-        ...(input.maxOutputTokens != null ? { maxTokens: input.maxOutputTokens } : {}),
-        ...(input.requireParameters != null ? { requireParameters: input.requireParameters } : {}),
-        ...(input.routing ? { routing: input.routing } : {}),
-      },
-      ...(input.retryRouting ? { retryRouting: input.retryRouting } : {}),
-      ...(input.callDeadlineMs != null ? { deadlineMs: input.callDeadlineMs } : {}),
-      ...(input.signal ? { signal: input.signal } : {}),
-      ...(input.checkCancelled ? { checkCancelled: input.checkCancelled } : {}),
-      ...(input.estimateCost ? { estimateCost: input.estimateCost } : {}),
-      ...(input.countTokens ? { countTokens: input.countTokens } : {}),
-      label: chunk.label,
-      emit,
-    });
+    // A box, not a `let`: a closure assignment to a `let` is invisible to narrowing in the catch below.
+    const failed: { usage?: FailedCallUsage } = {};
+    let res: Awaited<ReturnType<typeof callWithDeadline<Review>>>;
+    try {
+      res = await callWithDeadline<Review>({
+        llm: input.llm,
+        request: {
+          model: input.model,
+          schema: reviewSchema,
+          schemaName: 'Review',
+          messages: a.messages,
+          maxRetries,
+          ...(input.sessionId ? { sessionId: input.sessionId } : {}),
+          ...(input.maxOutputTokens != null ? { maxTokens: input.maxOutputTokens } : {}),
+          ...(input.requireParameters != null ? { requireParameters: input.requireParameters } : {}),
+          ...(input.routing ? { routing: input.routing } : {}),
+        },
+        ...(input.retryRouting ? { retryRouting: input.retryRouting } : {}),
+        ...(input.callDeadlineMs != null ? { deadlineMs: input.callDeadlineMs } : {}),
+        ...(input.signal ? { signal: input.signal } : {}),
+        ...(input.checkCancelled ? { checkCancelled: input.checkCancelled } : {}),
+        ...(input.estimateCost ? { estimateCost: input.estimateCost } : {}),
+        ...(input.countTokens ? { countTokens: input.countTokens } : {}),
+        label: chunk.label,
+        emit,
+        onFinalFailure: (u) => {
+          failed.usage = u;
+        },
+      });
+    } catch (err) {
+      if (allowed === 0 || !(err instanceof LlmOutputTruncatedError || err instanceof LlmOutputInvalidError)) {
+        throw err;
+      }
+      skipped.push({ label: chunk.label, reason: err.name });
+      const u = failed.usage;
+      if (u) {
+        tokensIn += u.tokensIn;
+        tokensOut += u.tokensOut;
+        costUsd = costUsd == null ? null : costUsd + u.costUsd;
+        if (u.estimated || u.unpriced) costSource = 'estimate';
+        emit(
+          'info',
+          `${chunk.label}: counted skipped chunk — ${u.tokensIn} in / ${u.tokensOut} out tokens${u.unpriced ? ' · could not be priced, cost excludes it' : ''}`,
+        );
+      }
+      const how = err instanceof LlmOutputTruncatedError ? ' after retry' : '';
+      emit('error', `${chunk.label}: skipped — ${err.name}${how} (${skipped.length}/${allowed} allowed)`);
+      if (skipped.length > allowed) {
+        emit(
+          'error',
+          `Too many files skipped (${skipped.length} of ${chunks.length}, limit ${allowed}) — failing the run`,
+        );
+        throw new ReviewChunksSkippedError(
+          skipped.length,
+          chunks.length,
+          `${skipped.length} of ${chunks.length} files could not be reviewed (limit ${allowed}); last: ${err.name}`,
+        );
+      }
+      continue;
+    }
     tokensIn += res.tokensIn;
     tokensOut += res.tokensOut;
     costUsd = costUsd == null || res.costUsd == null ? null : costUsd + res.costUsd;
@@ -306,7 +369,21 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
     );
   }
 
+  if (partials.length === 0) {
+    throw new ReviewChunksSkippedError(skipped.length, chunks.length, 'no file could be reviewed');
+  }
+
   const merged = reduceReviews(partials);
+  const paths = (() => {
+    const shown = skipped.slice(0, 10).map((x) => x.label).join(', ');
+    return skipped.length > 10 ? `${shown}, +${skipped.length - 10} more` : shown;
+  })();
+  if (skipped.length > 0) {
+    emit(
+      'result',
+      `Reviewed ${chunks.length - skipped.length}/${chunks.length} files — ${skipped.length} skipped: ${paths}`,
+    );
+  }
   emit(
     'result',
     `Reduced to ${merged.findings.length} finding(s); verdict=${merged.verdict}, score=${merged.score}`,
@@ -337,7 +414,16 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
   // the model's self-reported number) so the score, the findings list, and the
   // deterministic event always agree.
   return {
-    review: { ...merged, findings: finalFindings, score: scoreFromFindings(finalFindings) },
+    review: {
+      ...merged,
+      findings: finalFindings,
+      score: scoreFromFindings(finalFindings),
+      ...(skipped.length > 0
+        ? {
+            summary: `Partial review: ${skipped.length} of ${chunks.length} files not reviewed (model output cap / invalid output): ${paths}.${merged.summary ? ` ${merged.summary}` : ''}`,
+          }
+        : {}),
+    },
     grounding,
     dropped: ground.dropped,
     mode,
@@ -349,5 +435,6 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
     // No cost ⇒ no provenance to report (a source without a number is noise).
     costSource: costUsd == null ? null : (costSource ?? null),
     raw: raws.join('\n---\n'),
+    skipped,
   };
 }

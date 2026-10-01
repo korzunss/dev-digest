@@ -69,6 +69,7 @@ export { fileSummariesFromDiff, type FileSummary } from './intent/file-summaries
 // The engine entry point: given (diff + resolved agent inputs + LLM) → grounded Review.
 export {
   reviewPullRequest,
+  ReviewChunksSkippedError,
   DEFAULT_MAP_THRESHOLD_LINES,
   DEFAULT_REVIEW_MAX_RETRIES,
   DEFAULT_SINGLE_PASS_MAX_DIFF_TOKENS,
@@ -79,7 +80,7 @@ export {
   type ReviewMode,
 } from './review/run.js';
 
-export { callWithDeadline, describeRouting, LLM_WAIT_HEARTBEAT_MS, type CallWithDeadlineOptions } from './review/llm-call.js';
+export { callWithDeadline, describeRouting, LLM_WAIT_HEARTBEAT_MS, type CallWithDeadlineOptions, type FailedCallUsage } from './review/llm-call.js';
 
 // Output: grounded Review → GitHubReviewPayload (body + inline comments + event).
 export {

@@ -61,16 +61,20 @@ every section, persisted verbatim in the run trace (`PromptAssembly` contract,
 
 `reviewPullRequest` never talks to a model directly. For each chunk it calls
 `input.llm.completeStructured<Review>({ model, schema: ReviewSchema, schemaName:
-'Review', messages, maxRetries, sessionId? })` (`src/review/run.ts:268`), but wrapped in `callWithDeadline`
+'Review', messages, maxRetries, sessionId? })` (`src/review/run.ts:302`), but wrapped in `callWithDeadline`
 (`src/review/llm-call.ts`), which adds:
 
 - a **per-call deadline** (`callDeadlineMs`): a deadline `AbortController`
   combined with the run's `signal` via `AbortSignal.any`; on expiry it logs an
   `error` line and throws `LlmDeadlineError`;
 - a **heartbeat** `info` line every `LLM_WAIT_HEARTBEAT_MS` (2 min) while waiting;
-- **one retry** on a deadline or a transient error (`isTransientLlmError`), with
-  `retryRouting` replacing `routing` (`requireParameters` kept); cancel,
-  truncation and invalid output are never retried;
+- **one retry** on a deadline, a transient error (`isTransientLlmError`) or a
+  truncated output (`LlmOutputTruncatedError`), with `retryRouting` replacing
+  `routing` (`requireParameters` kept); cancel and invalid output are never
+  retried (`src/review/llm-call.ts:190-205`);
+- an optional **`onFinalFailure`** callback (`FailedCallUsage`), called once
+  just before a non-cancel final throw with the usage of every failed attempt
+  (`src/review/llm-call.ts:47,198,216`), so the caller can count a skipped chunk;
 - request options `maxTokens` (`maxOutputTokens`), `requireParameters` and
   `routing` (OpenRouter maps them into its `provider` object); the run log
   states them once, and each chunk's result line shows output tokens, seconds
@@ -112,13 +116,29 @@ user turn (`src/llm/openrouter.ts:123-124`) up to `maxRetries` times.
 ### Per-chunk loop and reduce — `src/review/reduce.ts`
 
 For `single-pass`, there is exactly one chunk: the whole diff
-(`src/review/run.ts:154`). For `map-reduce`, `reviewPullRequest` builds one
+(`src/review/run.ts:251`). For `map-reduce`, `reviewPullRequest` builds one
 chunk per changed file using `sliceDiff(diff, path)` (`src/review/reduce.ts:58-72`,
-called at `src/review/run.ts:153`), which extracts that file's `diff --git …`
+called at `src/review/run.ts:250`), which extracts that file's `diff --git …`
 block from the raw unified diff (falling back to a synthesized 3-line header
 if the file isn't found verbatim). Each chunk gets its own `assemblePrompt`
-call and its own `completeStructured` call (`src/review/run.ts:180-189`); the
+call and its own `completeStructured` call (`src/review/run.ts:295-326`); the
 results are accumulated as `partials: Review[]`.
+
+**Skip policy.** In `map-reduce`, when the caller passes
+`maxSkippedChunkFraction`, a chunk whose final error is
+`LlmOutputTruncatedError` or `LlmOutputInvalidError` is skipped instead of
+failing the run: an `error` line, an entry in `ReviewOutcome.skipped`, and the
+chunk's failed usage (from `onFinalFailure`) added to tokens and cost
+(`src/review/run.ts:327-357`). The limit is
+`max(1, floor(chunks × fraction))` (`src/review/run.ts:280`); once more chunks
+are skipped, the run throws `ReviewChunksSkippedError` at once. Single-pass
+never skips, deadline/transient/cancel errors are rethrown unchanged, and
+without the field nothing is skipped. If no chunk produced a partial, the run
+throws `ReviewChunksSkippedError` rather than returning an empty `approve`
+(`src/review/run.ts:372-374`). When something was skipped, a `result` line
+`Reviewed N/M files — K skipped: <paths>` is logged and `review.summary` starts
+with `Partial review: K of M files not reviewed (…): <paths>.`
+(`src/review/run.ts:377-386,421-425`). Score and verdict cover reviewed files only.
 
 After the loop, `reduceReviews(partials)` (`src/review/reduce.ts:43-55`) merges
 the per-chunk `Review`s: findings are concatenated, the verdict is the worst
@@ -243,9 +263,11 @@ it isn't exported here, it's internal" rule):
 - structured output: `toJsonSchema`, `extractJson`, `parseWithRepair`,
   `JsonSchema`, `ParseResult` (`src/index.ts:27-33`);
 - map-reduce: `reduceReviews`, `sliceDiff` (`src/index.ts:36`);
-- the entry point: `reviewPullRequest`, `DEFAULT_MAP_THRESHOLD_LINES`,
-  `DEFAULT_REVIEW_MAX_RETRIES`, `ReviewInput`, `ReviewOutcome`, `ReviewEvent`,
-  `ReviewStrategy`, `ReviewMode` (`src/index.ts:39-48`);
+- the entry point: `reviewPullRequest`, `ReviewChunksSkippedError`,
+  `DEFAULT_MAP_THRESHOLD_LINES`, `DEFAULT_REVIEW_MAX_RETRIES`, `ReviewInput`,
+  `ReviewOutcome` (incl. `skipped`), `ReviewEvent`, `ReviewStrategy`,
+  `ReviewMode` (the `./review/run.js` export block in `src/index.ts`); the call wrapper `callWithDeadline` with
+  `CallWithDeadlineOptions` and `FailedCallUsage`;
 - output: `toReviewPayload`, `gateTriggered`, `countBlockers`,
   `ToReviewOptions` (`src/index.ts:51-56`);
 - the provider: `OpenRouterProvider`, `OpenRouterProviderOptions`
@@ -300,8 +322,10 @@ a new slot without breaking existing callers:
 `npm test` runs vitest hermetically — no network, no keys
 (`reviewer-core/package.json`'s `test` script; `reviewer-core/AGENTS.md`).
 There are several suites in `test/`; the reliability ones are
-`test/llm-call.test.ts` (deadline, heartbeat, retry, fake timers),
-`test/run-reliability.test.ts` (size guard, caps, served-by, cancel) and
+`test/llm-call.test.ts` (deadline, heartbeat, retry, fake timers; T1–T5:
+truncation retry and `onFinalFailure`),
+`test/run-reliability.test.ts` (size guard, caps, served-by, cancel; K1–K7:
+skipped chunks, limit, single-pass, false-clean guard, partial note) and
 `test/llm-errors.test.ts` (error classification):
 
 - `test/prompt.test.ts` — pins the injection guard's presence and wording, and

@@ -1,6 +1,6 @@
 # reviewer-core — current gotchas
 
-Last reconciled with ../INSIGHTS.md: 2026-09-30
+Last reconciled with ../INSIGHTS.md: 2026-10-01
 
 This is a curated index of rules still in force. Full write-ups live in
 [`../INSIGHTS.md`](../INSIGHTS.md) (append-only log). A rule that stops holding
@@ -20,6 +20,7 @@ is edited or removed here. Items are added or updated by the
 
 ## LLM transport
 
+- **A truncated (`finish_reason: length`) review chunk is a stochastic runaway: re-roll it once on `retryRouting`, then skip it (plan 08 A1). Never retry with `reasoning: { enabled: false }`**, because on `deepseek-v4-flash` it returns valid JSON with 0 findings, which looks reviewed-clean. `temperature` is a no-op in DeepSeek thinking mode. — spot it: a proposal to "turn reasoning off on retry", or to blame the prompt, before the stored prompt has been replayed. — [INSIGHTS: 2026-10-01 — a `deepseek-v4-flash` output-cap runaway is a re-roll, not the prompt](../INSIGHTS.md#2026-10-01--a-deepseek-v4-flash-output-cap-runaway-is-a-re-roll-not-the-prompt-reasoning-off-fixes-it-by-finding-nothing)
 - **Every review LLM call goes through `callWithDeadline`; the SDK `timeout`
   only bounds the wait for response headers** — the deadline (10 min) and the
   run's cancel signal reach the call only via `req.signal`. A deadline abort of a

@@ -192,6 +192,12 @@ that path; it's runtime data, and the next resync overwrites it.
 
 ## Tool & Library Notes
 
+### 2026-10-01 — a local review run that dies with `Socket timeout` may just be the Mac falling asleep
+**Symptom:** a 142-file review of PR #13 on the local dev stack failed after 54 min with `Invalid response body while trying to fetch https://openrouter.ai/api/v1/chat/completions: Socket timeout`. It happened before the 10-min call deadline, with no retry. It looked like a provider stall.
+**Cause:** `pmset -g log` shows `Entering Sleep state due to 'Idle Sleep'` 3 s after that chunk's request went out, and DarkWakes at exactly the run log's "still waiting" (12:30:55/56) and failure (12:35:39) timestamps. While the Mac slept, the Node process was paused. On wake, the `openai` SDK's keep-alive agent socket timeout (5 min, `reviewer-core/node_modules/openai/_shims/node-runtime.js:53-54`) fired on the dead connection, and node-fetch raised a `FetchError` (`type: 'system'`), which isn't classified as transient. The same run under `caffeinate` completed.
+**Rule:** run the dev stack for long reviews under `caffeinate -is ./scripts/dev.sh` (or `caffeinate -is` in another terminal), and keep the lid open. Before treating a local `Socket timeout`, a mid-run "still waiting" jump or a deadline as a provider problem, check `pmset -g log | grep -E "Entering Sleep|Wake from|DarkWake from"` for the run's window.
+**Evidence:** `pmset -g log` 2026-10-01 12:23–12:36 · run `d97f0ac3-…` (failed) vs the 13:08 run under `caffeinate` (done) · `docs/plans/08-llm-call-reliability.md` → *A1 live confirmation*, side finding (PR2)
+
 ### 2026-09-30 — the auto-mode permission check blocks an implementer from writing a migration file
 **Symptom:** in plan 12 the implementer ran `pnpm db:generate --custom` fine, but its write of the SQL body into the new `server/src/db/migrations/0020_*.sql` stub was denied by the auto-mode classifier ("Modify Shared Resources"). The group came back `partial`: the stub was empty, the dedupe `.it` test failed, and `0021`'s unique index would have failed on any DB with duplicates.
 **Cause:** the harness's permission check treats a hand write under `migrations/**` as a shared-resource change, independent of the plan's approval. A plan decision (D1-A) is not a permission grant, and the main session must not "launder" the denied write by doing it on the agent's behalf.
