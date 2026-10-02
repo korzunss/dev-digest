@@ -96,4 +96,4 @@ result to the verifier.
 | [15-e2e-ci-flow10-and-runner-stderr](15-e2e-ci-flow10-and-runner-stderr.md) | done | none | e2e (flow 10 guard, runner stderr, one `flows.md` citation) |
 | [16-sync-atomicity-and-rules-abort](16-sync-atomicity-and-rules-abort.md) | done | none | shared (`GitClient.readFileAt`; client mirror), server (agents sync/repository, reviews repo-rules + executor, git adapter) |
 | [17-map-reduce-summary](17-map-reduce-summary.md) | done | none | reviewer-core (`run.ts` summary + verdict from final findings, new `summary.ts`), docs (`pipeline.md`, `agent-prompts/README.md`) |
-| [18-blast-radius](18-blast-radius.md) | in-progress | none | shared (`brief.ts`, `ForgeClient`; client mirror), server (new `modules/blast`, repo-intel facade, forge adapters), client (OverviewTab, hooks, i18n), mcp-server (`get_blast_radius`) |
+| [18-blast-radius](18-blast-radius.md) | done | none | shared (`brief.ts`, `ForgeClient`; client mirror), server (new `modules/blast`, repo-intel facade, forge adapters), client (OverviewTab, hooks, i18n), mcp-server (`get_blast_radius`) |

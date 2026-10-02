@@ -1,5 +1,5 @@
 # Development Plan: Blast Radius (PR impact map, Prior PRs, MCP tool)
-Status: in-progress
+Status: done
 Save as: docs/plans/18-blast-radius.md
 Spec: none
 
@@ -292,3 +292,104 @@ No migration (no schema change). Contracts: `brief.ts` (`DegradedReason`, `Chang
 - [ ] The brief above the marker is under ~20,000 characters — **fails: ~33,000** (16 steps over 4 packages). Each implementer run reads one group (≈5–9k of steps); trimming further would drop step detail the implementer needs. The main session decides whether to accept it or split the plan (e.g. MCP + runbook G6 into its own plan).
 - [x] Pass 1: n/a (pass 2)
 - [x] Every step's *Skills to apply* is complete
+
+## Handoffs → G2
+From G1 (implementer, 2026-10-02):
+- `brief.ts` (both copies): `DegradedReason` enum; `ChangedSymbol.rank`; `BlastCaller.depth` (int ≥1) + `via: string | null`; `DownstreamImpact.rank`; `BlastRadius.degraded`, `reason: DegradedReason | null`, `limits {callers_per_symbol, depth}`; `PrHistory.status: ok|unsupported|unavailable`.
+- `adapters.ts`: `MergedPrTouching {number,title,author,merged_at,paths}`, `MergedPrLookup {supported, items}`, `ForgeClient.listMergedPullsTouching(repo, paths, {excludeNumber, commitsPerPath, limit})`.
+- `MockForgeOptions.mergedPulls?` (mock drops `excludeNumber`, applies `limit`); `adapters/github/merged-prs.ts` exports `collectMergedPrs` (concurrency 4, `withRetry(withTimeout)`, no logging).
+- Any code building a `BlastRadius`/`PrHistory` literal needs the new keys.
+- Deviation: `server/test/contracts.test.ts` fixture got the new required fields (file not in any step's Files; test-only).
+
+Skills (G1): onion-architecture S1,S2 · zod S1 · typescript-expert S1,S2 · security S2.
+Verification (main session): server unit suite 42 files / 501 passed; server + client typecheck green; client 355 passed.
+
+## Handoffs → G3
+From G2 (implementer, 2026-10-02):
+- `BlastResult` (`repo-intel/types.ts`): required `source: 'index' | 'fallback'`, optional `indexStatus?: IndexStatus`; `DegradedReason` re-exported from `@devdigest/shared`.
+- `BlastChangedSymbol.rank` = declaring file's `file_rank.rank` (0 on fallback). `BlastCallerRow.depth` + `via: string | null`; `viaSymbol` = root changed symbol name.
+- `callers` grouped by changed symbol, sorted depth asc then rank desc, capped per `viaSymbol` at `MAX_CALLERS_PER_SYMBOL`.
+- `factsByFile` also set on fallback (`crons: []`), covers every caller file of every depth, before the cap.
+- New `RepoIntelRepository.getFileRanks(repoId, paths)`; `ResolvedCallerRow.declFile: string | null` (null rows skipped).
+- `getBlastRadius` never throws; flag off → `flag_off`, empty files → `no_data`, no state/`failed`/`degraded` → degraded with real reason; `partial` stays on the persistent path.
+- Fixtures: any fake `BlastResult`/`RepoIntel` in G3 tests needs `source` and the new row fields.
+- Review note: depth-2 traversal in `tryPersistentBlast`; `service.ts` header comment (1–18) still says "always degraded" (out of plan).
+
+Skills (G2): onion-architecture S3,S4 · drizzle-orm-patterns S3 · postgresql-table-design S3 (no schema change) · typescript-expert S3,S4.
+Verification: server typecheck ✅; unit suite 43 files / 508 passed.
+
+## Handoffs → G4, G6
+From G3 (implementer, 2026-10-02):
+- Routes: `GET /pulls/:id/blast` → `BlastRadius`; `GET /pulls/:id/history` → `PrHistory`; both 404 for an unknown PR.
+- `container.blast` = `BlastService` with `getBlast(workspaceId, prId, log)` / `getHistory(workspaceId, prId, log)`; history cache is per service instance (container singleton).
+- `modules/blast/constants.ts`: `HISTORY_*` (10 paths / 5 commits per path / 20 items / 10-min TTL / 200 entries). `toBlastRadius`, `buildBlastSummary` exported from `modules/blast/helpers.ts`.
+- Summary string: `"<S> changed symbols · <C> callers · <E> endpoints · <K> crons"` (+ `" · degraded: <reason>"`); counts are unique callers/endpoints/crons across downstream groups. `notes` always `''`.
+- Review notes: `blast/helpers.ts` imports `repo-intel/constants.js` (planned edge); `/history` failures are not cached, so a failing forge is retried every request (bounded by forge timeouts).
+
+Skills (G3): onion-architecture S5–S8 · engineering-insights step 0 read only · fastify-best-practices S8 · zod S5,S8 · drizzle-orm-patterns S6 · typescript-expert S5–S8 · security S7,S8.
+Verification: server typecheck ✅; unit 45 files / 521 passed; `blast.it` 4 passed; related repo-intel + smart-diff.it 35 passed.
+
+## Handoffs → G6 report (parallel with G4)
+From G6 (implementer, 2026-10-02):
+- S14: `DevDigestApi.getBlast` in `core/ports.ts`, `http/client.ts`, `test/fakes.ts` (`makeBlast`, `data.blast`).
+- S15: new `core/blast.ts` (`conciseBlast`, every repo/PR-written string via `cut()`; `reason` is an enum, uncapped); `tools/get-blast-radius.ts` (single GET `/pulls/:id/blast`, `readOnlyHint`); `messages.ts`, `server.ts`, `README.md`; tests `blast.test.ts` (+new), `tools-read.test.ts`, `server.test.ts` (extra `seen.length >= 5` in the GET-only pin).
+- S16: `docs/demo/blast-radius.md` runbook (not exercised live).
+- Deviation: `blast.test.ts` checks keys against a hard-coded list — mcp-server tests cannot runtime-import `@devdigest/shared` (type-only).
+- Not verified: live MCP run against an indexed repo; `.claude/settings.json` allowlist not re-reviewed.
+
+Skills (G6): onion-architecture S14,S15 · engineering-insights step 0 only · typescript-expert S14,S15 (skimmed) · zod S15 (file not opened; `zod/v3` per gotcha) · security S15 (first 60 lines read).
+Verification: mcp-server typecheck ✅; tests 10 files / 53 passed.
+
+## Handoffs → G5
+From G4 (implementer, 2026-10-02):
+- Hooks `client/src/lib/hooks/blast.ts` (barrel-exported): `useBlastRadius(prId, headSha)` key `["pr-blast", prId, headSha]`; `usePrHistory(prId, headSha)` key `["pr-history", prId, headSha]`, `staleTime` 10 min.
+- `BlastRadiusCard({ prId, headSha, repo: Repo | null })` in `.../_components/BlastRadiusCard/` composes `BlastDegradedNotice`, `BlastSummary`, `BlastTree` (~55 lines; room for the toggle). First tree node open by default; `BlastTree` stores per-symbol overrides only. `PriorPrsCard/` beside it.
+- G5 modifies `BlastRadiusCard.tsx`, `styles.ts` (entries `satisfies CSSProperties`: `card`, `muted`, `node`, `link`, `subLabel`, `listItem`, …), `BlastRadiusCard.test.tsx`.
+- i18n `view.tree`, `view.graph`, `graph.empty`, `graph.ariaLabel`, `graph.legend` exist; add no keys unless needed. `loading` key exists but is unused (Skeleton renders instead).
+- Card tests mock `@/lib/hooks/blast` and `@/lib/hooks/repo-intel` at submodule level and wrap in `QueryClientProvider`.
+- Review notes: links `target="_blank" rel="noreferrer"`, all repo/PR strings render as text; `useBlastResync` holds the only `useEffect` (watches `updatedAt`, invalidates `["pr-blast", prId]`); `OverviewTab` takes a `repo` prop passed by `page.tsx`.
+
+Skills (G4): onion-architecture — (client-only) · engineering-insights step 0 · frontend-architecture S9,S11,S12 · react-best-practices S9,S11,S12 · next-best-practices S9,S11,S12 · react-testing-library S11 · typescript-expert S9,S11,S12 · security S11.
+Verification: client typecheck ✅; 44 files / 361 passed; `blast.json` valid JSON.
+
+## Handoffs → review (after G5)
+From G5 (implementer, 2026-10-02):
+- S13 files (in `BlastRadiusCard/`): `graph-layout.ts` (+new, pure), `graph-layout.test.ts` (+new), `BlastGraph.tsx` (+new, renders only), `BlastRadiusCard.tsx`, `styles.ts`, `BlastRadiusCard.test.tsx`.
+- Deviations: endpoints/crons link to the group's depth-1 callers (or the symbol when none), since the contract carries them per group, not per caller file; node ids scoped by symbol, so a shared caller appears once per symbol.
+- Security: strings render as SVG `<text>` children; no `dangerouslySetInnerHTML`; graph has no links.
+
+Skills (G5): onion-architecture — (client-only) · frontend-architecture, react-best-practices, next-best-practices, react-testing-library, typescript-expert S13 (SKILL.md head only) · security not opened (not named by S13).
+Verification: client typecheck ✅; 45 files / 364 passed.
+
+## Verification log
+- 2026-10-02 full pass (plan-verifier): incomplete — 105/107 met; SK14 partial; R4 not-verifiable (no Test Report). Security review: PASS, no SF. Architecture review: PASS, F1 (HIGH, non-blocking).
+- 2026-10-02 fix mode (implementer) F1, SK14: `BlastResult.limits {callersPerSymbol, depth}` (required) set from `BLAST_LIMITS` in `repo-intel/service.ts` on all paths; `toBlastRadius` copies it; runtime import of `repo-intel/constants.js` removed from `blast/helpers.ts`; fixtures in `blast-helpers.test.ts`, `blast-service.test.ts`. SK14: `zod` skill read, S15 re-checked, no change needed. Skills: onion-architecture F1 · zod SK14. Verification: server + mcp-server typecheck ✅; `vitest run blast repo-intel` 8 files / 48 passed (incl. `.it`); mcp-server 53 passed.
+- 2026-10-02 delta (plan-verifier): complete — needs sign-off; 106/107 met, F1 + SK14 closed; R4 not-verifiable (no test-writer run). Note: S5 *Change* text still says limits are imported from `repo-intel/constants.js` — superseded by F1 (copied from `BlastResult.limits`).
+- main-session fix: V1 — `BLAST_LIMITS` moved above the `PHANTOM_GLOBALS_ALLOWLIST` doc comment in `repo-intel/service.ts` (comment had landed on the wrong symbol); S4 Done-when re-run: server typecheck ✅, blast tests green.
+
+## Test Report (test-writer, 2026-10-02)
+Added: depth-2 bound (`repo-intel-blast.test.ts`); non-UUID 422, other-workspace 404, forge-throws → 200 `unavailable` without error/token in body (`blast.it.test.ts`); MCP `cut()` on every free-text field, degraded/reason/limits + null `via` pass-through (`mcp-server/test/blast.test.ts`), unknown repo + oversized summary (`tools-read.test.ts`); card hides notice when not degraded, shows the passed reason's copy (`BlastRadiusCard.test.tsx`).
+
+### Proof
+| Subject · mutation (temporary, reverted) | Caught by |
+|---|---|
+| `blast/helpers.ts` declaring-file filter always true | "drops a caller living in the declaring file" |
+| `blast/helpers.ts` rank sort flipped | "groups flat callers … sorted by rank desc" |
+| `blast/helpers.ts` crons read from endpoints | "attributes endpoints and crons only to the group…" |
+| `blast/helpers.ts` limits swapped | "reports limits from the constants…" |
+| `blast/helpers.ts` degraded hard-coded false | "passes degraded and reason through" + .it "degrades with no_data…" |
+| `repo-intel/service.ts` root declaring-file skip removed | "traverses to depth 2 with `via`, excludes the declaring file…" |
+| `repo-intel/service.ts` per-symbol cap → global | "caps callers per changed symbol, not globally" |
+| `repo-intel/service.ts` BFS depth 1 / bound 3 | "traverses to depth 2…" / new "does not report callers beyond depth 2" (survived before the test) |
+| `blast/repository.ts` workspace filter removed | new "404s for a pull request that belongs to another workspace" |
+| `blast/service.ts` catch rethrows | unit "reports unavailable on a forge failure…" + new .it forge test |
+| `blast/routes.ts` history 404 guard removed | .it "404s for an unknown pull request" |
+| `mcp-server/src/core/blast.ts` via/crons caps removed | "caps every free-text field…" |
+| `mcp-server/src/tools/get-blast-radius.ts` unknown-PR guard removed | "is an error listing recent PRs for an unknown PR…" |
+| `BlastRadiusCard.tsx` `data.degraded &&` → `true &&` | new "hides the degraded notice…" |
+| `BlastDegradedNotice.tsx` reason copy fixed | new "shows the copy for the reason passed through" |
+
+Reverts: `shasum -c` OK for 8 subject files. Exception: `blast/repository.ts` (untracked) had no recorded baseline; main session re-read it — workspace-scoped `getPull` + `getPrFilePaths` intact, the other-workspace test passes.
+Coverage gaps left: history cache eviction, `HISTORY_MAX_PATHS` truncation, `.it` depth-2 with a symbol declared in two files.
+Main-session full run after test-writer: server unit 45 files / 522 passed; `.it` 23 files / 157 passed; client 45 files / 366 passed.
+- 2026-10-02 delta (plan-verifier): complete — 107/107 met; R4 and V1 met. Status set to done by the main session.
