@@ -1,5 +1,5 @@
 # Development Plan: Blast Radius (PR impact map, Prior PRs, MCP tool)
-Status: done
+Status: in-progress
 Save as: docs/plans/18-blast-radius.md
 Spec: none
 
@@ -13,6 +13,10 @@ Ship Blast Radius end to end: a new `modules/blast` API over the existing repo i
 - AC6: `GET /pulls/:id/history` returns `PrHistory` (merged PRs touching the changed files, from GitHub; GitLab → `status: 'unsupported'`; forge failure → `status: 'unavailable'`), cached per `(prId, headSha)`; the Overview tab shows it.
 - AC7: MCP `get_blast_radius` returns the same map (strings through `cut()`), a resolution error for an unknown PR, `readOnlyHint: true`.
 - AC8: a demo runbook shows how to get ≥2 real callers and ≥1 endpoint on a real indexed repo.
+- AC9 (D11-A): no caller of any depth lives in a test path (`.test.` incl. `.it.test.`, a `test/` or `__tests__/` path segment), on the index and the fallback path, and test files are dropped before the per-symbol cap.
+- AC10 (D12-A): each call site is its own caller row — two calls in one file at different lines give two `file:line` rows; the callers count counts call sites.
+- AC11 (D9-B, D10-A): the Overview tab starts with two columns — Intent on the left (its header inside its card, no Risk areas) and Blast radius on the right. There is no PR Brief header card.
+- AC12 (D13): the Blast radius card matches `docs/plans/assets/18-blast-radius/design-*.png` — header inside the card, stat icons, segmented Tree/Graph toggle on the right, filled symbol rows `name()` + "N callers", `↳` caller rows, blue endpoint chips (globe) and amber cron chips (clock), column graph with curved edges and a legend, Prior PRs as a collapsible panel with a count badge inside the card.
 
 ## Decisions needed
 None open — see *Decisions recorded*. (The pass-1 options table is kept below the marker under *Design notes → Pass-1 options*.)
@@ -29,6 +33,16 @@ User, 2026-10-02: "всі рекомендовані".
 - **D8-A:** MCP returns the same `BlastRadius` JSON, strings through `cut()`, no Prior PRs.
 - Research questions 3 and 4 are dropped (D4-B, D6-A).
 - **Approval (user, 2026-10-02):** "затверджено". Approved as written, including the planner's pass-2 assumptions (`BlastCaller.via`, downstream only for symbols with callers, grouping by name, history caps 10/5/20 + 10-min TTL/200 entries, `PrHistory.status`, `notes` = '') and the ~33k brief size.
+- **Reopened (user, 2026-10-02):** "це треба робити в межах плану 18". The demo on PR #14 showed the Overview does not match the design: the PR Brief header is missing, Blast radius is in the wrong place and styled differently, and Prior PRs is a separate, differently styled section. Root cause: the design screenshots never reached the planner. They are now in `docs/plans/assets/18-blast-radius/` (`design-overview.png`, `design-blast-tree.png`, `design-blast-graph.png`, `design-prior-prs.png`, plus `design-blast-graph-detail.png`, a sharper crop of the graph added by the user; the current state is `actual-2026-10-02.png`). Status returned to `draft`; the plan needs approval again.
+- Design-alignment decisions, user 2026-10-02: "всі рекомендовані".
+  - **D9-A:** a PR Brief header card on top of Overview: verdict, summary, PR SCORE ring and cost from the latest review; a "not reviewed yet" state when there is no review.
+  - **D10-A:** Risk areas are not shown (no data source exists).
+  - **D11-A:** the facade drops test files (`*.test.*`, `*.it.test.*`, `test/`, `__tests__/`) from callers.
+  - **D12-A:** one `file:line` row per call site, so several calls in one file each get a row.
+  - **D13:** reproduce the design screenshots faithfully (two-column layout under the PR Brief card with Intent on the left and Blast radius on the right; stat icons; Tree/Graph segmented toggle on the right; filled symbol rows with `name()` and "N callers"; `↳` tree lines; blue endpoint chips with a globe and amber cron chips with a clock; column graph with legend; Prior PRs as a collapsible panel with a count badge inside the Blast radius card), using vendored `@devdigest/ui` and the existing theme tokens.
+- **D9 changed to B (user, 2026-10-02):** "добре, давай без блоку PR Brief". No PR Brief header card on Overview: the top of the tab is the two-column layout (Intent left, Blast radius right). `VerdictBanner` is not touched. This is a correction, not an approval; the plan stays `draft`.
+- **Re-approval (user, 2026-10-02):** "затверджую". G7–G10 approved as written after the D9-B correction.
+- Demo notes (not steps): line numbers were stale because the index was still at `c6af1e4`; run resync before the demo. Prior PRs is empty for PR #14 because its files have no merged-PR history; the GitHub "unicorn" page was a transient GitHub error, the blob URL returns 200.
 
 ## Prerequisites
 - Postgres up (Docker) for `server` `.it` tests (G3).
@@ -43,6 +57,10 @@ User, 2026-10-02: "всі рекомендовані".
 | G4 | S9–S12 | client data layer, i18n, Blast tree card, Prior PRs card, Overview wiring | G3 | hooks `useBlastRadius`, `usePrHistory`; `BlastRadiusCard` props |
 | G5 | S13 | client Graph view + Tree/Graph toggle | G4 | — |
 | G6 | S14–S16 | mcp-server tool + demo runbook | G3 (may run in parallel with G4/G5 — no shared file) | — |
+| G7 | S17–S18 | server: repo-intel facade (D11, D12) + blast mapper count | G6 (code at `fea7c90`); may run in parallel with G8 — different package, no shared file | `isBlastTestPath` in `repo-intel/constants.ts`; caller rows now one per call site (no shape change) |
+| G8 | S19–S21 | client: i18n, Blast radius card restyle (tree, stats, toggle, chips), Prior PRs panel inside the card | G6 | `PriorPrsCard` is rendered by `BlastRadiusCard`, no longer by `OverviewTab`; `blastStats` counts call sites |
+| G9 | S23 | client: two-column Overview (Intent left with its header inside its card, Blast radius right) | G8 | `OverviewTab` is a two-column grid; `IntentCard` owns its header |
+| G10 | S24–S25 | client: column graph restyle + demo runbook update + visual check | G9 (and G7 for the runbook) | — |
 
 ## Steps
 
@@ -199,6 +217,83 @@ User, 2026-10-02: "всі рекомендовані".
 - **Known gotchas:** none.
 - **Done when:** file exists and every route it names is registered (`rg -n "'/pulls/:id/blast'|'/pulls/:id/history'|'/repos/:id/resync'" server/src/modules`).
 
+<!-- Design-alignment round (Decisions D9–D13). G1–G6 are implemented at fea7c90; S17+ start from that code. -->
+
+### S17 — Facade: drop test-file callers (D11-A) and keep one row per call site (D12-A)
+- **Files:** `server/src/modules/repo-intel/constants.ts` (modify), `server/src/modules/repo-intel/service.ts` (modify), `server/test/repo-intel-blast.test.ts` (modify)
+- **Change:** `constants.ts`: export `isBlastTestPath(path: string): boolean` — true when the lower-cased repo-relative path contains `.test.` (covers `.it.test.`) or has a `test/` or `__tests__/` segment (`/(^|\/)(test|__tests__)\//`). Only the D11 patterns — `JUNK_PATH_PATTERNS` (service.ts:815) is a different list for rank samples and stays untouched. `service.ts`, persistent loop (:407–462): skip a row whose `fromPath` is a test path **before** it is pushed or enters the frontier (so a test file is never a depth-2 intermediate and never takes a cap slot); change the per-root dedupe key (:443) from `${root}|${r.fromPath}|${enclosing}` to `${root}|${r.fromPath}|${r.line}`; the frontier stays keyed by `${fromPath}|${enclosing}` (one expansion per enclosing symbol). Fallback path (:277–300): skip test paths the same way, and change its key (:292) to `${r.fromPath}|${r.line}|${sym.name}`; the per-symbol cap stays after the filter. No change to `BlastResult` shape, repository or contract — references are already stored one per `(name, line)` (`adapters/astgrep/index.ts:415-421`).
+- **Layer / why here:** D11-A and D12-A put both rules in the facade, where traversal and caps live (D2-A).
+- **Skills to apply:** `onion-architecture`, `typescript-expert`
+- **Practices:** the pattern list lives in `constants.ts`, not inline; the filter runs before the cap; no new query; the persistent path still never touches `codeIndex`.
+- **Known gotchas:** none.
+- **Done when:** `cd server && pnpm typecheck` · `pnpm exec vitest run repo-intel-blast repo-intel-facade-degraded` — new cases: callers in `src/a.test.ts`, `src/a.it.test.ts`, `test/x.ts`, `server/test/x.ts`, `src/__tests__/x.ts` are absent at depth 1 and 2, and a test file is never a `via`; 25 non-test + 5 test callers → 20 non-test; two references in one file at lines 10 and 30 → two rows; the same `(file, line)` reached twice for one root → one row; fallback path drops test paths too.
+
+### S18 — Mapper counts call sites; IT covers D11/D12
+- **Files:** `server/src/modules/blast/helpers.ts` (modify), `server/test/blast-helpers.test.ts` (modify), `server/test/blast.it.test.ts` (modify)
+- **Change:** `toBlastRadius` summary callers count (helpers.ts, the `uniq(... `${c.file}#${c.name}` ...)` line) → unique `${c.file}:${c.line}`. IT fixture: add a second call to the shared helper in one caller file at another line, and a caller in `test/money.test.ts`; assert both call-site rows come back and no caller path matches the test patterns.
+- **Layer / why here:** pure mapper; route-level proof in the existing IT.
+- **Skills to apply:** `onion-architecture`, `typescript-expert`, `zod`
+- **Practices:** mapper stays pure; `BlastRadius.parse(out)` still passes.
+- **Known gotchas:** hermetic `.it` via `isolatedTestConfig()` → [server gotchas → Tests](../../server/insights/gotchas.md).
+- **Done when:** `cd server && pnpm typecheck` · `pnpm exec vitest run blast-helpers` (two call sites in one file → callers count 2) · `pnpm exec vitest run blast.it` (Postgres up) green.
+
+### S19 — Copy for the redesigned Blast radius card
+- **Files:** `client/messages/en/blast.json` (modify)
+- **Change:** `blast.json`: `stat.symbols|callers|endpoints|crons` become ICU plurals keyed on `count` (`"{count, plural, one {symbol} other {symbols}}"`, …, crons → `cron`/`crons`); `callerCount` → `"{count, plural, one {# caller} other {# callers}}"`; add `history.toggle` (aria for the panel chevron), `graph.legendSymbol` ("changed symbol"), `graph.legendCaller` ("callers"), `graph.legendEndpoint` ("endpoints affected"), `graph.legendCron` ("crons"); drop `graph.legend` only in S24 (still used until then). Existing keys keep their values except those listed. `brief.json` is not changed (D9-B).
+- **Layer / why here:** copy lives in the feature namespace.
+- **Skills to apply:** none (JSON only)
+- **Practices:** valid JSON; every placeholder used by a component exists.
+- **Known gotchas:** keep the empty/unsupported/unavailable strings distinct → [client gotchas → Tests](../../client/insights/gotchas.md).
+- **Done when:** `jq . client/messages/en/blast.json` succeeds.
+
+### S20 — Blast radius card: header, stats, segmented toggle, tree rows and chips
+- **Files:** `client/src/app/repos/[repoId]/pulls/[number]/_components/BlastRadiusCard/` (modify): `BlastRadiusCard.tsx`, `BlastSummary.tsx`, `BlastTree.tsx`, `helpers.ts`, `styles.ts`, `BlastRadiusCard.test.tsx`
+- **Change:** target `design-blast-tree.png`. `BlastRadiusCard`: the frame (`s.card`) now holds a `SectionLabel icon="Workflow"` with `t("title")` at the top (assumption: closest vendored icon to the design's), then a row with `BlastSummary` on the left and the segmented toggle on the right (one bordered container, two buttons, active = filled `var(--bg-hover)` + `var(--text-primary)`, `aria-pressed`), shown also in the empty state but disabled. `BlastSummary`: icon + bold number + plural label per stat (`Icon.Code`, `Icon.CornerDownRight`, `Icon.Globe`, `Icon.Clock`). `BlastTree`: symbol row = filled rounded row (`var(--bg-hover)`), chevron, `Icon.Code` in `var(--accent-text)`, mono `name()` (append `()` when the symbol's `kind` from `changed_symbols` is a function/method — assumption: kinds `function`, `method`), right-aligned muted `t("callerCount")` (+ `topN`); the open body has a left guide line (`borderLeft` longhand on a wrapper) and one row per caller: muted `↳` (`Icon.CornerDownRight`) + mono `file:line` link (`forgeBlobUrl`), caller name only in `title`; depth-2 rows indented one more step with `title` = `t("depth2")`. Below the rows: endpoint chips (blue: `var(--accent-bg)` background, `var(--accent-text)` text, `Icon.Globe`, mono) then cron chips on their own line (amber: `var(--warn-bg)`, `var(--warn)`, `Icon.Clock`). `helpers.blastStats` callers key → `${file}:${line}` (D12). All new style entries are separate literals `satisfies CSSProperties`; borders that differ per side use four longhands.
+- **Layer / why here:** presentational changes inside the colocated feature folder (D13); vendored UI is consumed, never edited.
+- **Skills to apply:** `frontend-architecture`, `react-best-practices`, `next-best-practices`, `react-testing-library`, `typescript-expert`
+- **Practices:** no edit under `client/src/vendor/**`; theme tokens only (no hex colours); components ≤200 lines (split `BlastSymbolNode.tsx` out of `BlastTree.tsx` if it grows past that, same folder); no hard-coded cap; `fireEvent` in tests.
+- **Known gotchas:** `satisfies CSSProperties`, no spread base; four-side border longhands; `fireEvent`; `importActual` for hook mocks → [client gotchas](../../client/insights/gotchas.md).
+- **Done when:** `cd client && pnpm typecheck` · `pnpm exec vitest run BlastRadiusCard` — RTL asserts the structure: the card contains the "Blast radius" heading text; the stat row shows `2` + "symbols" and "1 cron" singular; Tree/Graph buttons are inside one group with `aria-pressed`; a symbol row shows `rateLimit()` and "4 callers"; caller rows render `file:line` text with `href` = `forgeBlobUrl(...)`; two call sites in one file render two rows; endpoint chip text sits in an element separate from cron chip text; collapse via `fireEvent.click` hides the rows.
+
+### S21 — Prior PRs as a collapsible panel inside the Blast radius card
+- **Files:** `.../_components/PriorPrsCard/PriorPrsCard.tsx` (modify), `.../PriorPrsCard/styles.ts` (modify), `.../PriorPrsCard/PriorPrsCard.test.tsx` (modify), `.../BlastRadiusCard/BlastRadiusCard.tsx` (modify), `.../BlastRadiusCard/BlastRadiusCard.test.tsx` (modify), `.../OverviewTab/OverviewTab.tsx` (modify — remove the separate Prior PRs section only)
+- **Change:** target `design-prior-prs.png`. `PriorPrsCard` becomes a bordered panel: header button (`aria-expanded`, default open) with `Icon.History`, `t("history.title")`, a count `Badge` (`history.length`, only when `status === 'ok'` and length > 0), chevron up/down on the right; body = list with a bullet + left timeline line per item, `#n` accent mono link (`forgePrUrl`), bold title, then `Avatar name={author} size={18}` + `author·YYYY-MM-DD` muted, then `notes` only when non-empty (always `''` today); status/empty/error copy unchanged inside the body. `BlastRadiusCard` renders a divider and `<PriorPrsCard prId headSha repo />` at the bottom of its frame in every state (loading/error/empty/ok). `OverviewTab` drops its Prior PRs `<section>`.
+- **Layer / why here:** D13 — the panel lives inside the Blast radius card.
+- **Skills to apply:** `frontend-architecture`, `react-best-practices`, `next-best-practices`, `react-testing-library`, `typescript-expert`, `security`
+- **Practices:** PR title/author rendered as text only; links `target="_blank" rel="noreferrer"`; the open state is local `useState` in the panel; tests mock `@/lib/hooks/blast` with `importActual`.
+- **Known gotchas:** as S20 → [client gotchas](../../client/insights/gotchas.md).
+- **Done when:** `cd client && pnpm typecheck` · `pnpm exec vitest run PriorPrsCard BlastRadiusCard` — RTL: the panel header shows the title and count badge `3`; clicking the header (`fireEvent`) sets `aria-expanded="false"` and hides the items; the Blast radius card's frame contains the Prior PRs header (`within(card)`); `unsupported`/`unavailable` copy still distinct.
+
+### S22 — removed (D9-B: no PR Brief header card)
+Nothing to implement. Step ids stay stable for the verifier.
+
+### S23 — Two-column Overview with headers inside the cards
+- **Files:** `.../_components/OverviewTab/OverviewTab.tsx` (modify), `.../OverviewTab/styles.ts` (modify), `.../OverviewTab/OverviewTab.test.tsx` (create), `.../_components/IntentCard/IntentCard.tsx` (modify), `.../IntentCard/IntentCard.test.tsx` (modify)
+- **Change:** `OverviewTab` (D9-B: no PR Brief card; the old "PR Brief" `SectionLabel` above `IntentCard` is removed): the tab starts with a grid `s.columns` (`display: grid`, `gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))"`, `gap: 16`, `alignItems: "start"` — assumption: stacks on narrow screens) with Intent on the left and `BlastRadiusCard` on the right; no outer `SectionLabel` for either column; Description section stays below the grid. `IntentCard`: its frame gets a `SectionLabel icon="Target"` with `brief.block.intent` ("Intent") at the top, inside the frame; update the file's header comment (the caller no longer owns the label). No Risk areas block (D10-A).
+- **Layer / why here:** the tab composes cards; each card owns its own header (D13).
+- **Skills to apply:** `frontend-architecture`, `react-best-practices`, `next-best-practices`, `react-testing-library`, `typescript-expert`
+- **Practices:** `OverviewTab` fetches nothing itself; grid styles as literals `satisfies CSSProperties`; no vendor edit.
+- **Known gotchas:** a test that mocks the hook barrels must spread `importActual` — `OverviewTab` renders cards that each import different hooks → [client gotchas → Tests](../../client/insights/gotchas.md).
+- **Done when:** `cd client && pnpm typecheck && pnpm test` · `OverviewTab.test.tsx` (hooks of `intent`, `blast`, `repo-intel` mocked via `importActual`) asserts order and nesting: the columns grid is the tab's first child and there is no "PR Brief" text; the columns container holds exactly two children, the first containing "Intent", the second containing "Blast radius" and "Prior PRs touching these files"; no "Risk areas" text; `IntentCard.test.tsx` asserts the "Intent" header inside the card.
+
+### S24 — Column graph matching the design
+- **Files:** `.../BlastRadiusCard/graph-layout.ts` (modify), `.../BlastRadiusCard/graph-layout.test.ts` (modify), `.../BlastRadiusCard/BlastGraph.tsx` (modify), `.../BlastRadiusCard/styles.ts` (modify), `.../BlastRadiusCard/BlastRadiusCard.test.tsx` (modify), `client/messages/en/blast.json` (modify — remove `graph.legend`)
+- **Change:** target `design-blast-graph.png` (sharper crop: `design-blast-graph-detail.png`). Layout: columns changed symbols | depth-1 callers | depth-2 callers (column omitted when empty) | endpoints then crons; caller nodes deduped by `${file}#${name}` (D12 rows can repeat a caller), labelled by caller name; symbol label `name()` per S20's rule; labels over 18 chars truncated with `…` (full text in `<title>`); each node gets `width`/`height`; rows vertically centred per column. Render: rounded `<rect>` boxes (`rx` 6) with mono text — symbol and endpoint boxes `var(--accent)` stroke, caller boxes `var(--border)`, cron boxes `var(--warn)`; edges are cubic `<path d="M… C…">` from the right edge of the source box to the left edge of the target, `var(--border)` stroke, no fill; legend under the SVG: dot + `graph.legendSymbol|legendCaller|legendEndpoint|legendCron`. The SVG scrolls horizontally inside the card when wider (`overflowX: auto`).
+- **Layer / why here:** D6-A/D13 — hand-rolled SVG, layout stays pure.
+- **Skills to apply:** `frontend-architecture`, `react-best-practices`, `next-best-practices`, `react-testing-library`, `typescript-expert`
+- **Practices:** deterministic coordinates; no new dependency; theme tokens only.
+- **Known gotchas:** `satisfies CSSProperties` → [client gotchas → UI](../../client/insights/gotchas.md).
+- **Done when:** `cd client && pnpm typecheck` · `pnpm exec vitest run graph-layout BlastRadiusCard` — layout: two call sites of one caller → one caller node; no depth-2 column without depth-2 callers; truncated label ends with `…`; every edge starts at `x + width` of its source; RTL: Graph view renders `rect` nodes, `path` edges, and the four legend labels.
+
+### S25 — Demo runbook update and visual check
+- **Files:** `docs/demo/blast-radius.md` (modify)
+- **Change:** add before the demo: run resync and wait for `index-state` to advance (stale line numbers otherwise — the index was at `c6af1e4` during the first demo); pick a demo PR whose changed files have merged-PR history on the forge (a file touched by earlier merged PRs) so Prior PRs is non-empty, and say how to check (`git log --oneline -- <file>` on the default branch shows merge/squash commits with `(#N)`); note test-file callers are hidden (D11) and each call site is a row (D12); add a "Visual check" list against `docs/plans/assets/18-blast-radius/design-*.png` (two columns at the top of the tab — the design's PR Brief card is intentionally absent (D9-B) — stat icons, segmented toggle right, filled symbol rows, `↳` rows, blue/amber chips, graph with legend, Prior PRs panel with count badge).
+- **Layer / why here:** D7-A runbook, extended for the redesign.
+- **Skills to apply:** none (Markdown only)
+- **Practices:** only commands and routes that exist.
+- **Known gotchas:** none.
+- **Done when:** the file names `resync` before the demo steps and has the "Visual check" list · **manual (user / main session):** on the demo PR, the Overview screenshot matches `design-overview.png` (columns only — the PR Brief card is absent by D9-B, Risk areas by D10-A), `design-blast-tree.png`, `design-blast-graph.png` / `design-blast-graph-detail.png`, `design-prior-prs.png` item by item; mismatches are logged in the Verification log as `visual: <item>`.
+
 ## Tests
 | Test file | Tier | Covers | Step |
 |---|---|---|---|
@@ -211,6 +306,13 @@ User, 2026-10-02: "всі рекомендовані".
 | `.../PriorPrsCard/PriorPrsCard.test.tsx` | unit (jsdom) | history states | S11 |
 | `.../BlastRadiusCard/graph-layout.test.ts` | unit | graph nodes/edges | S13 |
 | `mcp-server/test/blast.test.ts`, `tools-read.test.ts`, `server.test.ts` | unit | tool output, errors, GET-only | S15 |
+| `server/test/repo-intel-blast.test.ts` (extended) | unit | test-path filter, one row per call site | S17 |
+| `server/test/blast-helpers.test.ts`, `blast.it.test.ts` (extended) | unit / integration | call-site count; D11/D12 end to end | S18 |
+| `.../BlastRadiusCard/BlastRadiusCard.test.tsx` (extended) | unit (jsdom) | card structure, stat plurals, rows, chips, Prior PRs inside, graph render | S20, S21, S24 |
+| `.../PriorPrsCard/PriorPrsCard.test.tsx` (extended) | unit (jsdom) | collapsible panel, count badge | S21 |
+| `.../OverviewTab/OverviewTab.test.tsx` | unit (jsdom) | two-column structure, headers inside cards, no Risk areas | S23 |
+| `.../BlastRadiusCard/graph-layout.test.ts` (extended) | unit | node dedupe, columns, truncation, edge anchors | S24 |
+| manual | visual | Overview vs the four design PNGs | S25 |
 
 ## Migrations & contracts
 No migration (no schema change). Contracts: `brief.ts` (`DegradedReason`, `ChangedSymbol.rank`, `BlastCaller.depth/via`, `DownstreamImpact.rank`, `BlastRadius.degraded/reason/limits`, `PrHistory.status`) and `adapters.ts` (`MergedPrTouching`, `MergedPrLookup`, `ForgeClient.listMergedPullsTouching`) — S1, mirrored into `client/src/vendor/shared`.
@@ -220,6 +322,7 @@ No migration (no schema change). Contracts: `brief.ts` (`DegradedReason`, `Chang
 - Any LLM call, any seed/fixture change to `server/src/db/seed.ts` (D7-A), e2e flows.
 - Other `getBlastRadius`-adjacent facade methods (`getCriticalPaths` etc.), re-indexing logic, `client/src/vendor/**` beyond the S1 mirror.
 - The PR description and demo video (user).
+- Design-alignment round: the PR Brief header card (D9-B — no `PrBriefCard`, no `VerdictBanner` changes, no `prBrief.*` keys); Risk areas (D10-A); Prior PR `notes` content (stays `''`); any contract change (D11/D12 need none); `client/src/vendor/**` edits.
 
 <!-- implementer-brief:end -->
 
@@ -231,22 +334,24 @@ No migration (no schema change). Contracts: `brief.ts` (`DegradedReason`, `Chang
 - `client/insights/gotchas.md` → fireEvent, `importActual`, `satisfies CSSProperties`, border longhands, distinct copy — S10, S11, S13.
 - `mcp-server/insights/gotchas.md` → `zod/v3`, `import type`, `cut()`, 60 s — S14, S15.
 - Research `scratchpad/18-blast-research.md` and `18-blast-external-research.md` — facade facts and the REST algorithm (S2, S4).
+- `docs/plans/assets/18-blast-radius/*.png` (opened 2026-10-02) — targets for S20–S25; `actual-2026-10-02.png` is the before state.
+- `adapters/astgrep/index.ts:415-421` — references are deduped per `(name, line)`, so D12 needs no reindex (S17).
 
 ## Skills
 | Skill | Loaded | Applied in | Not used — reason |
 |---|---|---|---|
-| onion-architecture | preload | S1–S8, S14, S15 | |
+| onion-architecture | preload | S1–S8, S14, S15, S17, S18 | |
 | engineering-insights | preload | Context applied | |
-| zod | on demand (S1) | S1, S5, S8, S15 | |
+| zod | on demand (S1) | S1, S5, S8, S15, S18 | |
 | typescript-expert | on demand (S1) | all code steps | |
-| security | on demand (S2) | S2, S7, S8, S11, S15 | |
+| security | on demand (S2) | S2, S7, S8, S11, S15, S21 | |
 | drizzle-orm-patterns | on demand (S3) | S3, S6 | |
 | postgresql-table-design | on demand (S3) | S3 | no table change; read-only queries |
 | fastify-best-practices | on demand (S8) | S8 | |
-| frontend-architecture | on demand (S9) | S9, S11–S13 | |
-| react-best-practices | on demand (S9) | S9, S11–S13 | |
-| next-best-practices | on demand (S9) | S9, S11–S13 | |
-| react-testing-library | on demand (S11) | S11, S13 | |
+| frontend-architecture | on demand (S9) | S9, S11–S13, S20, S21, S23, S24 | |
+| react-best-practices | on demand (S9) | S9, S11–S13, S20, S21, S23, S24 | |
+| next-best-practices | on demand (S9) | S9, S11–S13, S20, S21, S23, S24 | |
+| react-testing-library | on demand (S11) | S11, S13, S20, S21, S23, S24 | |
 
 ## Affected modules
 | Package | Module / path | Layer | New / changed |
@@ -260,6 +365,8 @@ No migration (no schema change). Contracts: `brief.ts` (`DegradedReason`, `Chang
 | client | `_components/{BlastRadiusCard,PriorPrsCard}/`, `OverviewTab`, `page.tsx` | UI | new / changed |
 | mcp-server | `core/{ports,blast}.ts`, `http/client.ts`, `tools/{get-blast-radius,messages}.ts`, `server.ts`, tests, README | all | changed / new |
 | docs | `docs/demo/blast-radius.md` | docs | new |
+| server (G7) | `modules/repo-intel/{constants,service}.ts`, `modules/blast/helpers.ts` | application / pure | changed |
+| client (G8–G10) | `messages/en/blast.json`, `_components/{BlastRadiusCard,PriorPrsCard,IntentCard,OverviewTab}/` | UI / i18n | changed (+ new `OverviewTab.test.tsx`) |
 
 ## Design notes
 - **Data flow:** page → `OverviewTab` → `BlastRadiusCard` → `useBlastRadius` → `GET /pulls/:id/blast` → `BlastService.getBlast` → `repoIntel.getBlastRadius` (index reads: symbols, resolved references ×2 levels, file_rank, file_facts) → `toBlastRadius`. History: `PriorPrsCard` → `usePrHistory` → `/history` → `BlastService.getHistory` → `ForgeClient.listMergedPullsTouching` (cached).
@@ -274,16 +381,21 @@ No migration (no schema change). Contracts: `brief.ts` (`DegradedReason`, `Chang
 - Up to ~60 GitHub calls per uncached `/history` request; LAN-reachable route; mitigated by caps, concurrency 4 and the TTL cache.
 - `via`, `DownstreamImpact` only for symbols with callers, and the cache caps are assumptions, not recorded decisions.
 - Docs vs code: `repo-intel/service.ts` header (:1-18) still says blast is "always degraded" (T1) — the code has a persistent path; `repo-intel/README.md:41` names L04. Not edited by this plan.
+- D12 makes the cap of 20 count call sites, not files. A symbol called many times in one file can fill its 20 rows from fewer files than before.
+- Assumptions in the design round: `Workflow` as the Blast-radius header icon, `()` appended only for `function`/`method` kinds, the grid's 420 px minimum column width, and the 18-character graph label cap.
+- The visual check (S25) is manual. The plan-verifier can check the RTL structure tests but not pixels.
 
 ## Handed off
 - architecture-reviewer: the `blast/helpers.ts → repo-intel/constants.ts` edge (S5); facade traversal in `repo-intel/service.ts` (S4); narrow deps in `BlastService` (S7).
 - security review: new outbound GitHub calls in `adapters/github/merged-prs.ts` + `octokit.ts` (S2) triggered by a LAN-reachable GET (S8); PR/repo-written strings in MCP output (`cut()`, S15) and in the client (S11, rendered as text).
+- Design round: architecture-reviewer — the test-path filter placement (S17). security review — none new (no new endpoint, no new outbound call; PR titles rendered as text in S21).
 
 ## Insights to record
 - None yet — candidates after implementation: whether `listPullRequestsAssociatedWithCommit` misses squash-merged PRs (server).
 
 ## Red-flags check
-- [x] Every AC maps to at least one step or test (AC1 S7/S8 · AC2 S4/S5 · AC3 S1/S5/S11/S15 · AC4 S7 · AC5 S11–S13 · AC6 S2/S7/S11 · AC7 S15 · AC8 S16)
+- [x] Every AC maps to at least one step or test (AC1 S7/S8 · AC2 S4/S5 · AC3 S1/S5/S11/S15 · AC4 S7 · AC5 S11–S13 · AC6 S2/S7/S11 · AC7 S15 · AC8 S16 · AC9 S17/S18 · AC10 S17/S18/S20 · AC11 S23 · AC12 S20/S21/S24/S25)
+- [x] Design round: groups G7 (3+3 files) ∥ G8 share no file; G8→G9→G10 sequential (shared `BlastRadiusCard`/`OverviewTab` files); `OverviewTab.tsx` is touched in S21 (one section removed) and rewritten once in S23
 - [x] Every step has Files, Practices and a runnable Done when
 - [x] Every existing path was opened; every new one is marked `create`
 - [x] Every assumption is marked; product choices are in *Decisions recorded*
