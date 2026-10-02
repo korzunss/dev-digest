@@ -1,4 +1,14 @@
 {
+  "title": "Blast radius",
+  "loading": "Mapping the blast radius…",
+  "loadError": "Could not load the blast radius.",
+  "empty": "No callers found for the changed symbols.",
+  "topN": "top {count}",
+  "depth2": "via {name}",
+  "endpoints": "Endpoints affected",
+  "crons": "Cron jobs affected",
+  "expand": "Expand callers",
+  "collapse": "Collapse callers",
   "stat": {
     "symbols": "symbols",
     "callers": "callers",
@@ -11,8 +21,30 @@
   },
   "callerCount": "{count} callers",
   "noDownstream": "{count} changed symbol(s), no downstream callers found.",
+  "degraded": {
+    "badge": "Degraded",
+    "reason": {
+      "flag_off": "Repo index is switched off — impact is limited to a quick scan.",
+      "index_failed": "The last index run failed — impact is limited to a quick scan.",
+      "index_partial": "The repo index is partial — some callers may be missing.",
+      "repo_too_large": "The repo is too large to index fully — some callers may be missing.",
+      "no_data": "No index data for this repo yet — impact is limited to a quick scan."
+    },
+    "resync": "Resync index",
+    "resyncing": "Resyncing…",
+    "resyncError": "Resync could not be started."
+  },
+  "history": {
+    "title": "Prior PRs touching these files",
+    "empty": "No earlier merged PRs touched these files.",
+    "unsupported": "Prior PR history is not available for this forge.",
+    "unavailable": "Prior PR history could not be fetched right now.",
+    "overlap": "{count} overlapping file(s)",
+    "loadError": "Could not load prior PRs."
+  },
   "graph": {
     "empty": "No downstream callers to graph.",
-    "ariaLabel": "Blast radius graph"
+    "ariaLabel": "Blast radius graph",
+    "legend": "symbols → callers → endpoints / cron jobs"
   }
 }
