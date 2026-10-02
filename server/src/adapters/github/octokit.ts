@@ -12,8 +12,10 @@ import type {
   OpenPrPayload,
   CommitFilesPayload,
   IssueMeta,
+  MergedPrLookup,
 } from '@devdigest/shared';
 import { withRetry, withTimeout } from '../../platform/resilience.js';
+import { collectMergedPrs } from './merged-prs.js';
 
 const TIMEOUT = 30_000;
 
@@ -381,5 +383,52 @@ export class OctokitGitHubClient implements ForgeClient {
       withTimeout(this.octokit.rest.users.getAuthenticated(), TIMEOUT),
     );
     return res.data.login;
+  }
+
+  async listMergedPullsTouching(
+    repo: RepoRef,
+    paths: string[],
+    opts: { excludeNumber: number; commitsPerPath: number; limit: number },
+  ): Promise<MergedPrLookup> {
+    const items = await collectMergedPrs(
+      paths,
+      {
+        listCommits: async (path) => {
+          const res = await withRetry(() =>
+            withTimeout(
+              this.octokit.rest.repos.listCommits({
+                owner: repo.owner,
+                repo: repo.name,
+                path,
+                per_page: opts.commitsPerPath,
+              }),
+              TIMEOUT,
+            ),
+          );
+          return res.data.map((c) => c.sha);
+        },
+        prsForCommit: async (sha) => {
+          const res = await withRetry(() =>
+            withTimeout(
+              this.octokit.rest.repos.listPullRequestsAssociatedWithCommit({
+                owner: repo.owner,
+                repo: repo.name,
+                commit_sha: sha,
+                per_page: 5,
+              }),
+              TIMEOUT,
+            ),
+          );
+          return res.data.map((pr) => ({
+            number: pr.number,
+            title: pr.title,
+            author: pr.user?.login ?? null,
+            merged_at: pr.merged_at,
+          }));
+        },
+      },
+      { excludeNumber: opts.excludeNumber, limit: opts.limit },
+    );
+    return { supported: true, items };
   }
 }

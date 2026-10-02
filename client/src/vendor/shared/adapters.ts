@@ -172,6 +172,21 @@ export interface OpenPrPayload {
   body: string;
 }
 
+/** A merged PR that touched some of the queried paths. */
+export interface MergedPrTouching {
+  number: number;
+  title: string;
+  author: string;
+  merged_at: string;
+  paths: string[];
+}
+
+export interface MergedPrLookup {
+  /** False when this forge cannot answer the question (items is then empty). */
+  supported: boolean;
+  items: MergedPrTouching[];
+}
+
 export interface ForgeClient {
   readonly provider: ForgeProvider;
   listPullRequests(repo: RepoRef): Promise<PrMeta[]>;
@@ -189,6 +204,12 @@ export interface ForgeClient {
   getIssue(repo: RepoRef, n: number): Promise<IssueMeta>;
   /** GET /user — for "posting as @user". */
   currentLogin(): Promise<string>;
+  /** Merged PRs (newest first) that touched any of `paths`, excluding PR `excludeNumber`. */
+  listMergedPullsTouching(
+    repo: RepoRef,
+    paths: string[],
+    opts: { excludeNumber: number; commitsPerPath: number; limit: number },
+  ): Promise<MergedPrLookup>;
 }
 
 // ---------- Git (simple-git, heavy) ----------

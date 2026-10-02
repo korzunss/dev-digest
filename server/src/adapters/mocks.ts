@@ -9,6 +9,8 @@ import type {
   StructuredResult,
   Embedder,
   ForgeClient,
+  MergedPrTouching,
+  MergedPrLookup,
   ForgeProvider,
   RepoRef,
   PrMeta,
@@ -152,6 +154,8 @@ export interface MockForgeOptions {
   comments?: PrReviewComment[];
   /** Which forge this mock stands in for (default 'github'). */
   provider?: ForgeProvider;
+  /** Merged PRs returned by listMergedPullsTouching. */
+  mergedPulls?: MergedPrTouching[];
 }
 
 export class MockForgeClient implements ForgeClient {
@@ -271,6 +275,19 @@ export class MockForgeClient implements ForgeClient {
 
   async currentLogin(): Promise<string> {
     return this.opts.login ?? 'mock-user';
+  }
+
+  async listMergedPullsTouching(
+    _repo: RepoRef,
+    _paths: string[],
+    opts: { excludeNumber: number; commitsPerPath: number; limit: number },
+  ): Promise<MergedPrLookup> {
+    return {
+      supported: true,
+      items: (this.opts.mergedPulls ?? [])
+        .filter((p) => p.number !== opts.excludeNumber)
+        .slice(0, opts.limit),
+    };
   }
 }
 

@@ -73,16 +73,20 @@ describe('AI contracts parse fixtures', () => {
     ).not.toThrow();
     expect(() =>
       BlastRadius.parse({
-        changed_symbols: [{ name: 'rateLimit', file: 'a.ts', kind: 'function' }],
+        changed_symbols: [{ name: 'rateLimit', file: 'a.ts', kind: 'function', rank: 0 }],
         downstream: [
           {
             symbol: 'rateLimit',
-            callers: [{ name: 'publicRouter', file: 'b.ts', line: 23 }],
+            callers: [{ name: 'publicRouter', file: 'b.ts', line: 23, depth: 1, via: null }],
             endpoints_affected: ['GET /x'],
             crons_affected: ['c'],
+            rank: 0,
           },
         ],
         summary: 's',
+        degraded: false,
+        reason: null,
+        limits: { callers_per_symbol: 20, depth: 2 },
       }),
     ).not.toThrow();
     expect(() =>
@@ -92,6 +96,7 @@ describe('AI contracts parse fixtures', () => {
     ).not.toThrow();
     expect(() =>
       PrHistory.parse({
+        status: 'ok',
         history: [
           {
             pr_number: 401,
