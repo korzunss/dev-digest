@@ -7,14 +7,23 @@ export interface MergedPrIo {
   /** Commit SHAs (newest first) that touched `path`. */
   listCommits(path: string): Promise<string[]>;
   /** PRs associated with a commit; `merged_at` is null while unmerged. */
-  prsForCommit(
-    sha: string,
-  ): Promise<{ number: number; title: string; author?: string | null; merged_at: string | null }[]>;
+  prsForCommit(sha: string): Promise<
+    {
+      number: number;
+      title: string;
+      author?: string | null;
+      merged_at: string | null;
+      /** `base.repo.full_name` — a commit inherited from a fork's parent lists the parent's PRs. */
+      baseRepo?: string | null;
+    }[]
+  >;
 }
 
 export interface CollectOpts {
   excludeNumber: number;
   limit: number;
+  /** `owner/name` of the queried repo; PRs whose base repo differs (upstream of a fork) are dropped. */
+  repoFullName: string;
 }
 
 function statusOf(err: unknown): number | undefined {
@@ -66,12 +75,14 @@ export async function collectMergedPrs(
   const shas = [...shaPaths.keys()];
   const prResults = await settleChunked(shas, (sha) => io.prsForCommit(sha));
 
+  const wantRepo = opts.repoFullName.toLowerCase();
   const byNumber = new Map<number, MergedPrTouching & { set: Set<string> }>();
   prResults.forEach((r, i) => {
     if (r.status !== 'fulfilled') return;
     const touched = shaPaths.get(shas[i]!)!;
     for (const pr of r.value) {
       if (pr.merged_at == null || pr.number === opts.excludeNumber) continue;
+      if (pr.baseRepo?.toLowerCase() !== wantRepo) continue;
       const entry = byNumber.get(pr.number) ?? {
         number: pr.number,
         title: pr.title,

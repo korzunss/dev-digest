@@ -424,10 +424,15 @@ export class OctokitGitHubClient implements ForgeClient {
             title: pr.title,
             author: pr.user?.login ?? null,
             merged_at: pr.merged_at,
+            baseRepo: pr.base?.repo?.full_name ?? null,
           }));
         },
       },
-      { excludeNumber: opts.excludeNumber, limit: opts.limit },
+      {
+        excludeNumber: opts.excludeNumber,
+        limit: opts.limit,
+        repoFullName: `${repo.owner}/${repo.name}`,
+      },
     );
     return { supported: true, items };
   }
