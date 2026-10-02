@@ -4,7 +4,7 @@
  * `fireEvent`, not `userEvent` (client/insights/gotchas.md).
  */
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { render, screen, cleanup, fireEvent, within } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, within, act } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { BlastRadius } from "@devdigest/shared";
@@ -35,6 +35,7 @@ import { BlastRadiusCard } from "./BlastRadiusCard";
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  vi.useRealTimers();
 });
 
 const repo = { id: "r1", provider: "github", api_base: null, full_name: "acme/shop" } as unknown as Repo;
@@ -77,9 +78,9 @@ function mockData(d: BlastRadius | undefined, flags: { isLoading?: boolean; isEr
   useResyncMock.mockReturnValue({ mutate: mutateMock, isPending: false, isError: false });
 }
 
-function renderCard() {
+function renderCard(qc = new QueryClient()) {
   return render(
-    <QueryClientProvider client={new QueryClient()}>
+    <QueryClientProvider client={qc}>
       <NextIntlClientProvider locale="en" messages={{ blast }}>
         <BlastRadiusCard prId="pr1" headSha="abc123" repo={repo} />
       </NextIntlClientProvider>
@@ -194,6 +195,54 @@ describe("BlastRadiusCard", () => {
     expect(screen.getByText(blast.degraded.reason.no_data)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: blast.degraded.resync }));
     expect(mutateMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps Resync disabled until the index status has loaded", () => {
+    mockData(data({ degraded: true, reason: "no_data" }));
+    useRepoIntelStatusMock.mockReturnValue({ data: undefined });
+    renderCard();
+    const button = screen.getByRole("button", { name: blast.degraded.resync });
+    expect(button).toBeDisabled();
+    fireEvent.click(button);
+    expect(mutateMock).not.toHaveBeenCalled();
+  });
+
+  it("ends the wait and refreshes the blast map when updatedAt advances", () => {
+    mockData(data({ degraded: true, reason: "no_data" }));
+    const qc = new QueryClient();
+    const invalidate = vi.spyOn(qc, "invalidateQueries");
+    const { rerender } = renderCard(qc);
+    fireEvent.click(screen.getByRole("button", { name: blast.degraded.resync }));
+    // polling is on while waiting
+    expect(useRepoIntelStatusMock).toHaveBeenLastCalledWith("r1", true);
+
+    useRepoIntelStatusMock.mockReturnValue({ data: { updatedAt: "t1" } });
+    rerender(
+      <QueryClientProvider client={qc}>
+        <NextIntlClientProvider locale="en" messages={{ blast }}>
+          <BlastRadiusCard prId="pr1" headSha="abc123" repo={repo} />
+        </NextIntlClientProvider>
+      </QueryClientProvider>,
+    );
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["pr-blast", "pr1"] });
+    expect(useRepoIntelStatusMock).toHaveBeenLastCalledWith("r1", false);
+  });
+
+  it("gives up waiting after the timeout when updatedAt never moves", () => {
+    vi.useFakeTimers();
+    mockData(data({ degraded: true, reason: "no_data" }));
+    const qc = new QueryClient();
+    const invalidate = vi.spyOn(qc, "invalidateQueries");
+    renderCard(qc);
+    fireEvent.click(screen.getByRole("button", { name: blast.degraded.resync }));
+    expect(useRepoIntelStatusMock).toHaveBeenLastCalledWith("r1", true);
+
+    act(() => vi.advanceTimersByTime(59_999));
+    expect(invalidate).not.toHaveBeenCalledWith({ queryKey: ["pr-blast", "pr1"] });
+
+    act(() => vi.advanceTimersByTime(1));
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["pr-blast", "pr1"] });
+    expect(useRepoIntelStatusMock).toHaveBeenLastCalledWith("r1", false);
   });
 
   // a healthy index shows no degraded notice and no resync button

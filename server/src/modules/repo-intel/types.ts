@@ -77,7 +77,7 @@ export interface BlastCallerRow {
 export interface BlastResult {
   changedSymbols: BlastChangedSymbol[];
   callers: BlastCallerRow[];
-  /** "METHOD /path" (via extractEndpoints / file_facts) — flat union. */
+  /** "METHOD /path" (via extractEndpoints / file_facts) — union over the returned (capped) `callers` only. */
   impactedEndpoints: string[];
   /**
    * Per-caller-file precomputed facts, so consumers (blast) can attribute
