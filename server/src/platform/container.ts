@@ -35,6 +35,8 @@ import { IntentService } from '../modules/intent/service.js';
 import { IntentRepository } from '../modules/intent/repository.js';
 import { SmartDiffService } from '../modules/smart-diff/service.js';
 import { SmartDiffRepository } from '../modules/smart-diff/repository.js';
+import { BlastService } from '../modules/blast/service.js';
+import { BlastRepository } from '../modules/blast/repository.js';
 import { resolveFeatureModel } from '../modules/settings/feature-models.js';
 import { type DepGraph, DepCruiseGraph } from '../adapters/depgraph/index.js';
 import { type Tokenizer, TiktokenTokenizer } from '../adapters/tokenizer/index.js';
@@ -93,6 +95,7 @@ export class Container {
   private _priceBook?: PriceBook;
   private _intent?: IntentService;
   private _smartDiff?: SmartDiffService;
+  private _blast?: BlastService;
 
   constructor(config: AppConfig, db: Db, private overrides: ContainerOverrides = {}) {
     this.config = config;
@@ -173,6 +176,15 @@ export class Container {
   /** Smart Diff (S6, spec 007) — reviewer-ordered Files-changed grouping. */
   get smartDiff(): SmartDiffService {
     return (this._smartDiff ??= new SmartDiffService({ repo: new SmartDiffRepository(this.db) }));
+  }
+
+  /** Blast Radius — impact map over the repo index + Prior PRs from the forge. */
+  get blast(): BlastService {
+    return (this._blast ??= new BlastService({
+      repo: new BlastRepository(this.db),
+      repoIntel: this.repoIntel,
+      forge: (ref) => this.forge(ref),
+    }));
   }
 
   /**
