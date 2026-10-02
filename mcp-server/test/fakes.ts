@@ -1,5 +1,6 @@
 import type {
   Agent,
+  BlastRadius,
   ConventionScanResult,
   PrMeta,
   Repo,
@@ -18,6 +19,7 @@ export interface FakeApiData {
   runs: RunSummary[][];
   reviews: ReviewRecord[];
   conventions: ConventionScanResult;
+  blast: BlastRadius;
 }
 
 export interface FakeApi extends DevDigestApi {
@@ -117,6 +119,26 @@ export function makeReview(over: Partial<ReviewRecord> = {}): ReviewRecord {
   } as ReviewRecord;
 }
 
+export function makeBlast(over: Partial<BlastRadius> = {}): BlastRadius {
+  return {
+    changed_symbols: [{ name: 'parse', file: 'src/parse.ts', kind: 'function', rank: 0.5 }],
+    downstream: [
+      {
+        symbol: 'parse',
+        callers: [{ name: 'handler', file: 'src/api.ts', line: 12, depth: 1, via: null }],
+        endpoints_affected: ['GET /items'],
+        crons_affected: [],
+        rank: 0.5,
+      },
+    ],
+    summary: '1 changed symbols · 1 callers · 1 endpoints · 0 crons',
+    degraded: false,
+    reason: null,
+    limits: { callers_per_symbol: 10, depth: 2 },
+    ...over,
+  };
+}
+
 /** Recording fake: every call is pushed to `calls` as `name(args)`. */
 export function fakeApi(over: Partial<FakeApiData> = {}): FakeApi {
   const data: FakeApiData = {
@@ -131,6 +153,7 @@ export function fakeApi(over: Partial<FakeApiData> = {}): FakeApi {
     runs: [[makeRun()]],
     reviews: [],
     conventions: { scan: null, candidates: [] },
+    blast: makeBlast(),
     ...over,
   };
   const calls: string[] = [];
@@ -167,6 +190,10 @@ export function fakeApi(over: Partial<FakeApiData> = {}): FakeApi {
     async getConventions(repoId) {
       calls.push(`getConventions(${repoId})`);
       return data.conventions;
+    },
+    async getBlast(pullId) {
+      calls.push(`getBlast(${pullId})`);
+      return data.blast;
     },
   };
 }

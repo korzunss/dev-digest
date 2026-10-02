@@ -22,7 +22,7 @@ Read tools are auto-approved and `run_agent_on_pr` asks first
 | `run_agent_on_pr` | `repo`, `pr`, `agent` | triggers one run, waits up to 45 s: `done` + concise review, or `running` + `run_id` |
 | `get_findings` | `repo`, `pr`, `agent?`, `run_id?`, `min_severity?` | `{verdict, findings[]}` per agent, ≤20 by severity + `total` |
 | `get_conventions` | `repo` | accepted conventions + `pending_count` |
-| `get_blast_radius` | `repo`, `pr` | stub: always `isError`, "impact UNKNOWN" |
+| `get_blast_radius` | `repo`, `pr` | changed symbols, callers (`file:line`), endpoints and crons from the repo index; `degraded` + `hint` when the index is missing (impact UNKNOWN) |
 
 `repo` is `owner/name` or `name`; `pr` is the PR number.
 

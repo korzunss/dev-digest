@@ -2,7 +2,7 @@ import type { ApiError } from '../core/errors.js';
 import type { AgentResolution, PullResolution, RepoResolution } from '../core/resolve.js';
 
 const MAX = 200;
-const cut = (s: string) => (s.length > MAX ? `${s.slice(0, MAX)}…` : s);
+export const cut = (s: string) => (s.length > MAX ? `${s.slice(0, MAX)}…` : s);
 
 export function apiErrorText(err: ApiError, apiUrl?: string): string {
   switch (err.code) {
@@ -50,5 +50,5 @@ export const noReviewText = (repo: string, pr: number) =>
   `No finished review for ${repo}#${pr}. Call run_agent_on_pr to start one.`;
 export const unknownRunText = (id: string, repo: string, pr: number) =>
   `Run ${id} not found for ${repo}#${pr}. Omit run_id to get the latest review.`;
-export const BLAST_TEXT =
-  'get_blast_radius is not available yet. Impact is UNKNOWN, not zero — do not conclude the PR has no impact; inspect callers of the changed files instead.';
+export const blastDegradedHint = (reason: string) =>
+  `Index not built (${reason}): impact is UNKNOWN beyond what is listed — resync the repo in DevDigest, then retry.`;

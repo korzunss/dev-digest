@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { registerGetBlastRadius } from '../src/tools/get-blast-radius.js';
 import { registerGetConventions } from '../src/tools/get-conventions.js';
 import { registerListAgents } from '../src/tools/list-agents.js';
-import { fakeApi, fakeClock, makeAgent, makeRepo } from './fakes.js';
+import { fakeApi, fakeClock, makeAgent, makeBlast, makeRepo } from './fakes.js';
 import { connect, textOf } from './harness.js';
 
 async function setup(over: Parameters<typeof fakeApi>[0] = {}) {
@@ -12,7 +12,7 @@ async function setup(over: Parameters<typeof fakeApi>[0] = {}) {
   const server = new McpServer({ name: 't', version: '0' });
   registerListAgents(server, deps);
   registerGetConventions(server, deps);
-  registerGetBlastRadius(server);
+  registerGetBlastRadius(server, deps);
   return { api, client: await connect(server) };
 }
 
@@ -55,11 +55,44 @@ describe('get_conventions', () => {
 });
 
 describe('get_blast_radius', () => {
-  it('is an error that says impact is UNKNOWN and makes no API call', async () => {
+  const args = { repo: 'acme/web', pr: 7 };
+
+  it('returns the map from one getBlast call', async () => {
     const { api, client } = await setup();
-    const res = await client.callTool({ name: 'get_blast_radius', arguments: { repo: 'acme/web', pr: 7 } });
+    const res = await client.callTool({ name: 'get_blast_radius', arguments: args });
+    expect(res.isError).toBeFalsy();
+    expect(api.calls.filter((c) => c.startsWith('getBlast'))).toEqual(['getBlast(pull-1)']);
+    const body = JSON.parse(textOf(res));
+    expect(body.downstream[0].callers[0]).toMatchObject({ file: 'src/api.ts', line: 12 });
+    expect(body.hint).toBeUndefined();
+  });
+
+  it('adds a hint when degraded', async () => {
+    const { client } = await setup({ blast: makeBlast({ degraded: true, reason: 'no_data' }) });
+    const res = await client.callTool({ name: 'get_blast_radius', arguments: args });
+    expect(JSON.parse(textOf(res)).hint).toContain('UNKNOWN');
+  });
+
+  it('is an error listing recent PRs for an unknown PR, without calling getBlast', async () => {
+    const { api, client } = await setup();
+    const res = await client.callTool({ name: 'get_blast_radius', arguments: { repo: 'acme/web', pr: 99 } });
     expect(res.isError).toBe(true);
-    expect(textOf(res)).toContain('UNKNOWN');
-    expect(api.calls).toEqual([]);
+    expect(textOf(res)).toContain('#7');
+    expect(api.calls.some((c) => c.startsWith('getBlast'))).toBe(false);
+  });
+
+  // an unknown repo is an error that never reaches the blast endpoint
+  it('is an error for an unknown repo, without calling getBlast', async () => {
+    const { api, client } = await setup();
+    const res = await client.callTool({ name: 'get_blast_radius', arguments: { repo: 'acme/nope', pr: 7 } });
+    expect(res.isError).toBe(true);
+    expect(api.calls.some((c) => c.startsWith('getBlast'))).toBe(false);
+  });
+
+  // PR-written text in the response is capped on the tool path too (data, not instructions)
+  it('caps an oversized summary returned by the API', async () => {
+    const { client } = await setup({ blast: makeBlast({ summary: 'y'.repeat(500) }) });
+    const res = await client.callTool({ name: 'get_blast_radius', arguments: args });
+    expect(JSON.parse(textOf(res)).summary).toBe(`${'y'.repeat(200)}…`);
   });
 });

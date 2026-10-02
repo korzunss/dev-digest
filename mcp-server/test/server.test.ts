@@ -48,6 +48,14 @@ describe('GET-only pin', () => {
       '/agents': [{ id: 'a1', name: 'Security', enabled: true, model: 'm', description: '' }],
       '/pulls/p1/runs': [{ run_id: 'run-1', agent_id: 'a1', status: 'running' }],
       '/pulls/p1/reviews': [],
+      '/pulls/p1/blast': {
+        changed_symbols: [],
+        downstream: [],
+        summary: '',
+        degraded: false,
+        reason: null,
+        limits: { callers_per_symbol: 10, depth: 2 },
+      },
       '/repos/r1/conventions': { scan: null, candidates: [] },
       '/pulls/p1/review': { pr_id: 'p1', runs: [{ run_id: 'run-1', agent_id: 'a1', agent_name: 'Security' }], reviews: [] },
     };
@@ -71,6 +79,7 @@ describe('GET-only pin', () => {
     await client.callTool({ name: 'get_conventions', arguments: { repo } });
     await client.callTool({ name: 'get_blast_radius', arguments: { repo, pr: 7 } });
     expect(seen.length).toBeGreaterThan(0);
+    expect(seen.length).toBeGreaterThanOrEqual(5);
     expect(new Set(seen)).toEqual(new Set(['GET']));
 
     seen.length = 0;

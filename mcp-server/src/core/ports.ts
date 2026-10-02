@@ -1,5 +1,6 @@
 import type {
   Agent,
+  BlastRadius,
   ConventionScanResult,
   PrMeta,
   Repo,
@@ -17,6 +18,7 @@ export interface DevDigestApi {
   listRuns(pullId: string): Promise<RunSummary[]>;
   listReviews(pullId: string): Promise<ReviewRecord[]>;
   getConventions(repoId: string): Promise<ConventionScanResult>;
+  getBlast(pullId: string): Promise<BlastRadius>;
 }
 
 /** Injected time source so the run-wait loop stays pure and testable. */

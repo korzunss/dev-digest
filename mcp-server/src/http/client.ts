@@ -60,5 +60,6 @@ export function createHttpApi(baseUrl: string, fetchImpl: typeof fetch = fetch):
     listRuns: (pullId) => request('GET', `/pulls/${id(pullId)}/runs`),
     listReviews: (pullId) => request('GET', `/pulls/${id(pullId)}/reviews`),
     getConventions: (repoId) => request('GET', `/repos/${id(repoId)}/conventions`),
+    getBlast: (pullId) => request('GET', `/pulls/${id(pullId)}/blast`),
   };
 }
