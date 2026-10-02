@@ -9,11 +9,18 @@ Goal: see at least 2 real callers and at least 1 HTTP endpoint in the Overview t
 3. Resync it: press the resync button, or `POST /repos/:id/resync`.
 4. Wait until `GET /repos/:id/index-state` reports `status: "full"`.
 
+Always resync right before the demo and wait for `index-state` to advance to the current
+default-branch head. A stale index shows stale line numbers (during the first demo the index
+was still at `c6af1e4`).
+
 ## 2. Prepare the PR
 
 1. On a branch, edit one **exported helper** that at least 2 other files import.
 2. Make sure at least one of those callers defines an HTTP route (for example an Express/Fastify handler).
 3. Push the branch and open a PR on GitHub.
+4. Pick a PR whose changed files have merged-PR history on the forge, so "Prior PRs" is not
+   empty. Check on the default branch: `git log --oneline -- <file>` should show merge or
+   squash commits with `(#N)`.
 
 ## 3. Check the studio
 
@@ -24,11 +31,28 @@ Open the PR in DevDigest, Overview tab. Expected:
 - Endpoints and crons listed separately.
 - A Tree/Graph toggle; Graph shows the SVG map.
 - "Prior PRs": merged PRs that touched the same files (GitHub only).
+- Callers in test files (`*.test.*`, `*.it.test.*`, `test/`, `__tests__/`) are hidden (D11).
+  Each call site is its own `file:line` row, and the callers count counts call sites (D12).
 
 Server log shows one line per request served from the index:
 `blast: read persistent repo index … no AST/import-graph rebuild`.
 
 API check: `GET /pulls/:id/blast` (map) and `GET /pulls/:id/history` (prior PRs).
+
+## Visual check
+
+Compare the Overview tab with `docs/plans/assets/18-blast-radius/design-*.png`:
+
+- [ ] Two columns at the top of the tab: Intent left, Blast radius right. The design's PR Brief
+      card is intentionally absent (D9-B) and so are Risk areas (D10-A).
+- [ ] Stat row with icons: symbols, callers, endpoints, crons.
+- [ ] Segmented Tree/Graph toggle on the right of the stat row.
+- [ ] Filled symbol rows `name()` with "N callers"; caller rows with `↳`.
+- [ ] Blue endpoint chips (globe) and amber cron chips (clock).
+- [ ] Graph: columns symbols | callers | endpoints with curved edges and a legend.
+- [ ] "Prior PRs touching these files" panel inside the card, collapsible, with a count badge.
+
+Log any mismatch in the plan's Verification log as `visual: <item>`.
 
 ## 4. MCP check
 

@@ -505,3 +505,57 @@ Reverts: `shasum -c` OK for 8 subject files. Exception: `blast/repository.ts` (u
 Coverage gaps left: history cache eviction, `HISTORY_MAX_PATHS` truncation, `.it` depth-2 with a symbol declared in two files.
 Main-session full run after test-writer: server unit 45 files / 522 passed; `.it` 23 files / 157 passed; client 45 files / 366 passed.
 - 2026-10-02 delta (plan-verifier): complete — 107/107 met; R4 and V1 met. Status set to done by the main session.
+- 2026-10-02 plan reopened (D9-B … D13), G7–G10 implemented.
+- main-session fix: V2 — `BlastGraph.tsx` node fill `var(--bg-card, var(--bg-hover))` → `var(--bg-elevated)` (`--bg-card` is not a theme token). S24 Done-when re-run green.
+- main-session fix: V3 — `PriorPrsCard/styles.ts` `var(--bg-base, var(--bg-elevated))` → `var(--bg-elevated)` (`--bg-base` is not a theme token; same rendered value). S21 Done-when re-run green.
+- 2026-10-02 full pass G7–G10 (plan-verifier): incomplete — 70/75 met; P5, D15 partial; AC12, D18, T7 need the user's visual sign-off. Architecture review G7–G10: PASS, no findings.
+- main-session fix: P5 — `PriorPrsCard.test.tsx` mocks `@/lib/hooks/blast` with an `importActual` spread. S21 Done-when re-run: 16 passed.
+- main-session fix: D15 — `BlastRadiusCard.test.tsx` Graph test asserts every `path` starts (`M x`) at some `rect`'s `x + width`. Break check: `x1 = a.x` in `BlastGraph.tsx` fails it; reverted, shasum identical; 14 passed.
+- 2026-10-02 delta G7–G10 (plan-verifier): complete — needs sign-off; 72/75 met; P5, D15 met; AC12, D18, T7 await the user's visual check.
+- 2026-10-02 gap H1 (main session, live API): for a fork, `/history` listed upstream parent PRs (#137, #101) whose links do not exist in the fork. Fix mode (implementer) H1, S2: `collectMergedPrs` keeps only PRs whose `base.repo.full_name` equals the queried repo (case-insensitive; missing base repo dropped); `octokit.ts` passes `baseRepo` and `repoFullName`; new unit case (upstream #137 and null-base #101 dropped, differently-cased #8 kept). Skills: onion-architecture H1 · typescript-expert, security H1 (read in a follow-up, no change required). Verification: server typecheck ✅; `github-merged-prs` + `blast` unit 32 passed; main-session full run: `.it` 23 files / 157 passed, server unit 45 files / 529 passed.
+- 2026-10-02 delta H1 (plan-verifier): complete — needs sign-off; 73/76 met; H1 met; AC12, D18, T7 await the visual check.
+
+## Handoffs → G7 report (parallel with G8)
+From G7 (implementer, 2026-10-02):
+- `isBlastTestPath(path)` exported from `repo-intel/constants.ts` (a function among plain values, as the plan asked).
+- Facade drops test-file rows before the frontier and the cap; dedupe per call site `root|fromPath|line` (fallback `fromPath|line|symbol`).
+- `toBlastRadius` counts unique `file:line` call sites for the summary; output shape unchanged.
+- For G10 runbook: the demo counts call sites and excludes test files.
+- Process note: `typescript-expert` and `zod` were not read in the first run; re-run in fix mode read both after the fact — no code change required.
+
+Skills (G7): onion-architecture S17,S18 · typescript-expert S17,S18 (read after the fact) · zod S18 (no new schemas).
+Verification: server typecheck ✅; unit 528 passed; `blast.it` 7 passed; after fix mode 4 files / 37 passed.
+
+## Handoffs → G9
+From G8 (implementer, 2026-10-02):
+- `PriorPrsCard` renders inside `BlastRadiusCard` below a divider in every state; `OverviewTab` no longer renders it. `OverviewTab.tsx` now has the Intent section, an unlabelled Blast radius `<section>`, and Description — G9 rewrites it as the two-column grid.
+- `BlastRadiusCard` owns its heading (`SectionLabel icon="Workflow"`) and the toggle (`role="group"`, two `aria-pressed` buttons, disabled when no downstream).
+- `styles.ts`: new entries (toggle, divider, chips, symbol rows, guide line); `toggleButton`/`toggleButtonActive` are separate literals. `helpers.ts` exports `symbolLabel(name, kind)` (`()` for function/method); `blastStats` counts call sites by `file:line`. New `BlastSymbolNode.tsx` split out of `BlastTree.tsx`.
+- `blast.json`: `stat.*` and `callerCount` are ICU plurals; `graph.legend` kept for S24 to remove; `history.toggle`, `graph.legendSymbol|Caller|Endpoint|Cron` added (legend keys unused until S24).
+- Deviations: Blast `SectionLabel` removed from `OverviewTab` (card owns the heading); `ChevronDown` rotated 180° (no `ChevronUp` in vendored icons); panel header uses `title`, not `aria-label`.
+- Tests mock `@/lib/hooks/blast` via `importActual` (both hooks overridden). Security: PR strings render as text; links `target="_blank" rel="noreferrer"`.
+
+Skills (G8): onion-architecture — (no layer change) · engineering-insights step 0 · frontend-architecture, react-best-practices, next-best-practices S20,S21 · react-testing-library, typescript-expert, security S20,S21.
+Verification: `jq` ✅; client typecheck ✅; BlastRadiusCard + PriorPrsCard 3 files / 12 passed; client 45 files / 367 passed.
+
+## Handoffs → G10
+From G9 (implementer, 2026-10-02):
+- `OverviewTab` is a grid (`s.columns`, `repeat(auto-fit, minmax(420px, 1fr))`, `data-testid="overview-columns"`): `IntentCard` left, `BlastRadiusCard` right; Description below the grid; no PR Brief, no Risk areas, no column labels of its own.
+- `IntentCard` owns its header (`SectionLabel icon="Target"`, `brief.block.intent`) inside its frame.
+- Deviation: `brief.json` `intentCard.title` ("PR Brief") is now unused; left in place (file not in the plan).
+- Open for G10: S24 graph restyle (also removes `graph.legend` from `blast.json`), S25 runbook update.
+
+Skills (G9): onion-architecture S23 (no layer change) · engineering-insights step 0 · frontend-architecture, react-best-practices, next-best-practices, react-testing-library, typescript-expert S23.
+Verification: client typecheck ✅; OverviewTab + IntentCard 2 files / 9 passed; client 46 files / 369 passed.
+
+## Handoffs → review (after G10)
+From G10 (implementer, 2026-10-02):
+- S24: columns symbols | depth-1 | depth-2 (only when present) | endpoints then crons; caller nodes deduped by `file#name`; labels ≤18 chars + `…`, full text in `<title>`; cubic `<path>` edges from `x + width`; `rx` 6 boxes with `--accent`/`--border`/`--warn` strokes; four-dot legend; SVG scrolls horizontally; `graph.legend` removed from `blast.json`.
+- S25: `docs/demo/blast-radius.md` updated (resync first, PR with merged-PR history, visual checklist). Manual visual check not run (needs the user).
+- Security: graph strings render as SVG text / `<title>` only.
+
+Skills (G10): onion-architecture, engineering-insights preload (no layer change) · frontend-architecture, react-best-practices, next-best-practices, react-testing-library, typescript-expert S24 (SKILL.md top only).
+Verification: client typecheck ✅; graph-layout + BlastRadiusCard 14 passed; client 46 files / 373 passed.
+
+(V2/V3 are logged under `## Verification log`.)
+- Main-session full run after G10: client 46 files / 373 passed; server unit 45 files / 528 passed; `.it` 23 files / 157 passed.
