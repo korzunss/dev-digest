@@ -10,16 +10,16 @@
   "expand": "Expand callers",
   "collapse": "Collapse callers",
   "stat": {
-    "symbols": "symbols",
-    "callers": "callers",
-    "endpoints": "endpoints",
-    "crons": "cron/jobs"
+    "symbols": "{count, plural, one {symbol} other {symbols}}",
+    "callers": "{count, plural, one {caller} other {callers}}",
+    "endpoints": "{count, plural, one {endpoint} other {endpoints}}",
+    "crons": "{count, plural, one {cron} other {crons}}"
   },
   "view": {
     "tree": "tree",
     "graph": "graph"
   },
-  "callerCount": "{count} callers",
+  "callerCount": "{count, plural, one {# caller} other {# callers}}",
   "noDownstream": "{count} changed symbol(s), no downstream callers found.",
   "degraded": {
     "badge": "Degraded",
@@ -36,6 +36,7 @@
   },
   "history": {
     "title": "Prior PRs touching these files",
+    "toggle": "Toggle prior PRs",
     "empty": "No earlier merged PRs touched these files.",
     "unsupported": "Prior PR history is not available for this forge.",
     "unavailable": "Prior PR history could not be fetched right now.",
@@ -45,6 +46,9 @@
   "graph": {
     "empty": "No downstream callers to graph.",
     "ariaLabel": "Blast radius graph",
-    "legend": "symbols → callers → endpoints / cron jobs"
+    "legendSymbol": "changed symbol",
+    "legendCaller": "callers",
+    "legendEndpoint": "endpoints affected",
+    "legendCron": "crons"
   }
 }

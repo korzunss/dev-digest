@@ -7,14 +7,14 @@ export interface BlastStats {
   crons: number;
 }
 
-/** Unique counts across every downstream group (a caller reached from two
-    symbols is still one caller). Derived on render — never stored. */
+/** Unique counts across every downstream group (one call site = one caller,
+    even when reached from two symbols). Derived on render — never stored. */
 export function blastStats(data: BlastRadius): BlastStats {
   const callers = new Set<string>();
   const endpoints = new Set<string>();
   const crons = new Set<string>();
   for (const d of data.downstream) {
-    for (const c of d.callers) callers.add(`${c.file}:${c.line}:${c.name}`);
+    for (const c of d.callers) callers.add(`${c.file}:${c.line}`);
     for (const e of d.endpoints_affected) endpoints.add(e);
     for (const k of d.crons_affected) crons.add(k);
   }
@@ -24,4 +24,11 @@ export function blastStats(data: BlastRadius): BlastStats {
     endpoints: endpoints.size,
     crons: crons.size,
   };
+}
+
+const CALLABLE_KINDS = new Set(["function", "method"]);
+
+/** `name()` for callable symbols, the bare name otherwise. */
+export function symbolLabel(name: string, kind: string | undefined): string {
+  return kind && CALLABLE_KINDS.has(kind) ? `${name}()` : name;
 }

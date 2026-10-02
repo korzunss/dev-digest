@@ -1,15 +1,22 @@
-/* Pure layout for the blast-radius graph: columns symbols | depth-1 callers |
-   depth-2 callers | endpoints + crons. Deterministic integer coordinates. */
+/* Pure layout for the blast-radius graph: columns changed symbols | depth-1
+   callers | depth-2 callers (only when present) | endpoints then crons.
+   Deterministic integer coordinates; every column is vertically centred. */
 import type { BlastRadius } from "@devdigest/shared";
+import { symbolLabel } from "./helpers";
 
 export type GraphNodeKind = "symbol" | "caller" | "endpoint" | "cron";
 
 export interface GraphNode {
   id: string;
   kind: GraphNodeKind;
+  /** Display text, truncated with `…` past MAX_LABEL. */
   label: string;
+  /** Untruncated text (rendered as `<title>`). */
+  fullLabel: string;
   x: number;
   y: number;
+  width: number;
+  height: number;
   depth?: number;
 }
 
@@ -25,57 +32,109 @@ export interface GraphLayout {
   height: number;
 }
 
-export const COL_WIDTH = 220;
-export const ROW_HEIGHT = 28;
+export const NODE_WIDTH = 160;
+export const NODE_HEIGHT = 32;
+export const COL_GAP = 90;
+export const ROW_GAP = 16;
+export const MAX_LABEL = 18;
 const PAD = 16;
-const COLUMNS = 4;
+
+export function truncateLabel(text: string): string {
+  return text.length > MAX_LABEL ? `${text.slice(0, MAX_LABEL - 1)}…` : text;
+}
+
+interface Draft {
+  id: string;
+  kind: GraphNodeKind;
+  fullLabel: string;
+  col: number;
+  depth?: number;
+}
 
 export function graphLayout(data: BlastRadius): GraphLayout {
-  const nodes: GraphNode[] = [];
+  const drafts = new Map<string, Draft>();
+  const edgeKeys = new Set<string>();
   const edges: GraphEdge[] = [];
-  const next = [0, 0, 0, 0]; // next free row per column
+  const hasDepth2 = data.downstream.some((d) => d.callers.some((c) => c.depth >= 2));
+  const depth2Col = hasDepth2 ? 2 : -1;
+  const endpointCol = hasDepth2 ? 3 : 2;
+  const kindOf = new Map(data.changed_symbols.map((c) => [c.name, c.kind]));
 
-  function place(col: number, id: string, kind: GraphNodeKind, label: string, depth?: number): string {
-    const node: GraphNode = { id, kind, label, x: PAD + col * COL_WIDTH, y: PAD + next[col]! * ROW_HEIGHT };
-    if (depth !== undefined) node.depth = depth;
-    next[col] = next[col]! + 1;
-    nodes.push(node);
+  function add(id: string, kind: GraphNodeKind, fullLabel: string, col: number, depth?: number): string {
+    if (!drafts.has(id)) {
+      const draft: Draft = { id, kind, fullLabel, col };
+      if (depth !== undefined) draft.depth = depth;
+      drafts.set(id, draft);
+    }
     return id;
+  }
+  function link(from: string, to: string) {
+    const key = `${from}->${to}`;
+    if (edgeKeys.has(key)) return;
+    edgeKeys.add(key);
+    edges.push({ from, to });
   }
 
   for (const d of data.downstream) {
-    const symId = place(0, `s:${d.symbol}`, "symbol", d.symbol);
-    const callerIds = new Map<string, string>(); // caller name (depth 1) → node id
-    const depth1: string[] = [];
-
+    const symId = add(`s:${d.symbol}`, "symbol", symbolLabel(d.symbol, kindOf.get(d.symbol)), 0);
+    const direct = new Map<string, string>(); // depth-1 caller name → node id
+    // D12 rows repeat a caller per call site; nodes are deduped by file#name.
     for (const c of d.callers.filter((x) => x.depth === 1)) {
-      const id = place(1, `c:${d.symbol}:${c.file}:${c.line}:${c.name}`, "caller", c.name, 1);
-      callerIds.set(c.name, id);
-      depth1.push(id);
-      edges.push({ from: symId, to: id });
+      const id = add(`c:1:${c.file}#${c.name}`, "caller", c.name, 1, 1);
+      direct.set(c.name, id);
+      link(symId, id);
     }
     for (const c of d.callers.filter((x) => x.depth >= 2)) {
-      const id = place(2, `c:${d.symbol}:${c.file}:${c.line}:${c.name}`, "caller", c.name, c.depth);
-      edges.push({ from: (c.via && callerIds.get(c.via)) || symId, to: id });
+      const id = add(`c:2:${c.file}#${c.name}`, "caller", c.name, depth2Col, c.depth);
+      link((c.via && direct.get(c.via)) || symId, id);
     }
-
-    // The contract carries endpoints/crons per group, not per caller file: link
-    // them to the group's direct callers (or the symbol when it has none).
-    const sources = depth1.length > 0 ? depth1 : [symId];
+    // Endpoints/crons are carried per group, not per caller: link them to the
+    // group's direct callers (or to the symbol when it has none).
+    const sources = direct.size > 0 ? [...direct.values()] : [symId];
     for (const e of d.endpoints_affected) {
-      const id = place(3, `e:${d.symbol}:${e}`, "endpoint", e);
-      for (const from of sources) edges.push({ from, to: id });
+      const id = add(`e:${e}`, "endpoint", e, endpointCol);
+      for (const from of sources) link(from, id);
     }
     for (const k of d.crons_affected) {
-      const id = place(3, `k:${d.symbol}:${k}`, "cron", k);
-      for (const from of sources) edges.push({ from, to: id });
+      const id = add(`k:${k}`, "cron", k, endpointCol);
+      for (const from of sources) link(from, id);
     }
-
-    // keep groups visually separate: the next group starts below the tallest column
-    const row = Math.max(...next);
-    next.fill(row);
   }
 
-  const rows = Math.max(0, ...nodes.map((n) => (n.y - PAD) / ROW_HEIGHT + 1));
-  return { nodes, edges, width: PAD * 2 + (COLUMNS - 1) * COL_WIDTH + 180, height: PAD * 2 + rows * ROW_HEIGHT };
+  // Within the last column endpoints come before crons.
+  const ordered = [...drafts.values()].sort((a, b) =>
+    a.col !== b.col ? a.col - b.col : a.kind === b.kind ? 0 : a.kind === "endpoint" ? -1 : b.kind === "endpoint" ? 1 : 0,
+  );
+  const cols = new Map<number, Draft[]>();
+  for (const d of ordered) cols.set(d.col, [...(cols.get(d.col) ?? []), d]);
+  const tallest = Math.max(0, ...[...cols.values()].map((c) => c.length));
+  const innerHeight = tallest > 0 ? tallest * NODE_HEIGHT + (tallest - 1) * ROW_GAP : 0;
+
+  const nodes: GraphNode[] = [];
+  for (const [col, list] of [...cols.entries()].sort((a, b) => a[0] - b[0])) {
+    const colHeight = list.length * NODE_HEIGHT + (list.length - 1) * ROW_GAP;
+    const top = PAD + (innerHeight - colHeight) / 2;
+    list.forEach((d, i) => {
+      const node: GraphNode = {
+        id: d.id,
+        kind: d.kind,
+        label: truncateLabel(d.fullLabel),
+        fullLabel: d.fullLabel,
+        x: PAD + col * (NODE_WIDTH + COL_GAP),
+        y: Math.round(top + i * (NODE_HEIGHT + ROW_GAP)),
+        width: NODE_WIDTH,
+        height: NODE_HEIGHT,
+      };
+      if (d.depth !== undefined) node.depth = d.depth;
+      nodes.push(node);
+    });
+  }
+
+  const colCount = nodes.length === 0 ? 0 : Math.max(...ordered.map((d) => d.col)) + 1;
+  return {
+    nodes,
+    edges,
+    width: PAD * 2 + colCount * NODE_WIDTH + Math.max(0, colCount - 1) * COL_GAP,
+    height: PAD * 2 + innerHeight,
+  };
 }
