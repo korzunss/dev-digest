@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import * as t from '../../db/schema.js';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
@@ -30,36 +30,7 @@ export default async function pollingRoutes(appBase: FastifyInstance) {
     const pulls = await forge.listPullRequests(toRepoRef(repo));
     let synced = 0;
     for (const pr of pulls) {
-      await container.db
-        .insert(t.pullRequests)
-        .values({
-          workspaceId,
-          repoId: repo.id,
-          number: pr.number,
-          title: pr.title,
-          author: pr.author,
-          branch: pr.branch,
-          base: pr.base,
-          headSha: pr.head_sha,
-          baseSha: pr.base_sha ?? null,
-          additions: pr.additions,
-          deletions: pr.deletions,
-          filesCount: pr.files_count,
-          status: pr.status,
-          updatedAt: pr.updated_at ? new Date(pr.updated_at) : null,
-        })
-        .onConflictDoUpdate({
-          target: [t.pullRequests.repoId, t.pullRequests.number],
-          set: {
-            title: pr.title,
-            base: pr.base,
-            // D7: keep the stored base SHA while the head and base branch are unchanged, clear it once either moved.
-            baseSha: sql`coalesce(excluded.base_sha, case when ${t.pullRequests.headSha} = excluded.head_sha and ${t.pullRequests.base} = excluded.base then ${t.pullRequests.baseSha} end)`,
-            headSha: pr.head_sha,
-            status: pr.status,
-            updatedAt: pr.updated_at ? new Date(pr.updated_at) : null,
-          },
-        });
+      await container.pullsRepo.upsertFromForge(workspaceId, repo.id, pr, { withOpenedAt: false });
       synced++;
     }
     await container.db

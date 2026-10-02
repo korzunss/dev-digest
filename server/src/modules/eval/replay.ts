@@ -1,5 +1,6 @@
 import type { GitClient, LLMProvider, Provider, RepoRef, UnifiedDiff } from '@devdigest/shared';
 import { sliceDiff, type RepoRuleSet, type reviewPullRequest } from '@devdigest/reviewer-core';
+import { REPLAY_ERROR_MAX_CHARS } from './constants.js';
 import type { ReviewEvalFixture } from './fixture.js';
 import {
   aggregateRounds,
@@ -75,6 +76,8 @@ export interface ReplayOptions {
   detachedSkills: readonly string[];
   generalAgentName: string;
   repoRulesMaxChars: number;
+  /** Bound on the `diffCommits` call; aborting kills the git process. */
+  diffTimeoutMs: number;
   onProgress?: (e: ReplayProgress) => void;
 }
 
@@ -83,6 +86,8 @@ export interface ReplayProgress {
   round: number;
   agent: string;
   ok: boolean;
+  /** Why the job failed: one sanitized line, set only when `ok` is false. */
+  error?: string;
   findings: number;
   costUsd: number | null;
   seconds: number;
@@ -165,6 +170,16 @@ interface JobResult {
   ok: boolean;
   run?: AgentRunInput;
   skipped: number;
+  error?: string;
+}
+
+/** First line of an error message, with token-like strings redacted and the length capped. */
+export function describeJobError(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err);
+  const line = (raw.split('\n')[0] ?? '').trim();
+  const redacted = line.replace(/\b(sk-[\w-]+|Bearer\s+\S+|[A-Za-z0-9_-]{32,})/g, '[redacted]');
+  const text = redacted || 'unknown error';
+  return text.length > REPLAY_ERROR_MAX_CHARS ? `${text.slice(0, REPLAY_ERROR_MAX_CHARS - 1)}…` : text;
 }
 
 export async function runReplay(
@@ -175,7 +190,12 @@ export async function runReplay(
   if (!fixture.base_sha) throw new Error('fixture has no base_sha: pin the range to replay it');
   const baseSha = fixture.base_sha;
 
-  const diff = await deps.git.diffCommits(opts.repo, baseSha, fixture.head_sha);
+  const diff = await deps.git.diffCommits(
+    opts.repo,
+    baseSha,
+    fixture.head_sha,
+    AbortSignal.timeout(opts.diffTimeoutMs),
+  );
   const allPaths = diff.files.map((f) => f.path);
   const inDiff = new Set(allPaths);
   const wanted = fixtureLocationFiles(fixture);
@@ -251,8 +271,8 @@ export async function runReplay(
                 findings,
               },
             };
-          } catch {
-            result = { ok: false, skipped: 0 };
+          } catch (err) {
+            result = { ok: false, skipped: 0, error: describeJobError(err) };
           }
           results.set(`${arm}:${round}:${agent.name}`, result);
           opts.onProgress?.({
@@ -260,6 +280,7 @@ export async function runReplay(
             round,
             agent: agent.name,
             ok: result.ok,
+            ...(result.error ? { error: result.error } : {}),
             findings: result.run?.findings.length ?? 0,
             costUsd,
             seconds: (Date.now() - started) / 1000,

@@ -15,14 +15,14 @@ interface Props {
 
 export function BlastDegradedNotice({ reason, repoId, prId }: Props) {
   const t = useTranslations("blast");
-  const { start, pending, failed } = useBlastResync(repoId, prId);
+  const { start, ready, pending, failed } = useBlastResync(repoId, prId);
   return (
     <div style={s.notice}>
       <Badge icon="AlertTriangle" color="var(--warn)" bg="var(--warn-bg)">
         {t("degraded.badge")}
       </Badge>
       {reason && <span>{t(`degraded.reason.${reason}`)}</span>}
-      <Button kind="secondary" size="sm" icon="RefreshCw" loading={pending} disabled={!repoId} onClick={start}>
+      <Button kind="secondary" size="sm" icon="RefreshCw" loading={pending} disabled={!repoId || !ready} onClick={start}>
         {pending ? t("degraded.resyncing") : t("degraded.resync")}
       </Button>
       {failed && (

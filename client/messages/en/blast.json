@@ -16,6 +16,7 @@
     "crons": "{count, plural, one {cron} other {crons}}"
   },
   "view": {
+    "label": "Blast radius view",
     "tree": "tree",
     "graph": "graph"
   },

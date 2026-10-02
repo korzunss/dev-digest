@@ -197,12 +197,14 @@ export const s = {
     alignItems: "center",
     gap: 6,
   } satisfies CSSProperties,
-  legendDot: {
-    width: 8,
-    height: 8,
-    borderRadius: "50%",
-    display: "inline-block",
-  } satisfies CSSProperties,
+  legendDot: (background: string) =>
+    ({
+      width: 8,
+      height: 8,
+      borderRadius: "50%",
+      display: "inline-block",
+      background,
+    }) satisfies CSSProperties,
   errorLine: {
     fontSize: 12,
     color: "var(--crit)",

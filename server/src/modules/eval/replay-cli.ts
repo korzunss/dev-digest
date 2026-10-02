@@ -12,6 +12,7 @@ import { loadConfig } from '../../platform/config.js';
 import { Container } from '../../platform/container.js';
 import { GENERAL_AGENT_NAME, GENERAL_DETACHED_SKILLS } from '../agents/constants.js';
 import {
+  DIFF_COMMITS_TIMEOUT_MS,
   REVIEW_CALL_DEADLINE_MS,
   REVIEW_MAX_OUTPUT_TOKENS,
   REVIEW_MAX_SKIPPED_CHUNK_FRACTION,
@@ -134,9 +135,10 @@ export async function main(argv: string[]): Promise<0 | 1> {
         detachedSkills: GENERAL_DETACHED_SKILLS,
         generalAgentName: GENERAL_AGENT_NAME,
         repoRulesMaxChars: REVIEW_REPO_RULES_MAX_CHARS,
+        diffTimeoutMs: DIFF_COMMITS_TIMEOUT_MS,
         onProgress: (e) =>
           console.error(
-            `${e.arm} r${e.round} ${e.agent} ${e.ok ? `${e.findings} finding(s)` : 'FAILED'} ` +
+            `${e.arm} r${e.round} ${e.agent} ${e.ok ? `${e.findings} finding(s)` : `FAILED (${e.error ?? 'unknown error'})`} ` +
               `${e.costUsd === null ? 'cost n/a' : `$${e.costUsd.toFixed(4)}`} ${e.seconds.toFixed(1)}s`,
           ),
       },

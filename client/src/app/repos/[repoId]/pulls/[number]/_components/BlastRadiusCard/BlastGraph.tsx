@@ -76,7 +76,7 @@ export function BlastGraph({ data }: { data: BlastRadius }) {
       <div style={s.legend}>
         {LEGEND.map(({ kind, key }) => (
           <span key={kind} style={s.legendItem}>
-            <span style={{ ...s.legendDot, background: STROKE[kind] }} />
+            <span style={s.legendDot(STROKE[kind])} />
             {t(`graph.${key}`)}
           </span>
         ))}

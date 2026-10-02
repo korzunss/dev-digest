@@ -42,7 +42,7 @@ export function BlastRadiusCard({ prId, headSha, repo }: Props) {
           {data.degraded && <BlastDegradedNotice reason={data.reason} repoId={repo?.id} prId={prId} />}
           <div style={s.headRow}>
             <BlastSummary data={data} />
-            <div role="group" style={s.toggle}>
+            <div role="group" aria-label={t("view.label")} style={s.toggle}>
               {(["tree", "graph"] as const).map((v) => (
                 <button
                   key={v}

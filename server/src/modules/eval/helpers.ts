@@ -178,6 +178,13 @@ export function scoreSuite(fixture: ReviewEvalFixture, runs: AgentRunInput[]): S
 
 const pct = (v: number | null) => (v === null ? 'n/a' : `${Math.round(v * 100)}%`);
 
+/** Left-aligned columns: header, dashed rule, then one line per row. */
+function formatTable(head: string[], rows: string[][]): string[] {
+  const widths = head.map((h, i) => Math.max(h.length, ...rows.map((r) => (r[i] as string).length)));
+  const line = (cells: string[]) => cells.map((c, i) => c.padEnd(widths[i] as number)).join('  ').trimEnd();
+  return [line(head), line(widths.map((w) => '-'.repeat(w))), ...rows.map(line)];
+}
+
 export function formatReport(s: SuiteScore): string {
   const head = ['agent', 'recall', 'precision', 'findings', 'matched', 'off-lane', 'unmatched', 'crit', 'false-crit', 'cost', 'duration'];
   const rows = s.agents.map((a) => {
@@ -197,9 +204,7 @@ export function formatReport(s: SuiteScore): string {
       a.durationMs === null ? '-' : `${(a.durationMs / 1000).toFixed(1)}s`,
     ];
   });
-  const widths = head.map((h, i) => Math.max(h.length, ...rows.map((r) => (r[i] as string).length)));
-  const line = (cells: string[]) => cells.map((c, i) => c.padEnd(widths[i] as number)).join('  ').trimEnd();
-  const out = [line(head), line(widths.map((w) => '-'.repeat(w))), ...rows.map(line)];
+  const out = formatTable(head, rows);
   out.push('');
   out.push(
     s.duplicates.length
@@ -345,9 +350,7 @@ export function formatRounds(summary: RoundsSummary, checks: GateCheck[]): strin
     num(a.falseCriticalsMean),
     a.costMean === null ? '-' : `$${a.costMean.toFixed(4)}`,
   ]);
-  const widths = head.map((h, i) => Math.max(h.length, ...rows.map((r) => (r[i] as string).length)));
-  const line = (cells: string[]) => cells.map((c, i) => c.padEnd(widths[i] as number)).join('  ').trimEnd();
-  out.push('', line(head), line(widths.map((w) => '-'.repeat(w))), ...rows.map(line));
+  out.push('', ...formatTable(head, rows));
   if (checks.length) out.push('');
   for (const c of checks) {
     out.push(`gate ${c.name}: ${c.pass ? 'PASS' : 'FAIL'} (actual ${num(c.actual, 4)} limit ${num(c.limit, 4)})`);

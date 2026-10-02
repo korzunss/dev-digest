@@ -33,8 +33,11 @@ export class RunBus {
   }
 
   /** Per-run abort signal, created lazily. Already aborted when the run was
-   *  cancelled before the signal was first requested. */
+   *  cancelled before the signal was first requested. A completed run (e.g.
+   *  cancelled via `cancelRun`, which completes the bus at once) gets an
+   *  aborted signal that is not stored, so nothing outlives `complete`. */
   signalFor(runId: string): AbortSignal {
+    if (this.completed.has(runId)) return AbortSignal.abort(new Error('Run completed'));
     let c = this.controllers.get(runId);
     if (!c) {
       c = new AbortController();

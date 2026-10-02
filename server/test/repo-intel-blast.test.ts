@@ -74,6 +74,35 @@ describe('RepoIntel.getBlastRadius — persistent index', () => {
     expect(r.degraded).toBe(false);
   });
 
+  it('a root full at depth 1 is not traversed to depth 2; a root with room is', async () => {
+    const symbols = [sym('src/a.ts', 'A'), sym('src/b.ts', 'B'), sym('src/cb.ts', 'fb')];
+    const depth1: Partial<ResolvedCallerRow>[] = [
+      { fromPath: 'src/cb.ts', declFile: 'src/b.ts', toSymbol: 'B' },
+    ];
+    for (let i = 0; i < MAX_CALLERS_PER_SYMBOL; i++) {
+      depth1.push({ fromPath: `src/ca${i}.ts`, declFile: 'src/a.ts', toSymbol: 'A' });
+      symbols.push(sym(`src/ca${i}.ts`, `fa${i}`));
+    }
+    const queried: string[][] = [];
+    const { svc } = build({
+      symbols,
+      callers: (files, names) => {
+        if (names.includes('A')) return depth1;
+        queried.push([...names].sort());
+        return names.includes('fb')
+          ? [{ fromPath: 'src/d.ts', declFile: 'src/cb.ts', toSymbol: 'fb' }]
+          : [];
+      },
+    });
+    const r = await svc.getBlastRadius('r', ['src/a.ts', 'src/b.ts']);
+    expect(queried).toEqual([['fb']]); // A's 20 callers never reach the depth-2 query
+    expect(r.callers.filter((c) => c.viaSymbol === 'A')).toHaveLength(MAX_CALLERS_PER_SYMBOL);
+    expect(r.callers.filter((c) => c.viaSymbol === 'B').map((c) => [c.file, c.depth])).toEqual([
+      ['src/cb.ts', 1],
+      ['src/d.ts', 2],
+    ]);
+  });
+
   it('traverses to depth 2 with `via`, excludes the declaring file, never touches codeIndex', async () => {
     const symbols = [sym('src/a.ts', 'A'), sym('src/c1.ts', 'c1'), sym('src/c2.ts', 'c2')];
     const { svc, touched } = build({

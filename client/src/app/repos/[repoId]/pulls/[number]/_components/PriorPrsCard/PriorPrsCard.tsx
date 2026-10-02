@@ -30,10 +30,10 @@ export function PriorPrsCard({ prId, headSha, repo }: Props) {
   const items = data && data.status === "ok" ? data.history : [];
   let body: React.ReactNode;
   if (isLoading) body = <div style={s.message}><Skeleton height={40} /></div>;
-  else if (isError || !data) body = <div role="alert" style={{ ...s.message, ...s.errorLine }}>{t("history.loadError")}</div>;
-  else if (data.status === "unsupported") body = <div style={{ ...s.message, ...s.muted }}>{t("history.unsupported")}</div>;
-  else if (data.status === "unavailable") body = <div style={{ ...s.message, ...s.muted }}>{t("history.unavailable")}</div>;
-  else if (items.length === 0) body = <div style={{ ...s.message, ...s.muted }}>{t("history.empty")}</div>;
+  else if (isError || !data) body = <div role="alert" style={s.messageError}>{t("history.loadError")}</div>;
+  else if (data.status === "unsupported") body = <div style={s.messageMuted}>{t("history.unsupported")}</div>;
+  else if (data.status === "unavailable") body = <div style={s.messageMuted}>{t("history.unavailable")}</div>;
+  else if (items.length === 0) body = <div style={s.messageMuted}>{t("history.empty")}</div>;
   else {
     body = items.map((h, i) => (
       <div key={h.pr_number} style={i === 0 ? s.itemFirst : s.item}>

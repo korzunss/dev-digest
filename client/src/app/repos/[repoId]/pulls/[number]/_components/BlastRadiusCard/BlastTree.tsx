@@ -15,6 +15,8 @@ export function BlastTree({ data, headSha, repo }: Props) {
   const cap = data.limits.callers_per_symbol;
   return (
     <div>
+      {/* `downstream` is grouped by symbol name on the server
+          (modules/blast/helpers.ts toBlastRadius), so `symbol` is unique. */}
       {data.downstream.map((d, i) => (
         <BlastSymbolNode
           key={d.symbol}

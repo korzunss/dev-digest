@@ -17,7 +17,7 @@ describe('RunBus abort signal', () => {
     expect(bus.signalFor('r2').aborted).toBe(true);
   });
 
-  it('complete then signalFor returns a fresh, un-aborted signal', () => {
+  it('complete then signalFor returns an aborted signal that is not stored', () => {
     const bus = new RunBus();
     const first = bus.signalFor('r3');
     bus.cancel('r3');
@@ -25,7 +25,17 @@ describe('RunBus abort signal', () => {
     const next = bus.signalFor('r3');
     expect(first.aborted).toBe(true);
     expect(next).not.toBe(first);
-    expect(next.aborted).toBe(false);
+    expect(next.aborted).toBe(true);
+    // Not stored: each call after complete gets its own signal.
+    expect(bus.signalFor('r3')).not.toBe(next);
+  });
+
+  it('a run cancelled via complete (cancelRun) reads as stopped to a late signalFor', () => {
+    const bus = new RunBus();
+    bus.cancel('r4');
+    bus.complete('r4');
+    expect(bus.signalFor('r4').aborted).toBe(true);
+    expect(bus.signalForAll(['r4']).aborted).toBe(true);
   });
 });
 

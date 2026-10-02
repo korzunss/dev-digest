@@ -22,7 +22,8 @@ vi.mock("@/lib/hooks/blast", async () => ({
   useBlastRadius: useBlastRadiusMock,
   usePrHistory: usePrHistoryMock,
 }));
-vi.mock("@/lib/hooks/repo-intel", () => ({
+vi.mock("@/lib/hooks/repo-intel", async () => ({
+  ...(await vi.importActual<typeof import("@/lib/hooks/repo-intel")>("@/lib/hooks/repo-intel")),
   useRepoIntelStatus: useRepoIntelStatusMock,
   useResyncRepoIntel: useResyncMock,
 }));

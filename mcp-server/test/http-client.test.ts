@@ -2,11 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { ApiError } from '../src/core/errors.js';
 import { createHttpApi } from '../src/http/client.js';
 
-function recorder(respond: () => Response | Promise<Response>) {
+function recorder(respond: (url: string) => Response | Promise<Response>) {
   const calls: { method: string; url: string; body?: string }[] = [];
   const f = (async (url: string, init?: RequestInit) => {
     calls.push({ method: init?.method ?? 'GET', url, ...(init?.body ? { body: String(init.body) } : {}) });
-    return respond();
+    return respond(url);
   }) as unknown as typeof fetch;
   return { calls, f };
 }
@@ -14,7 +14,7 @@ const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { sta
 
 describe('createHttpApi', () => {
   it('uses the right method and URL per call, encoding ids', async () => {
-    const { calls, f } = recorder(() => json([]));
+    const { calls, f } = recorder((url) => json(url.endsWith('/conventions') ? { scan: null, candidates: [] } : []));
     const api = createHttpApi('http://x:1/', f);
     await api.listRepos();
     await api.listPulls('a/b');
@@ -78,5 +78,32 @@ describe('createHttpApi', () => {
     const err = await createHttpApi('http://x', f).listRepos().catch((e) => e);
     expect(err).toBeInstanceOf(ApiError);
     expect(err).toMatchObject({ status: 200, code: 'bad_response' });
+  });
+
+  it('maps a 2xx body of the wrong shape to bad_response on validated endpoints', async () => {
+    const wrong = recorder(() => json({ unexpected: true })).f;
+    for (const call of [
+      (a: ReturnType<typeof createHttpApi>) => a.getBlast('p1'),
+      (a: ReturnType<typeof createHttpApi>) => a.getConventions('r1'),
+      (a: ReturnType<typeof createHttpApi>) => a.listReviews('p1'),
+    ]) {
+      const err = await call(createHttpApi('http://x', wrong)).catch((e) => e);
+      expect(err).toBeInstanceOf(ApiError);
+      expect(err).toMatchObject({ status: 200, code: 'bad_response' });
+    }
+  });
+
+  it('returns a well-formed blast body unchanged, extra fields included', async () => {
+    const blast = {
+      changed_symbols: [{ name: 'f', file: 'a.ts', kind: 'function', rank: 0.1 }],
+      downstream: [],
+      summary: '1 changed symbol',
+      degraded: false,
+      reason: null,
+      limits: { callers_per_symbol: 20, depth: 2 },
+      extra: 'kept',
+    };
+    const out = await createHttpApi('http://x', recorder(() => json(blast)).f).getBlast('p1');
+    expect(out).toEqual(blast);
   });
 });

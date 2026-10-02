@@ -17,7 +17,7 @@ interface OverviewTabProps {
 export function OverviewTab({ prId, prHeadSha, prBody, repo }: OverviewTabProps) {
   return (
     <>
-      <div style={s.columns} data-testid="overview-columns">
+      <div style={s.columns}>
         <section>
           <IntentCard prId={prId} prHeadSha={prHeadSha} />
         </section>

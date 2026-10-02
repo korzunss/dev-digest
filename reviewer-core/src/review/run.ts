@@ -224,6 +224,83 @@ function selectMode(
   return { mode, reason: 'strategy' };
 }
 
+/** Running token/cost totals of a review, across reviewed and skipped chunks. */
+interface UsageTotals {
+  tokensIn: number;
+  tokensOut: number;
+  /** null once any chunk could not be priced. */
+  costUsd: number | null;
+  costSource: CostSource | undefined;
+}
+
+/** Adds one call's usage. Cost source is worst-wins: one estimate makes the whole run an estimate. */
+function addUsage(
+  acc: UsageTotals,
+  u: { tokensIn: number; tokensOut: number; costUsd: number | null; costSource: CostSource | undefined },
+): void {
+  acc.tokensIn += u.tokensIn;
+  acc.tokensOut += u.tokensOut;
+  acc.costUsd = acc.costUsd == null || u.costUsd == null ? null : acc.costUsd + u.costUsd;
+  if (u.costSource === 'estimate') acc.costSource = 'estimate';
+  else if (u.costSource === 'api' && acc.costSource !== 'estimate') acc.costSource = 'api';
+}
+
+type ChunkCall = Awaited<ReturnType<typeof callWithDeadline<Review>>>;
+type SkippableError = LlmOutputTruncatedError | LlmOutputInvalidError;
+
+/**
+ * One chunk's LLM call. A truncated / invalid output becomes `{ ok: false }`
+ * (with the failed call's usage, when known) only when `canSkip`; every other
+ * error, and any error when skipping is off, propagates unchanged.
+ */
+async function reviewChunk(
+  input: ReviewInput,
+  opts: {
+    label: string;
+    messages: ReturnType<typeof assemblePrompt>['messages'];
+    schema: ZodType<Review>;
+    maxRetries: number;
+    canSkip: boolean;
+    emit: (kind: RunEventKind, msg: string, data?: unknown) => void;
+  },
+): Promise<{ ok: true; res: ChunkCall } | { ok: false; err: SkippableError; usage?: FailedCallUsage }> {
+  // A box, not a `let`: a closure assignment to a `let` is invisible to narrowing in the catch below.
+  const failed: { usage?: FailedCallUsage } = {};
+  try {
+    const res = await callWithDeadline<Review>({
+      llm: input.llm,
+      request: {
+        model: input.model,
+        schema: opts.schema,
+        schemaName: 'Review',
+        messages: opts.messages,
+        maxRetries: opts.maxRetries,
+        ...(input.sessionId ? { sessionId: input.sessionId } : {}),
+        ...(input.maxOutputTokens != null ? { maxTokens: input.maxOutputTokens } : {}),
+        ...(input.requireParameters != null ? { requireParameters: input.requireParameters } : {}),
+        ...(input.routing ? { routing: input.routing } : {}),
+      },
+      ...(input.retryRouting ? { retryRouting: input.retryRouting } : {}),
+      ...(input.callDeadlineMs != null ? { deadlineMs: input.callDeadlineMs } : {}),
+      ...(input.signal ? { signal: input.signal } : {}),
+      ...(input.checkCancelled ? { checkCancelled: input.checkCancelled } : {}),
+      ...(input.estimateCost ? { estimateCost: input.estimateCost } : {}),
+      ...(input.countTokens ? { countTokens: input.countTokens } : {}),
+      label: opts.label,
+      emit: opts.emit,
+      onFinalFailure: (u) => {
+        failed.usage = u;
+      },
+    });
+    return { ok: true, res };
+  } catch (err) {
+    if (!opts.canSkip || !(err instanceof LlmOutputTruncatedError || err instanceof LlmOutputInvalidError)) {
+      throw err;
+    }
+    return { ok: false, err, ...(failed.usage ? { usage: failed.usage } : {}) };
+  }
+}
+
 export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutcome> {
   const threshold = input.mapThresholdLines ?? DEFAULT_MAP_THRESHOLD_LINES;
   const maxRetries = input.maxRetries ?? DEFAULT_REVIEW_MAX_RETRIES;
@@ -306,10 +383,7 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
   );
 
   const partials: Review[] = [];
-  let tokensIn = 0;
-  let tokensOut = 0;
-  let costUsd: number | null = 0;
-  let costSource: CostSource | undefined;
+  const usage: UsageTotals = { tokensIn: 0, tokensOut: 0, costUsd: 0, costSource: undefined };
   const raws: string[] = [];
   const skipped: { label: string; reason: string }[] = [];
   const allowed =
@@ -333,46 +407,24 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
     );
     if (mode === 'single-pass') assembly = a.assembly;
     const startedAt = Date.now();
-    // A box, not a `let`: a closure assignment to a `let` is invisible to narrowing in the catch below.
-    const failed: { usage?: FailedCallUsage } = {};
-    let res: Awaited<ReturnType<typeof callWithDeadline<Review>>>;
-    try {
-      res = await callWithDeadline<Review>({
-        llm: input.llm,
-        request: {
-          model: input.model,
-          schema: reviewSchema,
-          schemaName: 'Review',
-          messages: a.messages,
-          maxRetries,
-          ...(input.sessionId ? { sessionId: input.sessionId } : {}),
-          ...(input.maxOutputTokens != null ? { maxTokens: input.maxOutputTokens } : {}),
-          ...(input.requireParameters != null ? { requireParameters: input.requireParameters } : {}),
-          ...(input.routing ? { routing: input.routing } : {}),
-        },
-        ...(input.retryRouting ? { retryRouting: input.retryRouting } : {}),
-        ...(input.callDeadlineMs != null ? { deadlineMs: input.callDeadlineMs } : {}),
-        ...(input.signal ? { signal: input.signal } : {}),
-        ...(input.checkCancelled ? { checkCancelled: input.checkCancelled } : {}),
-        ...(input.estimateCost ? { estimateCost: input.estimateCost } : {}),
-        ...(input.countTokens ? { countTokens: input.countTokens } : {}),
-        label: chunk.label,
-        emit,
-        onFinalFailure: (u) => {
-          failed.usage = u;
-        },
-      });
-    } catch (err) {
-      if (allowed === 0 || !(err instanceof LlmOutputTruncatedError || err instanceof LlmOutputInvalidError)) {
-        throw err;
-      }
+    const out = await reviewChunk(input, {
+      label: chunk.label,
+      messages: a.messages,
+      schema: reviewSchema,
+      maxRetries,
+      canSkip: allowed > 0,
+      emit,
+    });
+    if (!out.ok) {
+      const { err, usage: u } = out;
       skipped.push({ label: chunk.label, reason: err.name });
-      const u = failed.usage;
       if (u) {
-        tokensIn += u.tokensIn;
-        tokensOut += u.tokensOut;
-        costUsd = costUsd == null ? null : costUsd + u.costUsd;
-        if (u.estimated || u.unpriced) costSource = 'estimate';
+        addUsage(usage, {
+          tokensIn: u.tokensIn,
+          tokensOut: u.tokensOut,
+          costUsd: u.costUsd,
+          costSource: u.estimated || u.unpriced ? 'estimate' : undefined,
+        });
         emit(
           'info',
           `${chunk.label}: counted skipped chunk — ${u.tokensIn} in / ${u.tokensOut} out tokens${u.unpriced ? ' · could not be priced, cost excludes it' : ''}`,
@@ -393,12 +445,13 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
       }
       continue;
     }
-    tokensIn += res.tokensIn;
-    tokensOut += res.tokensOut;
-    costUsd = costUsd == null || res.costUsd == null ? null : costUsd + res.costUsd;
-    // Worst-wins: one estimated chunk makes the whole run an estimate.
-    if (res.costSource === 'estimate') costSource = 'estimate';
-    else if (res.costSource === 'api' && costSource !== 'estimate') costSource = 'api';
+    const { res } = out;
+    addUsage(usage, {
+      tokensIn: res.tokensIn,
+      tokensOut: res.tokensOut,
+      costUsd: res.costUsd,
+      costSource: res.costSource,
+    });
     raws.push(res.raw);
     partials.push(res.data);
     emit(
@@ -474,11 +527,11 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
     mode,
     assembly,
     chunks: chunks.map((c) => ({ label: c.label })),
-    tokensIn,
-    tokensOut,
-    costUsd,
+    tokensIn: usage.tokensIn,
+    tokensOut: usage.tokensOut,
+    costUsd: usage.costUsd,
     // No cost ⇒ no provenance to report (a source without a number is noise).
-    costSource: costUsd == null ? null : (costSource ?? null),
+    costSource: usage.costUsd == null ? null : (usage.costSource ?? null),
     raw: raws.join('\n---\n'),
     skipped,
   };

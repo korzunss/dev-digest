@@ -253,6 +253,20 @@ export interface GitClient {
   fetchPullHead(repo: RepoRef, n: number, signal?: AbortSignal): Promise<void>;
   currentHead(repo: RepoRef): Promise<string>;
   diff(repo: RepoRef, base: string, head: string): Promise<UnifiedDiff>;
+  /**
+   * Diff two commit SHAs (`base...head`). Both must be full commit SHAs; either
+   * is fetched when missing locally, and the clone is deepened until a merge-base
+   * exists. Throws when a SHA is malformed or no merge-base is found within the
+   * deepening cap. Aborting `signal` stops the running git process and the call
+   * rejects with `signal.reason`; time spent waiting for the clone's lock counts
+   * toward the signal.
+   */
+  diffCommits(
+    repo: RepoRef,
+    base: string,
+    head: string,
+    signal?: AbortSignal,
+  ): Promise<UnifiedDiff>;
   blame(repo: RepoRef, path: string): Promise<BlameLine[]>;
   log(repo: RepoRef, path?: string): Promise<GitCommit[]>;
   readFile(repo: RepoRef, path: string): Promise<string>;

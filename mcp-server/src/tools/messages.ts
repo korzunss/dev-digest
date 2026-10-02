@@ -1,8 +1,8 @@
 import type { ApiError } from '../core/errors.js';
 import type { AgentResolution, PullResolution, RepoResolution } from '../core/resolve.js';
+import { cut } from '../core/text.js';
 
-const MAX = 200;
-export const cut = (s: string) => (s.length > MAX ? `${s.slice(0, MAX)}…` : s);
+export { cut };
 
 export function apiErrorText(err: ApiError, apiUrl?: string): string {
   switch (err.code) {

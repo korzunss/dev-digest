@@ -1,5 +1,5 @@
 import type { ConventionScanResult } from '@devdigest/shared';
-import { cut } from './findings.js';
+import { cut } from './text.js';
 
 export const CONVENTIONS_CAP = 30;
 
@@ -26,7 +26,7 @@ export function acceptedConventions(result: ConventionScanResult): ConciseConven
     .map((c) => ({
       rule: cut(c.rule),
       category: c.category,
-      file: c.evidence_path,
+      file: cut(c.evidence_path),
       line: c.evidence_line,
       confidence: c.confidence,
     }));

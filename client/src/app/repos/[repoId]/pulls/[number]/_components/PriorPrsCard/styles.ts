@@ -47,9 +47,15 @@ export const s = {
   message: {
     padding: "14px 16px",
   } satisfies CSSProperties,
-  muted: {
+  messageMuted: {
+    padding: "14px 16px",
     fontSize: 13,
     color: "var(--text-secondary)",
+  } satisfies CSSProperties,
+  messageError: {
+    padding: "14px 16px",
+    fontSize: 12,
+    color: "var(--crit)",
   } satisfies CSSProperties,
   item: {
     display: "flex",
@@ -124,9 +130,5 @@ export const s = {
   notes: {
     fontSize: 13,
     color: "var(--text-secondary)",
-  } satisfies CSSProperties,
-  errorLine: {
-    fontSize: 12,
-    color: "var(--crit)",
   } satisfies CSSProperties,
 } as const;

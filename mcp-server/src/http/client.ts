@@ -1,11 +1,17 @@
 import type { ApiErrorBody } from '@devdigest/shared';
 import { ApiError } from '../core/errors.js';
 import type { DevDigestApi } from '../core/ports.js';
+import { BlastBody, ConventionsBody, ReviewsBody } from './schemas.js';
+
+/** Anything with a zod-style `safeParse`; checks the shape, the original body is returned. */
+interface ShapeCheck {
+  safeParse(v: unknown): { success: boolean };
+}
 
 const TIMEOUT_MS = 10_000;
 const MESSAGE_MAX = 200;
 
-/** Structural guard: the API's `{error:{code,message}}` envelope. Bodies are typed, not runtime-parsed. */
+/** Structural guard: the API's `{error:{code,message}}` envelope. */
 function isApiErrorBody(v: unknown): v is ApiErrorBody {
   if (typeof v !== 'object' || v === null) return false;
   const e = (v as { error?: unknown }).error;
@@ -19,7 +25,12 @@ export function createHttpApi(baseUrl: string, fetchImpl: typeof fetch = fetch):
   const base = baseUrl.replace(/\/+$/, '');
   const id = encodeURIComponent;
 
-  async function request<T>(method: 'GET' | 'POST', path: string, body?: unknown): Promise<T> {
+  async function request<T>(
+    method: 'GET' | 'POST',
+    path: string,
+    opts: { body?: unknown; shape?: ShapeCheck } = {},
+  ): Promise<T> {
+    const { body, shape } = opts;
     let res: Response;
     try {
       res = await fetchImpl(`${base}${path}`, {
@@ -49,6 +60,7 @@ export function createHttpApi(baseUrl: string, fetchImpl: typeof fetch = fetch):
       throw new ApiError(res.status, res.status === 404 ? 'not_found' : 'http_error');
     }
     if (json === undefined) throw new ApiError(res.status, 'bad_response');
+    if (shape && !shape.safeParse(json).success) throw new ApiError(res.status, 'bad_response');
     return json as T;
   }
 
@@ -56,10 +68,12 @@ export function createHttpApi(baseUrl: string, fetchImpl: typeof fetch = fetch):
     listRepos: () => request('GET', '/repos'),
     listPulls: (repoId) => request('GET', `/repos/${id(repoId)}/pulls`),
     listAgents: () => request('GET', '/agents'),
-    triggerReview: (pullId, agentId) => request('POST', `/pulls/${id(pullId)}/review`, { agentId }),
+    triggerReview: (pullId, agentId) =>
+      request('POST', `/pulls/${id(pullId)}/review`, { body: { agentId } }),
     listRuns: (pullId) => request('GET', `/pulls/${id(pullId)}/runs`),
-    listReviews: (pullId) => request('GET', `/pulls/${id(pullId)}/reviews`),
-    getConventions: (repoId) => request('GET', `/repos/${id(repoId)}/conventions`),
-    getBlast: (pullId) => request('GET', `/pulls/${id(pullId)}/blast`),
+    listReviews: (pullId) => request('GET', `/pulls/${id(pullId)}/reviews`, { shape: ReviewsBody }),
+    getConventions: (repoId) =>
+      request('GET', `/repos/${id(repoId)}/conventions`, { shape: ConventionsBody }),
+    getBlast: (pullId) => request('GET', `/pulls/${id(pullId)}/blast`, { shape: BlastBody }),
   };
 }

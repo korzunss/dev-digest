@@ -8,3 +8,5 @@ export const FALSE_CRITICALS_GATE_RATIO = 0.5;
 export const COST_GATE_RATIO = 1.25;
 /** Upper bound for `--runs` / `rounds`. */
 export const MAX_EVAL_ROUNDS = 20;
+/** Cap on the failure reason a replay job reports in its progress line. */
+export const REPLAY_ERROR_MAX_CHARS = 200;

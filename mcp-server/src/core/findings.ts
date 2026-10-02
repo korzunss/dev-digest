@@ -1,4 +1,5 @@
 import type { FindingRecord, ReviewRecord, Severity } from '@devdigest/shared';
+import { cut, TEXT_MAX } from './text.js';
 
 export const SEVERITIES = ['CRITICAL', 'WARNING', 'SUGGESTION'] as const satisfies readonly Severity[];
 
@@ -8,7 +9,7 @@ const _exhaustive: _AllSeverities = true;
 void _exhaustive;
 
 export const FINDINGS_CAP = 20;
-export const RATIONALE_MAX = 200;
+export const RATIONALE_MAX = TEXT_MAX;
 
 export interface ConciseFinding {
   severity: Severity;
@@ -46,16 +47,12 @@ export function latestReviews(
   return [...newest.values()];
 }
 
-export function cut(text: string): string {
-  return text.length > RATIONALE_MAX ? `${text.slice(0, RATIONALE_MAX)}…` : text;
-}
-
 function toConcise(f: FindingRecord): ConciseFinding {
   return {
     severity: f.severity,
     category: cut(f.category),
     title: cut(f.title),
-    file: f.file,
+    file: cut(f.file),
     line: f.start_line,
     rationale: cut(f.rationale),
   };

@@ -3,6 +3,7 @@ import { MockGitClient } from '../src/adapters/mocks.js';
 import { parseFixture } from '../src/modules/eval/fixture.js';
 import {
   buildArmAgents,
+  describeJobError,
   formatGate,
   runReplay,
   type DbAgent,
@@ -101,6 +102,7 @@ const options = (over: Partial<ReplayOptions> = {}): ReplayOptions => ({
   detachedSkills: ['dev-digest-conventions'],
   generalAgentName: 'General Reviewer',
   repoRulesMaxChars: 8000,
+  diffTimeoutMs: 90_000,
   ...over,
 });
 
@@ -150,6 +152,35 @@ describe('runReplay', () => {
     expect(r.arms.base?.failedJobs).toBe(1);
     expect(r.arms.base?.completeRounds).toBe(1);
     expect(r.gatePassed).toBeNull();
+  });
+
+  it('reports the failure reason in the progress event', async () => {
+    let n = 0;
+    const { deps } = setup({ fail: (c) => c.systemPrompt === 'DB sec' && ++n === 1 });
+    const events: { ok: boolean; error?: string }[] = [];
+    await runReplay(fixture, options({ arms: ['base'], onProgress: (e) => events.push(e) }), deps);
+    expect(events.filter((e) => !e.ok).map((e) => e.error)).toEqual(['boom']);
+    expect(events.filter((e) => e.ok).every((e) => e.error === undefined)).toBe(true);
+  });
+
+  it('bounds diffCommits with an AbortSignal', async () => {
+    const { git, deps } = setup();
+    const signals: (AbortSignal | undefined)[] = [];
+    const diffCommits = git.diffCommits.bind(git);
+    const spied = {
+      ...deps,
+      git: {
+        readFileAt: git.readFileAt.bind(git),
+        diffCommits: (repo, base, head, signal) => {
+          signals.push(signal);
+          return diffCommits(repo, base, head);
+        },
+      } satisfies ReplayDeps['git'],
+    };
+    await runReplay(fixture, options({ arms: ['base'], rounds: 1 }), spied);
+    expect(signals).toHaveLength(1);
+    expect(signals[0]).toBeInstanceOf(AbortSignal);
+    expect(signals[0]?.aborted).toBe(false);
   });
 
   it('passes the gate when opt1+opt2 removes false criticals', async () => {
@@ -202,5 +233,24 @@ describe('runReplay', () => {
     await expect(runReplay(rest as typeof fixture, options(), deps)).rejects.toThrow(/base_sha/);
     expect(calls).toHaveLength(0);
     expect(git.diffCommitsCalls).toHaveLength(0);
+  });
+});
+
+describe('describeJobError', () => {
+  it('keeps only the first line', () => {
+    expect(describeJobError(new Error('timeout after 60s\n  at stack'))).toBe('timeout after 60s');
+  });
+  it('redacts token-like strings', () => {
+    const msg = describeJobError(new Error('401 for key sk-or-v1-abc123 with Bearer xyz.789'));
+    expect(msg).toBe('401 for key [redacted] with [redacted]');
+  });
+  it('caps the length', () => {
+    const msg = describeJobError(new Error('word '.repeat(100)));
+    expect(msg.length).toBe(200);
+    expect(msg.endsWith('…')).toBe(true);
+  });
+  it('handles non-Error throws and empty messages', () => {
+    expect(describeJobError('plain')).toBe('plain');
+    expect(describeJobError(new Error(''))).toBe('unknown error');
   });
 });

@@ -1,7 +1,6 @@
 /**
- * OverviewTab — structure only: a two-column grid (Intent left, Blast radius
- * right) as the tab's first child, headers inside the cards, no PR Brief label
- * and no Risk areas. Hook submodules are mocked with `importActual` spread so
+ * OverviewTab — what the user reads, in order: Intent, then Blast radius with
+ * Prior PRs, then the description; no PR Brief label and no Risk areas. Hook submodules are mocked with `importActual` spread so
  * the cards' other imports survive (client gotchas → Tests).
  */
 import { describe, it, expect, afterEach, vi } from "vitest";
@@ -39,18 +38,20 @@ function renderTab(prBody: string | null = "A description") {
 }
 
 describe("OverviewTab — two columns", () => {
-  it("puts Intent left and Blast radius + Prior PRs right, first in the tab, no PR Brief / Risk areas", () => {
-    const { container } = renderTab();
+  it("shows Intent first, then Blast radius with Prior PRs, then the description, with no PR Brief / Risk areas", () => {
+    renderTab();
 
-    const columns = screen.getByTestId("overview-columns");
-    expect(container.firstElementChild).toBe(columns);
-    expect(columns.children).toHaveLength(2);
-    expect(columns.children[0]).toHaveTextContent("Intent");
-    expect(columns.children[1]).toHaveTextContent("Blast radius");
-    expect(columns.children[1]).toHaveTextContent("Prior PRs touching these files");
+    const intent = screen.getByText("Intent");
+    const blastTitle = screen.getByText(blast.title);
+    const prior = screen.getByText(blast.history.title);
+    const description = screen.getByText("A description");
+    const follows = (a: Element, b: Element) =>
+      (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+    expect(follows(intent, blastTitle)).toBe(true);
+    expect(follows(blastTitle, prior)).toBe(true);
+    expect(follows(prior, description)).toBe(true);
 
     expect(screen.queryByText("PR Brief")).not.toBeInTheDocument();
     expect(screen.queryByText(/Risk areas/i)).not.toBeInTheDocument();
-    expect(screen.getByText("A description")).toBeInTheDocument();
   });
 });

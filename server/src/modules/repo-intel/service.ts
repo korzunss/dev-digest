@@ -403,7 +403,12 @@ export class RepoIntelService implements RepoIntel {
       for (const s of await this.repo.getSymbolRows(repoId, missing)) symsByFile.get(s.path)?.push(s);
     };
 
-    const all: BlastCallerRow[] = [];
+    // Rows per root as they are found. Levels are visited nearest-first, so a
+    // root that already holds MAX_CALLERS_PER_SYMBOL rows can gain nothing from
+    // a deeper level (the cap keeps nearest first): it leaves the frontier, and
+    // the next query only covers roots that can still show more callers.
+    const byRoot = new Map<string, BlastCallerRow[]>();
+    const isFull = (root: string) => (byRoot.get(root)?.length ?? 0) >= MAX_CALLERS_PER_SYMBOL;
     const seenPerRoot = new Set<string>();
     let frontier: Frontier[] = [];
     for (let depth = 1; depth <= BFS_DEPTH; depth++) {
@@ -446,7 +451,7 @@ export class RepoIntelService implements RepoIntel {
           const key = `${root}|${r.fromPath}|${r.line}`;
           if (seenPerRoot.has(key)) continue;
           seenPerRoot.add(key);
-          all.push({
+          const row: BlastCallerRow = {
             file: r.fromPath,
             symbol: enclosing,
             viaSymbol: root,
@@ -454,30 +459,36 @@ export class RepoIntelService implements RepoIntel {
             rank: r.rank,
             depth,
             via,
-          });
+          };
+          const list = byRoot.get(root);
+          if (list) list.push(row);
+          else byRoot.set(root, [row]);
           const fk = `${r.fromPath}|${enclosing}`;
           const entry = next.get(fk);
           if (entry) entry.roots.add(root);
           else next.set(fk, { file: r.fromPath, symbol: enclosing, named: named !== null, roots: new Set([root]) });
         }
       }
-      frontier = [...next.values()];
+      frontier = [];
+      for (const f of next.values()) {
+        for (const root of f.roots) if (isFull(root)) f.roots.delete(root);
+        if (f.roots.size > 0) frontier.push(f);
+      }
     }
 
     // Per-root cap: nearest first, then by caller-file rank.
     const callers: BlastCallerRow[] = [];
     for (const name of nameSet) {
+      const list = byRoot.get(name);
+      if (!list) continue;
       callers.push(
-        ...all
-          .filter((c) => c.viaSymbol === name)
-          .sort((a, b) => a.depth - b.depth || b.rank - a.rank)
-          .slice(0, MAX_CALLERS_PER_SYMBOL),
+        ...list.sort((a, b) => a.depth - b.depth || b.rank - a.rank).slice(0, MAX_CALLERS_PER_SYMBOL),
       );
     }
 
     // Precomputed facts per caller file (endpoints + crons), so consumers can
     // attribute them to the changed symbol whose callers live in that file.
-    const callerFiles = [...new Set(all.map((c) => c.file))];
+    const callerFiles = [...new Set(callers.map((c) => c.file))];
     const facts = await this.repo.getFileFacts(repoId, callerFiles);
     const endpoints = new Set<string>();
     const factsByFile: Record<string, { endpoints: string[]; crons: string[] }> = {};
