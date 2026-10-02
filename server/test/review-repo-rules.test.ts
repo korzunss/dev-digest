@@ -1,6 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { MockGitClient } from '../src/adapters/mocks.js';
 import { ruleCandidatePaths, extractRuleText, loadRepoRules } from '../src/modules/reviews/repo-rules.js';
+import {
+  REPO_RULES_MAX_DIR_DEPTH,
+  REPO_RULES_MAX_FILES,
+  REPO_RULES_MAX_FILE_CHARS,
+} from '../src/modules/reviews/constants.js';
 
 const repo = { owner: 'acme', name: 'app' };
 const BASE = 'b'.repeat(40);
@@ -23,7 +28,48 @@ describe('ruleCandidatePaths', () => {
   });
 });
 
+describe('ruleCandidatePaths — untrusted changed paths', () => {
+  // an absolute path has an empty first segment and is skipped, not turned into a candidate
+  it('skips absolute paths', () => {
+    expect(ruleCandidatePaths(['/etc/passwd', '/abs/dir/a.ts'])).toEqual(['AGENTS.md', 'insights/gotchas.md']);
+  });
+  // a backslash path must never yield a candidate carrying a backslash (Windows-style traversal)
+  it('never emits a candidate containing a backslash', () => {
+    const out = ruleCandidatePaths(['..\\..\\etc\\a.ts', 'a\\..\\b/c.ts', 'C:\\x\\a.ts', 'ok\\dir/a.ts']);
+    expect(out.filter((p) => p.includes('\\'))).toEqual([]);
+  });
+  // only REPO_RULES_MAX_DIR_DEPTH ancestor directories of a deep path are searched
+  it('caps the ancestor depth', () => {
+    const out = ruleCandidatePaths(['a/b/c/d/e/f.ts']);
+    expect(REPO_RULES_MAX_DIR_DEPTH).toBe(2);
+    expect(out).toContain('a/b/AGENTS.md');
+    expect(out).toContain('a/b/insights/gotchas.md');
+    expect(out.some((p) => p.startsWith('a/b/c/'))).toBe(false);
+  });
+  // a PR touching many directories cannot make the loader read more than REPO_RULES_MAX_FILES files
+  it('caps the number of candidate files', () => {
+    const many = Array.from({ length: 100 }, (_, i) => `dir${String(i).padStart(3, '0')}/f.ts`);
+    expect(ruleCandidatePaths(many)).toHaveLength(REPO_RULES_MAX_FILES);
+  });
+  // the root rule files are the most general ones; the file cap must not cut them off
+  it('keeps the root pair when the file cap bites', () => {
+    const many = Array.from({ length: 100 }, (_, i) => `dir${String(i).padStart(3, '0')}/f.ts`);
+    const out = ruleCandidatePaths(many);
+    expect(out).toContain('AGENTS.md');
+    expect(out).toContain('insights/gotchas.md');
+  });
+});
+
 describe('extractRuleText', () => {
+  // a huge rule file from an untrusted repo is truncated to REPO_RULES_MAX_FILE_CHARS
+  it('caps one file at REPO_RULES_MAX_FILE_CHARS', () => {
+    const md = `## Tests\n${'- x'.repeat(REPO_RULES_MAX_FILE_CHARS)}`;
+    expect(extractRuleText('insights/gotchas.md', md)).toHaveLength(REPO_RULES_MAX_FILE_CHARS);
+  });
+  it('leaves a file at the cap untouched', () => {
+    const body = 'y'.repeat(REPO_RULES_MAX_FILE_CHARS - '## T\n'.length);
+    expect(extractRuleText('insights/gotchas.md', `## T\n${body}`)).toHaveLength(REPO_RULES_MAX_FILE_CHARS);
+  });
   it('keeps only Gotchas/Conventions sections of AGENTS.md', () => {
     const md = '# T\n\n## Commands\nrun it\n\n## Gotchas\n- a\n\n## Conventions (x)\n- b\n\n## Other\nno';
     const out = extractRuleText('server/AGENTS.md', md);
@@ -98,6 +144,40 @@ describe('loadRepoRules', () => {
     await expect(loadRepoRules(git, repo, BASE, ['a.ts'], { timeoutMs: 1 })).rejects.toMatchObject({
       name: 'TimeoutError',
     });
+  });
+  // the signal handed to readFileAt follows the caller's: aborting the run reaches the in-flight git read
+  it('aborts the signal given to readFileAt when the caller aborts', async () => {
+    const ctrl = new AbortController();
+    let seen: AbortSignal | undefined;
+    const git = {
+      readFileAt: (_r: unknown, _ref: string, _p: string, s?: AbortSignal) =>
+        new Promise<string>((_res, rej) => {
+          seen = s;
+          s?.addEventListener('abort', () => rej(s.reason));
+        }),
+    };
+    const pending = loadRepoRules(git, repo, BASE, ['a.ts'], { signal: ctrl.signal });
+    const reason = new Error('run cancelled');
+    ctrl.abort(reason);
+    await expect(pending).rejects.toBe(reason);
+    expect(seen?.aborted).toBe(true);
+  });
+  // a read that fails BECAUSE the signal fired is an abort, not a "missing" file (even for the last candidate)
+  it('rethrows the abort reason instead of counting a read error that raced the abort', async () => {
+    const ctrl = new AbortController();
+    const reason = new Error('cancelled');
+    const total = ruleCandidatePaths(['a.ts']).length;
+    let calls = 0;
+    const git = {
+      readFileAt: async () => {
+        calls++;
+        if (calls < total) return '';
+        ctrl.abort(reason);
+        throw new Error('git killed');
+      },
+    };
+    await expect(loadRepoRules(git, repo, BASE, ['a.ts'], { signal: ctrl.signal })).rejects.toBe(reason);
+    expect(calls).toBe(total);
   });
   it('forwards the signal as the 4th argument', async () => {
     const seen: unknown[] = [];

@@ -417,6 +417,49 @@ describe('reviewPullRequest — verdict and summary from final findings', () => 
     expect(outcome.review.summary).not.toContain('MODEL TEXT');
     expect(outcome.review.summary).not.toContain(phantom.title);
   });
+
+  // map-reduce: the only CRITICAL is grounded out, so the verdict is approve (not the model's request_changes)
+  it('map-reduce: a grounded-out CRITICAL yields approve and "no findings"', async () => {
+    const llm = new MockLLMProvider('openai', {
+      structured: { verdict: 'request_changes', summary: 'MODEL TEXT', score: 10, findings: [phantom] },
+    });
+    const diff = await new MockGitClient({ diff: TWO_FILE_DIFF }).diff();
+    const outcome = await reviewPullRequest({ systemPrompt: 's', model: 'm', diff, llm, strategy: 'map-reduce' });
+    expect(outcome.review.findings).toHaveLength(0);
+    expect(outcome.review.verdict).toBe('approve');
+    expect(outcome.review.summary).toContain('no findings');
+  });
+
+  // both modes: a surviving CRITICAL forces request_changes even when the model said approve
+  it.each(['single-pass', 'map-reduce'] as const)(
+    '%s: a surviving CRITICAL overrides a model approve',
+    async (strategy) => {
+      const real = { ...phantom, id: 'f-real', title: 'real critical', file: 'src/a.ts', start_line: 2, end_line: 2 };
+      const llm = new MockLLMProvider('openai', {
+        structured: { verdict: 'approve', summary: 'MODEL TEXT', score: 100, findings: [real] },
+      });
+      const diff = await new MockGitClient({ diff: TWO_FILE_DIFF }).diff();
+      const outcome = await reviewPullRequest({ systemPrompt: 's', model: 'm', diff, llm, strategy });
+      expect(outcome.review.findings.length).toBeGreaterThan(0);
+      expect(outcome.review.verdict).toBe('request_changes');
+      if (strategy === 'map-reduce') {
+        expect(outcome.review.summary).toContain('real critical (src/a.ts:2)');
+        expect(outcome.review.summary).not.toContain('MODEL TEXT');
+      } else {
+        expect(outcome.review.summary).toBe('MODEL TEXT');
+      }
+    },
+  );
+
+  // single-pass keeps the model's own summary verbatim, even when the model verdict is overridden
+  it('single-pass: keeps the model summary', async () => {
+    const llm = new MockLLMProvider('openai', {
+      structured: { verdict: 'request_changes', summary: 'MODEL TEXT', score: 10, findings: [phantom] },
+    });
+    const diff = await new MockGitClient().diff();
+    const outcome = await reviewPullRequest({ systemPrompt: 's', model: 'm', diff, llm });
+    expect(outcome.review.summary).toBe('MODEL TEXT');
+  });
 });
 
 describe('reviewPullRequest — per-chunk repo context', () => {
@@ -468,6 +511,40 @@ describe('reviewPullRequest — per-chunk repo context', () => {
       expect(u).toContain('- client/b.ts');
       expect(u).toContain('<untrusted source="repo-context">');
     }
+  });
+
+  // caller-supplied memory is kept and precedes the repo items
+  it('keeps caller memory ahead of the repo rules', async () => {
+    const [one] = await userPrompts({ memory: ['CALLER-MEM'], repoRules });
+    expect(one).toContain('CALLER-MEM');
+    expect(one!.indexOf('CALLER-MEM')).toBeLessThan(one!.indexOf('SERVER-RULE'));
+  });
+
+  // repoRulesMaxChars reaches the selector: the deepest set is cut, the root set is dropped
+  it('applies repoRulesMaxChars per chunk', async () => {
+    const [one] = await userPrompts({ repoRules, repoRulesMaxChars: 5 });
+    expect(one).toContain('[truncated]');
+    expect(one).not.toContain('SERVER-RULE');
+    expect(one).not.toContain('ROOT-RULE');
+  });
+
+  // single-pass has one prompt and scopes rules by every changed path
+  it('single-pass selects rules by all changed paths', async () => {
+    const prompts = await userPrompts({ repoRules, changedFiles: ['server/a.ts'], strategy: 'single-pass' });
+    expect(prompts).toHaveLength(1);
+    for (const r of ['SERVER-RULE', 'CLIENT-RULE', 'ROOT-RULE']) expect(prompts[0]).toContain(r);
+  });
+
+  // only a file list: no rule text, but the untrusted block carries the list
+  it('renders just the changed-file list when there are no rule sets', async () => {
+    const [one] = await userPrompts({ changedFiles: ['server/a.ts'] });
+    expect(one).toContain('Files changed in this PR (1):');
+    expect(one).not.toContain('Rules from');
+  });
+
+  // empty rule list and no file list add nothing: same prompt as the baseline
+  it('adds no block for an empty rule list', async () => {
+    expect(await userPrompts({ repoRules: [] })).toEqual(await userPrompts({}));
   });
 
   it('is byte-identical to the baseline when both fields are absent', async () => {

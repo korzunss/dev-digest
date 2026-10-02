@@ -271,3 +271,14 @@ From the G1 implementer run (2026-10-01): S1–S3 done.
 - Open (doc, outside S3's instruction to keep section 2): `docs/agent-prompts/README.md:127` still says "The model owns `verdict`".
 - main-session fix: doc — `docs/agent-prompts/README.md` section 2 now says the engine derives the stored `verdict` from the grounded findings, and the model is told the same mapping. This is a small plan change approved by the user ("речення виправ").
 - **Finding recorded, not scheduled** (user: "to-review додай у знахідки, окремо не роби"). `reviewer-core/src/output/to-review.ts:156-158`: `toReviewPayload` derives the GitHub event from `findings.length` only, with no `partial` input. A partial map-reduce run with 0 surviving findings shows `comment` in the banner but would be posted to GitHub as `APPROVE`. The doc comment in `reduce.ts` claims the verdict "mirrors the `toReviewPayload` event", which is false for that case. Posting is a human action, so this is defense in depth, not an exploit.
+- test-writer (2026-10-02): **R4 is now verifiable.**
+  - New tests: +12 (`summary.test.ts` +8, `run.test.ts` +4); reviewer-core 184 → 196 ✅.
+  - Break checks, each reverted and checked by shasum:
+    - partial → `approve`;
+    - `>` → `>=` on `+k more`;
+    - verdict taken from `merged.verdict`;
+    - map-reduce summary off;
+    - prefix renamed.
+    Every one turned the named tests red; each was 3/3 stable.
+  - `git diff HEAD -- reviewer-core/src` is empty. No production defects.
+  - Not covered by a break check: the title-cleaning tests; `cleanTitle` was not mutated.

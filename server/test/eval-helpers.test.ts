@@ -169,6 +169,28 @@ describe('false CRITICAL scoring', () => {
     expect(a.precision).toBe(0);
     expect(scoreSuite(withFp, run([])).duplicates).toEqual([]);
   });
+  // labelling false_positives must not change precision, recall or the unmatched list:
+  // a finding on a known-false spot is still unmatched, so it still lowers precision
+  it('scores precision, recall and unmatched identically with and without false_positives labelled', () => {
+    const findings = [
+      fnd('hit', 31, 31, 'nan'),
+      fnd('fp', 71, 71, 'alpha', 'bug', F, 'CRITICAL'),
+      fnd('other', 200, 200, 'unknown'),
+    ];
+    const withLabels = g(findings);
+    const withoutLabels = scoreSuite({ ...withFp, false_positives: [] }, run(findings)).agents[0]!;
+    expect(withLabels.recall).toBe(1);
+    expect(withLabels.precision).toBeCloseTo(1 / 3);
+    expect(withLabels.unmatched).toEqual(['fp', 'other']);
+    expect(withLabels.extras).toEqual([]);
+    expect(withLabels.recall).toBe(withoutLabels.recall);
+    expect(withLabels.precision).toBe(withoutLabels.precision);
+    expect(withLabels.unmatched).toEqual(withoutLabels.unmatched);
+    // the labels only change the false-critical bookkeeping
+    expect(withLabels.knownFalse).toEqual(['fp-a']);
+    expect(withoutLabels.knownFalse).toEqual([]);
+    expect(withoutLabels.unlabelledCriticals).toEqual(['fp']);
+  });
   it('prints the new columns and n/a recall for a fixture without planted issues', () => {
     expect(formatReport(scoreSuite(fixture, runs0()))).toMatch(/crit\s+false-crit/);
     const none = parseFixture({ ...fixture, issues: [] });

@@ -364,3 +364,14 @@ All three fall inside existing steps' *Files* (S4, S5, S6), so the plan is uncha
   - Break check: with `lockById` → `getById`, the row-lock test fails on the version assertion, not on the poll timeout. `service.ts` is restored to its PSR-1/2 hunks only.
   - Checks: server typecheck ✅; `agents-sync-builtin.it` 6/6 ×3 ✅; `agents-versions.it` + `skills.it` 28 ✅.
 - Delta verification (plan-verifier, 2026-10-01): PSR-4 and PSR-5 are met. Result: complete — needs sign-off (64/65). Only R4 is still open: no test-writer run. The `service.ts` diff holds only the PSR-1/2 hunks, with no leftover mutation.
+- test-writer (2026-10-02): **R4 is now verifiable.**
+  - New: `simple-git-read-file-at.test.ts`; `review-repo-rules.test.ts` +9; `review-repo-rules.it.test.ts` +2; `agents-sync-builtin.it.test.ts` +4.
+  - Break checks across `repo-rules.ts`, `simple-git.ts`, `mocks.ts`, `run-executor.ts`, `agents/service.ts`, `agents/repository.ts`: every mutation turned the named tests red, each was reverted and checked by shasum, and `git diff HEAD -- server/src` is empty.
+  - Two tests fail on purpose and expose production defects in `repo-rules.ts`:
+    - **TW-1:** `ruleCandidatePaths` sorts before slicing to `REPO_RULES_MAX_FILES` (`:36`), so on a wide PR the root `insights/gotchas.md` is dropped. This is the same issue as the self-review HIGH.
+    - **TW-2:** the segment check splits on `/` only (`:30`), so a path like `a\..\b/c.ts` yields candidates containing `\`. It is not exploitable on POSIX git (`\` is a literal character and the file counts as missing), and `readFileAt` has no backslash guard either.
+  - Both await the user's decision.
+- main-session fix: TW-1, TW-2 (user: "так роби правки"). In `server/src/modules/reviews/repo-rules.ts` `ruleCandidatePaths`:
+  - the root pair is emitted first and always survives the cap; the other candidates are sorted and sliced to `REPO_RULES_MAX_FILES - 2`;
+  - a changed path containing `\` is skipped, like an empty, `.` or `..` segment.
+  - The two failing tests now pass unchanged; `review-repo-rules.test.ts` 21 ✅ and `review-repo-rules.it.test.ts` 4 ✅.

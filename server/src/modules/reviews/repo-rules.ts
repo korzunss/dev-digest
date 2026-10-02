@@ -24,11 +24,14 @@ export interface LoadedRepoRules {
  * Repo-relative rule files worth reading for a PR: the root pair plus, for each
  * ancestor directory (up to `REPO_RULES_MAX_DIR_DEPTH`) of a changed path,
  * `<dir>/AGENTS.md` and `<dir>/insights/gotchas.md`. Built from raw segments —
- * a path with an empty, `.` or `..` segment is skipped, never normalised.
+ * a path with a `\`, or an empty, `.` or `..` segment is skipped, never
+ * normalised. The root pair always survives the `REPO_RULES_MAX_FILES` cap.
  */
 export function ruleCandidatePaths(changedPaths: readonly string[]): string[] {
-  const out = new Set<string>([AGENTS_FILE, GOTCHAS_FILE]);
+  const root = [AGENTS_FILE, GOTCHAS_FILE];
+  const out = new Set<string>();
   for (const p of changedPaths) {
+    if (p.includes('\\')) continue;
     const segs = p.split('/');
     if (segs.some((s) => s === '' || s === '.' || s === '..')) continue;
     const dirs = segs.slice(0, -1).slice(0, REPO_RULES_MAX_DIR_DEPTH);
@@ -38,7 +41,7 @@ export function ruleCandidatePaths(changedPaths: readonly string[]): string[] {
       out.add(`${dir}/${GOTCHAS_FILE}`);
     }
   }
-  return [...out].sort().slice(0, REPO_RULES_MAX_FILES);
+  return [...root, ...[...out].sort().slice(0, REPO_RULES_MAX_FILES - root.length)];
 }
 
 /** Split markdown into `## ` sections; `head` is whatever precedes the first one. */

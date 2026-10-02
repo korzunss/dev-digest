@@ -1,9 +1,10 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from 'vitest';
 import { and, eq, sql } from 'drizzle-orm';
 import { startPg, dockerAvailable, type PgFixture } from './helpers/pg.js';
 import { isolatedTestConfig } from './helpers/config.js';
 import { seed } from '../src/db/seed.js';
 import * as t from '../src/db/schema.js';
+import { NotFoundError } from '../src/platform/errors.js';
 import { Container } from '../src/platform/container.js';
 import { AgentsRepository } from '../src/modules/agents/repository.js';
 import { AgentsService } from '../src/modules/agents/service.js';
@@ -97,6 +98,9 @@ d('agents:sync-builtin', () => {
   });
   afterAll(async () => {
     await pg?.stop();
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it('dryRun reports the change and writes nothing', async () => {
@@ -203,5 +207,74 @@ d('agents:sync-builtin', () => {
     expect(res).toMatchObject({ changed: true, fromVersion: before!.version + 1, toVersion: before!.version + 2 });
     expect((await service.get(workspaceId, generalId))!.version).toBe(before!.version + 2);
     expect(await versionCount(generalId)).toBe(versions + 2);
+  });
+
+  // the repository update finds no row after the detach ran: NotFoundError, and the detach is rolled back
+  it('syncBuiltin throws NotFoundError and rolls back the detach when update returns no row', async () => {
+    const skill = GENERAL_DETACHED_SKILLS[0]!;
+    await service.linkSkill(workspaceId, generalId, await ensureSkill(skill), seedLinks.length);
+    const before = await service.get(workspaceId, generalId);
+    const versions = await versionCount(generalId);
+    const linked = await skillNamesOf(generalId);
+    expect(linked).toContain(skill);
+    vi.spyOn(AgentsRepository.prototype, 'update').mockResolvedValue(undefined);
+
+    await expect(
+      service.syncBuiltin(workspaceId, generalId, { systemPrompt: 'never written', detachSkillNames: [skill] }),
+    ).rejects.toBeInstanceOf(NotFoundError);
+
+    vi.restoreAllMocks();
+    expect(await skillNamesOf(generalId)).toEqual(linked);
+    const after = await service.get(workspaceId, generalId);
+    expect(after!.version).toBe(before!.version);
+    expect(after!.system_prompt).toBe(before!.system_prompt);
+    expect(await versionCount(generalId)).toBe(versions);
+    // put the seed state back for the tests below
+    await service.setSkills(workspaceId, generalId, (await service.skillLinks(generalId)).filter((l) => l.order < seedLinks.length).map((l) => l.skill_id));
+  });
+
+  // any failure after the detach (not just a missing row) undoes it: detach, prompt and snapshot commit together
+  it('syncBuiltin leaves skills, prompt and snapshots untouched when a write inside it fails', async () => {
+    const skill = GENERAL_DETACHED_SKILLS[0]!;
+    await service.linkSkill(workspaceId, generalId, await ensureSkill(skill), seedLinks.length);
+    const before = await service.get(workspaceId, generalId);
+    const versions = await versionCount(generalId);
+    const linked = await skillNamesOf(generalId);
+    vi.spyOn(AgentsRepository.prototype, 'update').mockRejectedValue(new Error('disk full'));
+
+    await expect(
+      service.syncBuiltin(workspaceId, generalId, { systemPrompt: 'never written', detachSkillNames: [skill] }),
+    ).rejects.toThrow('disk full');
+
+    vi.restoreAllMocks();
+    expect(await skillNamesOf(generalId)).toEqual(linked);
+    const after = await service.get(workspaceId, generalId);
+    expect(after!.version).toBe(before!.version);
+    expect(await versionCount(generalId)).toBe(versions);
+    await service.setSkills(workspaceId, generalId, (await service.skillLinks(generalId)).filter((l) => l.order < seedLinks.length).map((l) => l.skill_id));
+  });
+
+  // UI setSkills is one transaction: a failing insert after the delete restores the previous links
+  it('setSkills keeps the previous skill set when the replacement insert fails', async () => {
+    const before = await skillNamesOf(generalId);
+    const versionBefore = (await service.get(workspaceId, generalId))!.version;
+    const dup = await ensureSkill('dup-skill');
+
+    // the same skill twice passes the workspace check and violates the (agent, skill) key on insert
+    await expect(service.setSkills(workspaceId, generalId, [dup, dup])).rejects.toThrow();
+
+    expect(await skillNamesOf(generalId)).toEqual(before);
+    expect((await service.get(workspaceId, generalId))!.version).toBe(versionBefore);
+  });
+
+  // the happy path of the same call: replaces the whole set in order, without a version bump (D2-A)
+  it('setSkills replaces the set in order and does not bump the version', async () => {
+    const versionBefore = (await service.get(workspaceId, generalId))!.version;
+    const a = await ensureSkill('order-a');
+    const b = await ensureSkill('order-b');
+    const links = await service.setSkills(workspaceId, generalId, [b, a]);
+    expect(links!.map((l) => l.skill_id)).toEqual([b, a]);
+    expect(await skillNamesOf(generalId)).toEqual(['order-b', 'order-a']);
+    expect((await service.get(workspaceId, generalId))!.version).toBe(versionBefore);
   });
 });

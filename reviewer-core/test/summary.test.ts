@@ -71,3 +71,58 @@ describe('summarizeFindings', () => {
     );
   });
 });
+
+describe('verdictFromFindings — edge cases', () => {
+  // a partial run with a CRITICAL still requests changes (partial only blocks approve)
+  it('partial + CRITICAL ⇒ request_changes', () => {
+    expect(verdictFromFindings([f('CRITICAL')], { partial: true })).toBe('request_changes');
+  });
+  // partial: false behaves like the default
+  it('partial:false and no findings ⇒ approve', () => {
+    expect(verdictFromFindings([], { partial: false })).toBe('approve');
+  });
+});
+
+describe('summarizeFindings — edge cases', () => {
+  // exactly 3 CRITICALs fit the top-3 list, no "+k more" tail
+  it('3 CRITICALs list all and add no "+k more"', () => {
+    const crit = [1, 2, 3].map((n) => f('CRITICAL', `bug ${n}`, `f${n}.ts`, n));
+    const out = summarizeFindings(crit, { files: 3, chunks: 3 });
+    expect(out.endsWith('bug 3 (f3.ts:3).')).toBe(true);
+    expect(out).not.toContain('more');
+  });
+
+  // only CRITICAL titles are named; WARNINGs are counted but never listed
+  it('non-CRITICAL titles are not listed', () => {
+    const out = summarizeFindings([f('WARNING', 'warn-title'), f('CRITICAL', 'crit-title')], { files: 2, chunks: 2 });
+    expect(out).toContain('crit-title');
+    expect(out).not.toContain('warn-title');
+    expect(out).toContain('(1 critical · 1 warning · 0 suggestion)');
+  });
+
+  // no CRITICAL ⇒ no "Critical:" clause at all
+  it('no CRITICAL ⇒ no Critical clause', () => {
+    expect(summarizeFindings([f('WARNING')], { files: 1, chunks: 1 })).not.toContain('Critical:');
+  });
+
+  // a title of exactly the cap is kept whole (boundary: no ellipsis)
+  it('a title of exactly SUMMARY_TITLE_MAX chars is not truncated', () => {
+    const title = 'y'.repeat(SUMMARY_TITLE_MAX);
+    const out = summarizeFindings([f('CRITICAL', title)], { files: 1, chunks: 1 });
+    expect(out).toContain(`${title} (a.ts:1)`);
+    expect(out).not.toContain('…');
+  });
+
+  // tabs/newlines/padding in a title collapse to single spaces and are trimmed
+  it('whitespace in titles is collapsed and trimmed', () => {
+    const out = summarizeFindings([f('CRITICAL', '  a\t\tb\r\n  c  ')], { files: 1, chunks: 1 });
+    expect(out).toContain('Critical: a b c (a.ts:1)');
+  });
+
+  // the summary is built only from its inputs: a title carrying a newline cannot add a second line
+  it('output is always a single line', () => {
+    const out = summarizeFindings([f('CRITICAL', 'x\ny'), f('CRITICAL', 'z\n\nw')], { files: 2, chunks: 2 });
+    expect(out).not.toMatch(/[\r\n]/);
+  });
+});
+

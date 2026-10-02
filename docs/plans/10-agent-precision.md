@@ -739,3 +739,18 @@ Run `8c23cc41-64a0-4b0c-8249-e21392badeb4`: General Reviewer **v2** on PR #13 at
   - **5 describe code that does not exist** at that head or in any commit (`git log --all -S`): a `callLlm` without `await` in `mcp-server/src/core/run-review.ts` and `reviewer-core/src/review/run.ts`; `acquireCloneLock` / `proper-lockfile` / `stat` in `isStale` in `server/src/adapters/git/clone-lock.ts`, which only defines `KeyedMutex`.
   - **4 are known classes:** `zod/v3` import; a "syntax error" in `run-executor.ts` (typecheck passes); deadline "double counting" (plan 13 design); a shared controller in `openrouter.ts`.
 - **Finding for follow-up (not a plan-10 gap):** fabricated-code CRITICALs pass grounding, because grounding checks only that the cited `file:line` range is in the diff, not what the finding says is there. On a new file, any range qualifies. Repo rules and lane boundaries don't address this. Candidates: content grounding (require a quoted snippet from the cited lines and verify it is in the diff), or the capped refute pass (idea 06 Opt5; Q1 = yes).
+
+## Test-writer (2026-10-02): R4 is now verifiable
+- New and extended tests:
+  - reviewer-core: `prompt.test.ts` +3, `repo-rules.test.ts` +9, `run.test.ts` +5;
+  - server: `eval-helpers.test.ts` +1, new `eval-replay-cli.test.ts` (16), `review-repo-rules.it.test.ts` +1 with one test tightened.
+- 15 break checks across `prompt.ts`, `review/repo-rules.ts`, `run.ts`, `eval/helpers.ts`, `replay-cli.ts`, `replay.ts`, `reviews/repo-rules.ts`, `run-executor.ts` and `agents/service.ts`. Every one turned the named tests red and was reverted (shasum or `git diff` clean).
+- Suites after the run:
+  - reviewer-core 214 ✅;
+  - server 63 files / 647 ✅ (unit + `.it`);
+  - mcp-server ✅.
+- **Defect TW-10-1** (pinned by two `it.fails` tests in `prompt.test.ts`): `wrapUntrusted` (`reviewer-core/src/prompt.ts:30-33`) neutralises only the exact lowercase `</untrusted>`, so `</UNTRUSTED>` and `</untrusted >` pass through in every untrusted block. A fix would be a case- and space-insensitive replace, after which the `.fails` markers come off. This is the same as the open follow-up "`wrapUntrusted` case-insensitive escaping"; it awaits a user decision.
+- main-session fix: TW-10-1 (user: "роби TW-10-1").
+  - `wrapUntrusted` (`reviewer-core/src/prompt.ts`) now neutralises the closing delimiter case- and whitespace-insensitively: `/<\s*\/\s*untrusted\s*>/gi` → `<\/untrusted>`.
+  - The two `it.fails` markers in `prompt.test.ts` are removed; those tests now pass as plain `it`.
+  - The test-writer's inverse break check already showed they flip with the neutraliser.
