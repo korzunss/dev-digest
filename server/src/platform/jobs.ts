@@ -96,6 +96,10 @@ export class JobRunner {
         throw err;
       }
     }) as Promise<void>;
+    // Callers may ignore `done` (clone/index/refresh all do); the failure is
+    // already persisted on the jobs row, so it must not surface as an
+    // unhandled rejection. A caller that awaits `done` still sees it reject.
+    done.catch(() => {});
 
     return { id: jobId, done };
   }
