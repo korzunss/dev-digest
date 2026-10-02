@@ -1,5 +1,5 @@
 # Development Plan: Blast Radius (PR impact map, Prior PRs, MCP tool)
-Status: in-progress
+Status: done
 Save as: docs/plans/18-blast-radius.md
 Spec: none
 
@@ -514,6 +514,7 @@ Main-session full run after test-writer: server unit 45 files / 522 passed; `.it
 - 2026-10-02 delta G7–G10 (plan-verifier): complete — needs sign-off; 72/75 met; P5, D15 met; AC12, D18, T7 await the user's visual check.
 - 2026-10-02 gap H1 (main session, live API): for a fork, `/history` listed upstream parent PRs (#137, #101) whose links do not exist in the fork. Fix mode (implementer) H1, S2: `collectMergedPrs` keeps only PRs whose `base.repo.full_name` equals the queried repo (case-insensitive; missing base repo dropped); `octokit.ts` passes `baseRepo` and `repoFullName`; new unit case (upstream #137 and null-base #101 dropped, differently-cased #8 kept). Skills: onion-architecture H1 · typescript-expert, security H1 (read in a follow-up, no change required). Verification: server typecheck ✅; `github-merged-prs` + `blast` unit 32 passed; main-session full run: `.it` 23 files / 157 passed, server unit 45 files / 529 passed.
 - 2026-10-02 delta H1 (plan-verifier): complete — needs sign-off; 73/76 met; H1 met; AC12, D18, T7 await the visual check.
+- 2026-10-02 user sign-off: "план 18 підтверджую, давай його закривати" — AC12, D18, T7 (visual check) accepted by the user. Status set to done by the main session.
 
 ## Handoffs → G7 report (parallel with G8)
 From G7 (implementer, 2026-10-02):
