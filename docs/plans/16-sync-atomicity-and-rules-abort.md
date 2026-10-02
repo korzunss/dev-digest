@@ -1,5 +1,5 @@
 # Development Plan: Atomic built-in agent sync, versioned skill detach, cancellable repo-rules load
-Status: in-progress
+Status: done
 Save as: docs/plans/16-sync-atomicity-and-rules-abort.md
 Spec: none
 
@@ -375,3 +375,4 @@ All three fall inside existing steps' *Files* (S4, S5, S6), so the plan is uncha
   - the root pair is emitted first and always survives the cap; the other candidates are sorted and sliced to `REPO_RULES_MAX_FILES - 2`;
   - a changed path containing `\` is skipped, like an empty, `.` or `..` segment.
   - The two failing tests now pass unchanged; `review-repo-rules.test.ts` 21 ✅ and `review-repo-rules.it.test.ts` 4 ✅.
+- **Closed (user, 2026-10-02):** "план 16 та 17 закриваємо". Status → `done`. R4 is met by the test-writer run; no open gaps.

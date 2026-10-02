@@ -1,5 +1,5 @@
 # Development Plan: Deterministic map-reduce review summary
-Status: in-progress
+Status: done
 Save as: docs/plans/17-map-reduce-summary.md
 Spec: none
 
@@ -282,3 +282,4 @@ From the G1 implementer run (2026-10-01): S1–S3 done.
     Every one turned the named tests red; each was 3/3 stable.
   - `git diff HEAD -- reviewer-core/src` is empty. No production defects.
   - Not covered by a break check: the title-cleaning tests; `cleanTitle` was not mutated.
+- **Closed (user, 2026-10-02):** "план 16 та 17 закриваємо". Status → `done`. R4 is met by the test-writer run; no open gaps.
