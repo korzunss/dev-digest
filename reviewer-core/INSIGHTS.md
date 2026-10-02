@@ -104,4 +104,8 @@ _Nothing yet._
 
 ## Open Questions
 
-_Nothing yet._
+### 2026-10-02 — a map-reduce review of a large PR takes 1–2 hours because chunks run one after another
+**Symptom:** the General Reviewer on PR #13 (180 files) had done 60 files after 38 min. Most chunks take 10–70 s, but some routed calls wait the full 10-min deadline and are then retried once (e.g. `docs/plans/13-…md`: 645 s on the retry).
+**Cause:** `reviewPullRequest` maps chunks in a plain serial loop (`src/review/run.ts:320`, `for (const chunk of chunks)`), so total time is the sum of every call, slow provider routes included.
+**To pick up:** bounded chunk concurrency (e.g. 4) in the map step. It must keep per-chunk events readable, the skipped-chunk budget, cancellation and cost accounting intact, and cost stays the same. Skipping pure docs (`*.md`) for code agents is a separate product choice. Measure on the PR #13 replay before and after.
+**Evidence:** run `6098841a-12ac-4d74-9374-11db2e18f7c1` event stream; related: [2026-09-30 — duration is set by the routed provider](#2026-09-30--on-openrouter-duration-is-set-by-the-routed-provider-reasoningeffort-does-nothing-for-deepseek-v4-flash).
