@@ -52,6 +52,7 @@ import {
   REFRESH_JOB_KIND,
   RESYNC_JOB_KIND,
   SUPPORTED_EXT,
+  isBlastTestPath,
 } from './constants.js';
 import { runFullIndex, type IndexPayload } from './pipeline/full.js';
 import { runIncremental } from './pipeline/incremental.js';
@@ -287,9 +288,10 @@ export class RepoIntelService implements RepoIntel {
       const callerFiles = new Set<string>();
       for (const r of refs) {
         if (r.fromPath === sym.file) continue; // skip the decl's own file
+        if (isBlastTestPath(r.fromPath)) continue; // D11: tests are not blast
         if ((perSymbol.get(sym.name) ?? 0) >= MAX_CALLERS_PER_SYMBOL) break;
         const callerName = enclosingSymbolName(allSymbols, r.fromPath, r.line);
-        const key = `${r.fromPath}|${callerName}|${sym.name}`;
+        const key = `${r.fromPath}|${r.line}|${sym.name}`;
         if (callerSeen.has(key)) continue;
         callerSeen.add(key);
         perSymbol.set(sym.name, (perSymbol.get(sym.name) ?? 0) + 1);
@@ -423,6 +425,7 @@ export class RepoIntelService implements RepoIntel {
       const next = new Map<string, Frontier>();
       for (const r of rows) {
         if (r.declFile === null || r.fromPath === r.declFile) continue;
+        if (isBlastTestPath(r.fromPath)) continue; // D11: before push and frontier
         // Roots this row reaches, and the previous-level caller it goes through.
         let roots: string[];
         let via: string | null = null;
@@ -440,7 +443,7 @@ export class RepoIntelService implements RepoIntel {
         for (const root of roots) {
           // The root's own declaring file never counts as its caller.
           if (declFilesByName.get(root)?.has(r.fromPath)) continue;
-          const key = `${root}|${r.fromPath}|${enclosing}`;
+          const key = `${root}|${r.fromPath}|${r.line}`;
           if (seenPerRoot.has(key)) continue;
           seenPerRoot.add(key);
           all.push({

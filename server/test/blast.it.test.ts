@@ -87,12 +87,15 @@ d('GET /pulls/:id/blast and /history (plan 18)', () => {
     ]);
     await r.insertReferences([
       ref('src/routes/invoices.ts', 'formatMoney', 12),
+      ref('src/routes/invoices.ts', 'formatMoney', 40),
       ref('src/routes/billing.ts', 'formatMoney', 20),
+      ref('test/money.test.ts', 'formatMoney', 3),
       ref('src/routes/api.ts', 'listInvoices', 5),
     ]);
     await r.replaceEdges(repoId, [
       { fromFile: 'src/routes/invoices.ts', toFile: 'src/lib/money.ts' },
       { fromFile: 'src/routes/billing.ts', toFile: 'src/lib/money.ts' },
+      { fromFile: 'test/money.test.ts', toFile: 'src/lib/money.ts' },
       { fromFile: 'src/routes/api.ts', toFile: 'src/routes/invoices.ts' },
     ]);
     await r.resolveReferences(repoId, { reset: true });
@@ -131,6 +134,9 @@ d('GET /pulls/:id/blast and /history (plan 18)', () => {
     const files = g.callers.map((c) => c.file);
     expect(files).toEqual(expect.arrayContaining(['src/routes/invoices.ts', 'src/routes/billing.ts']));
     expect(files).not.toContain('src/lib/money.ts');
+    // D12: two call sites in one file → two rows; D11: no test-file callers
+    expect(g.callers.filter((c) => c.file === 'src/routes/invoices.ts').map((c) => c.line).sort()).toEqual([12, 40]);
+    expect(files.some((f) => /\.test\.|(^|\/)(test|__tests__)\//.test(f))).toBe(false);
     expect(g.endpoints_affected).toContain('GET /invoices');
     expect(g.crons_affected).toEqual(['0 0 * * *']);
     expect(g.endpoints_affected).not.toContain('0 0 * * *');

@@ -56,7 +56,7 @@ export function toBlastRadius(result: BlastResult): BlastRadius {
   const summary = buildBlastSummary(
     {
       symbols: result.changedSymbols.length,
-      callers: uniq(downstream.flatMap((d) => d.callers.map((c) => `${c.file}#${c.name}`))),
+      callers: uniq(downstream.flatMap((d) => d.callers.map((c) => `${c.file}:${c.line}`))),
       endpoints: uniq(downstream.flatMap((d) => d.endpoints_affected)),
       crons: uniq(downstream.flatMap((d) => d.crons_affected)),
     },

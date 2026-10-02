@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { RepoIntelService } from '../src/modules/repo-intel/service.js';
 import type { ResolvedCallerRow } from '../src/modules/repo-intel/repository.js';
 import type { IndexState } from '../src/modules/repo-intel/types.js';
-import { BFS_DEPTH, MAX_CALLERS_PER_SYMBOL } from '../src/modules/repo-intel/constants.js';
+import { BFS_DEPTH, MAX_CALLERS_PER_SYMBOL, isBlastTestPath } from '../src/modules/repo-intel/constants.js';
 
 /**
  * Blast facade over the persistent index: per-symbol cap, depth 2, declaring
@@ -146,5 +146,93 @@ describe('RepoIntel.getBlastRadius — degraded reasons', () => {
     expect(r.degraded).toBe(true);
     expect(r.reason).toBe(reason);
     expect(r.source).toBe('fallback');
+  });
+});
+
+describe('RepoIntel.getBlastRadius — test files and call sites (D11/D12)', () => {
+  const TESTS = ['src/a.test.ts', 'src/a.it.test.ts', 'test/x.ts', 'server/test/x.ts', 'src/__tests__/x.ts'];
+
+  it('isBlastTestPath matches the D11 patterns only', () => {
+    for (const p of TESTS) expect(isBlastTestPath(p)).toBe(true);
+    for (const p of ['src/a.ts', 'src/latest/x.ts', 'src/contest.ts']) expect(isBlastTestPath(p)).toBe(false);
+  });
+
+  it('drops test callers at depth 1 and 2 and never uses one as `via`', async () => {
+    const symbols = [sym('src/a.ts', 'A'), sym('src/c1.ts', 'c1'), ...TESTS.map((t, i) => sym(t, `t${i}`))];
+    const { svc } = build({
+      symbols,
+      callers: (files, names) => {
+        if (files.includes('src/a.ts') && names.includes('A')) {
+          return [
+            { fromPath: 'src/c1.ts', declFile: 'src/a.ts', toSymbol: 'A' },
+            ...TESTS.map((t) => ({ fromPath: t, declFile: 'src/a.ts', toSymbol: 'A' })),
+          ];
+        }
+        if (names.includes('c1')) {
+          return TESTS.map((t) => ({ fromPath: t, declFile: 'src/c1.ts', toSymbol: 'c1' }));
+        }
+        return [];
+      },
+    });
+    const r = await svc.getBlastRadius('r', ['src/a.ts']);
+    expect(r.callers.map((c) => c.file)).toEqual(['src/c1.ts']);
+    expect(r.callers.some((c) => c.via !== null)).toBe(false);
+  });
+
+  it('25 non-test + 5 test callers → 20', async () => {
+    const symbols = [sym('src/a.ts', 'A')];
+    const rows: Partial<ResolvedCallerRow>[] = [];
+    for (let i = 0; i < 5; i++) rows.push({ fromPath: `src/t${i}.test.ts`, declFile: 'src/a.ts', toSymbol: 'A', rank: 99 });
+    for (let i = 0; i < 25; i++) {
+      rows.push({ fromPath: `src/c${i}.ts`, declFile: 'src/a.ts', toSymbol: 'A' });
+      symbols.push(sym(`src/c${i}.ts`, `f${i}`));
+    }
+    const { svc } = build({ symbols, callers: (_f, n) => (n.includes('A') ? rows : []) });
+    const r = await svc.getBlastRadius('r', ['src/a.ts']);
+    expect(r.callers).toHaveLength(20);
+    expect(r.callers.some((c) => isBlastTestPath(c.file))).toBe(false);
+  });
+
+  it('keeps one row per call site and dedupes the same (file, line)', async () => {
+    const { svc } = build({
+      symbols: [sym('src/a.ts', 'A'), sym('src/c.ts', 'c', 1)],
+      callers: (_f, n) =>
+        n.includes('A')
+          ? [
+              { fromPath: 'src/c.ts', declFile: 'src/a.ts', toSymbol: 'A', line: 10 },
+              { fromPath: 'src/c.ts', declFile: 'src/a.ts', toSymbol: 'A', line: 30 },
+              { fromPath: 'src/c.ts', declFile: 'src/a.ts', toSymbol: 'A', line: 30 },
+            ]
+          : [],
+    });
+    const r = await svc.getBlastRadius('r', ['src/a.ts']);
+    expect(r.callers.map((c) => c.line)).toEqual([10, 30]);
+  });
+
+  it('fallback path drops test paths and keeps one row per call site', async () => {
+    const container = {
+      config: { repoIntelEnabled: false },
+      db: {} as never,
+      codeIndex: {
+        symbols: async () => [sym('src/a.ts', 'A')],
+        references: async () => [
+          { fromPath: 'src/a.test.ts', line: 2 },
+          { fromPath: 'test/x.ts', line: 2 },
+          { fromPath: 'src/c.ts', line: 10 },
+          { fromPath: 'src/c.ts', line: 30 },
+        ],
+      },
+    } as never;
+    const svc = new RepoIntelService(container);
+    (svc as unknown as { repo: Record<string, unknown> }).repo = {
+      getRepoBasics: async () => ({ owner: 'o', name: 'n', clonePath: '/tmp/x' }),
+      getFileFacts: async () => [],
+    };
+    const r = await svc.getBlastRadius('r', ['src/a.ts']);
+    expect(r.source).toBe('fallback');
+    expect(r.callers.map((c) => [c.file, c.line])).toEqual([
+      ['src/c.ts', 10],
+      ['src/c.ts', 30],
+    ]);
   });
 });

@@ -70,6 +70,18 @@ describe('toBlastRadius', () => {
     expect(BlastRadius.parse(out)).toEqual(out);
   });
 
+  it('counts call sites, so two calls in one file count twice', () => {
+    const out = toBlastRadius(
+      result({
+        callers: [
+          { file: 'src/r1.ts', symbol: 'h1', viaSymbol: 'alpha', line: 3, rank: 0, depth: 1, via: null },
+          { file: 'src/r1.ts', symbol: 'h1', viaSymbol: 'alpha', line: 30, rank: 0, depth: 1, via: null },
+        ],
+      }),
+    );
+    expect(out.summary).toContain('2 callers');
+  });
+
   it('passes degraded and reason through', () => {
     const out = toBlastRadius(
       result({ degraded: true, reason: 'no_data', callers: [], source: 'fallback' }),
