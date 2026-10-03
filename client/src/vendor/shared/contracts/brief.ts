@@ -60,10 +60,21 @@ export const IntentClassification = Intent.extend({
 export type IntentClassification = z.infer<typeof IntentClassification>;
 
 // ---- Blast radius ----
+export const DegradedReason = z.enum([
+  'flag_off',
+  'index_failed',
+  'index_partial',
+  'repo_too_large',
+  'no_data',
+]);
+export type DegradedReason = z.infer<typeof DegradedReason>;
+
 export const ChangedSymbol = z.object({
   name: z.string(),
   file: z.string(),
   kind: z.string(),
+  /** Declaring file's file_rank; 0 when degraded. */
+  rank: z.number(),
 });
 export type ChangedSymbol = z.infer<typeof ChangedSymbol>;
 
@@ -71,6 +82,9 @@ export const BlastCaller = z.object({
   name: z.string(),
   file: z.string(),
   line: z.number().int(),
+  depth: z.number().int().min(1),
+  /** Depth-1 caller name a depth-2 caller reaches through; null at depth 1. */
+  via: z.string().nullable(),
 });
 export type BlastCaller = z.infer<typeof BlastCaller>;
 
@@ -79,6 +93,7 @@ export const DownstreamImpact = z.object({
   callers: z.array(BlastCaller),
   endpoints_affected: z.array(z.string()),
   crons_affected: z.array(z.string()),
+  rank: z.number(),
 });
 export type DownstreamImpact = z.infer<typeof DownstreamImpact>;
 
@@ -86,6 +101,12 @@ export const BlastRadius = z.object({
   changed_symbols: z.array(ChangedSymbol),
   downstream: z.array(DownstreamImpact),
   summary: z.string(),
+  degraded: z.boolean(),
+  reason: DegradedReason.nullable(),
+  limits: z.object({
+    callers_per_symbol: z.number().int(),
+    depth: z.number().int(),
+  }),
 });
 export type BlastRadius = z.infer<typeof BlastRadius>;
 
@@ -119,6 +140,7 @@ export const PrHistoryItem = z.object({
 export type PrHistoryItem = z.infer<typeof PrHistoryItem>;
 
 export const PrHistory = z.object({
+  status: z.enum(['ok', 'unsupported', 'unavailable']),
   history: z.array(PrHistoryItem),
 });
 export type PrHistory = z.infer<typeof PrHistory>;

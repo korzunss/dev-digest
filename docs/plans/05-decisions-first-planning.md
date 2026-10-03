@@ -394,3 +394,9 @@ None — single group. Implementer report: S1–S6 done, no deviations. Its `## 
 - T2/T3: the new `planner.md` writes a pass-1 draft within the cap and pass 2 resumes it.
 - T4: record planner and implementer `subagent_tokens` with the 2-skill preload (baseline: pass 1 of this plan 66.8k with 12 skills; implementer G1 here 193k).
 - T5: plan-verifier emits `SK` items and flags a step whose *Skills to apply* skill is missing from *Applied in*.
+
+### Carry-over results — checked on plan 07 (2026-09-29)
+Evidence: `docs/plans/07-review-diff-base-sha.md` → *Verification log*.
+- **T2/T3 — pass.** Pass 1 wrote a decisions-only draft (~3,350 B above the marker, `Steps: pending decisions`, index `draft (decisions)`); pass 2 resumed the same planner after the decisions and research were recorded in the plan. Pass 2 raised two new decisions (D7, D8) instead of deciding them itself.
+- **T4 — pass.** Planner pass 1: 53.7k `subagent_tokens` (baseline 66.8k, −20%). Implementer G1: 70.1k, G2: 76.6k (baseline 193k for G1 here; the groups are not the same size, so this is indicative, not a like-for-like). Pass 2 of the resumed planner reported 126.9k, not separable from pass 1.
+- **T5 — pass, with a finding.** plan-verifier emitted SK1–SK7 and flagged missing *Applied in* entries. Two lessons: (1) implementers record a cross-cutting skill against one step only, which fails step-level SK items; (2) a skill listed on a step where it has nothing to do can only be closed by a plan change — *Not used — reason* does not satisfy the check. Planners should list a per-step skill only where the step writes the artifact the skill covers.

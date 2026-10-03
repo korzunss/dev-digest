@@ -29,12 +29,15 @@ import { ConfigError } from './errors.js';
 import { AgentsRepository } from '../modules/agents/repository.js';
 import { SkillsRepository } from '../modules/skills/repository.js';
 import { ReviewRepository } from '../modules/reviews/repository.js';
+import { PullsRepository } from '../modules/pulls/repository.js';
 import type { RepoIntel } from '../modules/repo-intel/types.js';
 import { RepoIntelService } from '../modules/repo-intel/service.js';
 import { IntentService } from '../modules/intent/service.js';
 import { IntentRepository } from '../modules/intent/repository.js';
 import { SmartDiffService } from '../modules/smart-diff/service.js';
 import { SmartDiffRepository } from '../modules/smart-diff/repository.js';
+import { BlastService } from '../modules/blast/service.js';
+import { BlastRepository } from '../modules/blast/repository.js';
 import { resolveFeatureModel } from '../modules/settings/feature-models.js';
 import { type DepGraph, DepCruiseGraph } from '../adapters/depgraph/index.js';
 import { type Tokenizer, TiktokenTokenizer } from '../adapters/tokenizer/index.js';
@@ -87,12 +90,14 @@ export class Container {
   private _agentsRepo?: AgentsRepository;
   private _skillsRepo?: SkillsRepository;
   private _reviewRepo?: ReviewRepository;
+  private _pullsRepo?: PullsRepository;
   private _repoIntel?: RepoIntel;
   private _depgraph?: DepGraph;
   private _tokenizer?: Tokenizer;
   private _priceBook?: PriceBook;
   private _intent?: IntentService;
   private _smartDiff?: SmartDiffService;
+  private _blast?: BlastService;
 
   constructor(config: AppConfig, db: Db, private overrides: ContainerOverrides = {}) {
     this.config = config;
@@ -119,6 +124,10 @@ export class Container {
 
   get reviewRepo(): ReviewRepository {
     return (this._reviewRepo ??= new ReviewRepository(this.db));
+  }
+
+  get pullsRepo(): PullsRepository {
+    return (this._pullsRepo ??= new PullsRepository(this.db));
   }
 
   get codeIndex(): CodeIndex {
@@ -173,6 +182,15 @@ export class Container {
   /** Smart Diff (S6, spec 007) — reviewer-ordered Files-changed grouping. */
   get smartDiff(): SmartDiffService {
     return (this._smartDiff ??= new SmartDiffService({ repo: new SmartDiffRepository(this.db) }));
+  }
+
+  /** Blast Radius — impact map over the repo index + Prior PRs from the forge. */
+  get blast(): BlastService {
+    return (this._blast ??= new BlastService({
+      repo: new BlastRepository(this.db),
+      repoIntel: this.repoIntel,
+      forge: (ref) => this.forge(ref),
+    }));
   }
 
   /**

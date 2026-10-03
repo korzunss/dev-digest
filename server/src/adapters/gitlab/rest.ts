@@ -11,6 +11,7 @@ import type {
   OpenPrPayload,
   CommitFilesPayload,
   IssueMeta,
+  MergedPrLookup,
 } from '@devdigest/shared';
 import { withRetry, withTimeout } from '../../platform/resilience.js';
 import { DEFAULT_API_BASE, gitlabApiRoot } from '../../platform/forge-resolve.js';
@@ -272,6 +273,15 @@ export class GitLabRestClient implements ForgeClient {
   async currentLogin(): Promise<string> {
     const user = await this.call<{ username?: string }>('/user');
     return user.username ?? 'unknown';
+  }
+
+  /** Not implemented for GitLab: no HTTP call, reported as unsupported. */
+  async listMergedPullsTouching(
+    _repo: RepoRef,
+    _paths: string[],
+    _opts: { excludeNumber: number; commitsPerPath: number; limit: number },
+  ): Promise<MergedPrLookup> {
+    return { supported: false, items: [] };
   }
 
   // ---- writes ----------------------------------------------------------

@@ -21,6 +21,10 @@ routes.ts  →  service.ts  →  repository.ts / adapters (via container)  →  
   `new`'d). No Fastify types, no SQL.
 - **`repository.ts`** (+ `repository/` subfolder) — the only layer that
   touches Drizzle. Takes/returns plain rows or DTOs; workspace-scoped.
+  A repository that must join a transaction takes `DbExecutor` (a root `Db` or
+  a tx) and exposes `transaction(fn)`, which hands `fn` a tx-bound copy of
+  itself; the service calls it and never sees Drizzle
+  (`src/modules/eval/repository.ts`).
 - **adapters** — reached through `container`, not imported directly by a
   service; see §5.
 
@@ -227,6 +231,9 @@ Events, replaying the buffer first and then streaming live until
   `src/db/migrations/`; they are **never applied on boot**
   (`src/app.ts` has no migrate call) — run `pnpm db:migrate` by hand after
   cloning or pulling a new migration.
+- Data migrations go through `pnpm db:generate --custom --name <x>`, run
+  **before** the schema edit whose DDL depends on them; only that stub's body
+  is written by hand (`src/db/migrations/0020_dedupe_eval_cases.sql`).
 
 Known traps, one line each — full write-ups in `server/INSIGHTS.md`:
 

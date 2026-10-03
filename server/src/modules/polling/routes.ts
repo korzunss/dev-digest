@@ -30,32 +30,7 @@ export default async function pollingRoutes(appBase: FastifyInstance) {
     const pulls = await forge.listPullRequests(toRepoRef(repo));
     let synced = 0;
     for (const pr of pulls) {
-      await container.db
-        .insert(t.pullRequests)
-        .values({
-          workspaceId,
-          repoId: repo.id,
-          number: pr.number,
-          title: pr.title,
-          author: pr.author,
-          branch: pr.branch,
-          base: pr.base,
-          headSha: pr.head_sha,
-          additions: pr.additions,
-          deletions: pr.deletions,
-          filesCount: pr.files_count,
-          status: pr.status,
-          updatedAt: pr.updated_at ? new Date(pr.updated_at) : null,
-        })
-        .onConflictDoUpdate({
-          target: [t.pullRequests.repoId, t.pullRequests.number],
-          set: {
-            title: pr.title,
-            headSha: pr.head_sha,
-            status: pr.status,
-            updatedAt: pr.updated_at ? new Date(pr.updated_at) : null,
-          },
-        });
+      await container.pullsRepo.upsertFromForge(workspaceId, repo.id, pr, { withOpenedAt: false });
       synced++;
     }
     await container.db

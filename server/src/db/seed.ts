@@ -10,6 +10,7 @@ import {
   API_CONTRACT_REVIEWER_PROMPT,
 } from './seed-prompts.js';
 import { SEED_SKILLS, SEED_AGENT_SKILLS } from './seed-skills.js';
+import { SEED_CONVENTIONS, seedConventionFingerprint } from './seed-conventions.js';
 
 /** Default provider/model for the built-in reviewer agents. */
 const DEFAULT_PROVIDER = 'openrouter' as const;
@@ -25,7 +26,9 @@ const DEFAULT_MODEL = 'deepseek/deepseek-v4-flash';
  * Performance), all on the default openrouter/deepseek-v4-flash provider+model.
  *
  * Course lessons populate the other tables (skills, conventions, memory, eval,
- * …) once their features are built — they start empty here.
+ * …) once their features are built — they start empty here. Demo conventions
+ * are seeded for the CLI only (`seedDemoConventions`), never by `seed()`: the
+ * `.it` suites call `seed()` and assert exact convention counts.
  */
 
 export const DEFAULT_WORKSPACE_NAME = 'default';
@@ -307,6 +310,54 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
   return { workspaceId, userId };
 }
 
+/**
+ * Demo convention scan + 3 pending candidates for acme/payments-api. CLI only.
+ * Skips when the repo is missing or ANY scan exists for it, so a real scan or
+ * decisions made on demo rows are never touched.
+ */
+export async function seedDemoConventions(db: Db, workspaceId: string): Promise<void> {
+  const [repo] = await db
+    .select()
+    .from(t.repos)
+    .where(and(eq(t.repos.workspaceId, workspaceId), eq(t.repos.fullName, 'acme/payments-api')));
+  if (!repo) return;
+
+  const [existing] = await db
+    .select({ id: t.conventionScans.id })
+    .from(t.conventionScans)
+    .where(and(eq(t.conventionScans.workspaceId, workspaceId), eq(t.conventionScans.repoId, repo.id)))
+    .limit(1);
+  if (existing) return;
+
+  await db.transaction(async (tx) => {
+    const [scan] = await tx
+      .insert(t.conventionScans)
+      .values({
+        workspaceId,
+        repoId: repo.id,
+        status: 'done',
+        finishedAt: new Date(),
+        provider: 'seed',
+        model: 'seed',
+        commitSha: 'a1b2c3d4e5f6',
+        samplePaths: SEED_CONVENTIONS.map((c) => c.evidencePath),
+        candidatesRaw: SEED_CONVENTIONS.length,
+        candidatesKept: SEED_CONVENTIONS.length,
+      })
+      .returning({ id: t.conventionScans.id });
+    await tx.insert(t.conventions).values(
+      SEED_CONVENTIONS.map((c) => ({
+        workspaceId,
+        repoId: repo.id,
+        scanId: scan!.id,
+        ...c,
+        status: 'pending' as const,
+        fingerprint: seedConventionFingerprint(c.rule, c.evidencePath),
+      })),
+    );
+  });
+}
+
 // CLI entrypoint
 if (import.meta.url === `file://${process.argv[1]}`) {
   const url = process.env.DATABASE_URL;
@@ -317,6 +368,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const handle = createDb(url);
   seed(handle.db)
     .then(async (r) => {
+      await seedDemoConventions(handle.db, r.workspaceId);
       console.log('✓ seeded', r);
       await handle.close();
       process.exit(0);

@@ -24,12 +24,9 @@
 
 export type IndexStatus = 'full' | 'partial' | 'degraded' | 'failed';
 
-export type DegradedReason =
-  | 'flag_off'
-  | 'index_failed'
-  | 'index_partial'
-  | 'repo_too_large'
-  | 'no_data';
+import type { DegradedReason } from '@devdigest/shared';
+
+export type { DegradedReason };
 
 export interface IndexResult {
   status: IndexStatus;
@@ -58,6 +55,8 @@ export interface BlastChangedSymbol {
   file: string;
   name: string;
   kind: string;
+  /** Declaring file's `file_rank.rank` (0 when unknown / degraded). */
+  rank: number;
 }
 
 export interface BlastCallerRow {
@@ -69,12 +68,16 @@ export interface BlastCallerRow {
   line: number;
   /** file_rank.rank of the caller file (0 in the degraded/ripgrep path). */
   rank: number;
+  /** 1 = direct caller; 2 = caller of a depth-1 caller. */
+  depth: number;
+  /** Depth-1 caller name a depth-2 caller reaches through; null at depth 1. */
+  via: string | null;
 }
 
 export interface BlastResult {
   changedSymbols: BlastChangedSymbol[];
   callers: BlastCallerRow[];
-  /** "METHOD /path" (via extractEndpoints / file_facts) — flat union. */
+  /** "METHOD /path" (via extractEndpoints / file_facts) — union over the returned (capped) `callers` only. */
   impactedEndpoints: string[];
   /**
    * Per-caller-file precomputed facts, so consumers (blast) can attribute
@@ -84,6 +87,11 @@ export interface BlastResult {
   factsByFile?: Record<string, { endpoints: string[]; crons: string[] }>;
   degraded?: boolean;
   reason?: DegradedReason;
+  /** Where the map came from: the persistent index or the ripgrep fallback. */
+  source: 'index' | 'fallback';
+  indexStatus?: IndexStatus;
+  /** Traversal bounds applied to this result (caps/depth), so consumers need not import constants. */
+  limits: { callersPerSymbol: number; depth: number };
 }
 
 // ---------------------------------------------------------------------------

@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "eval_cases_owner_name_idx" ON "eval_cases" USING btree ("workspace_id","owner_kind","owner_id","name");

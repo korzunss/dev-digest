@@ -56,33 +56,7 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       try {
         const pulls = await gh.listPullRequests(toRepoRef(repo));
         for (const pr of pulls) {
-          await container.db
-            .insert(t.pullRequests)
-            .values({
-              workspaceId,
-              repoId: repo.id,
-              number: pr.number,
-              title: pr.title,
-              author: pr.author,
-              branch: pr.branch,
-              base: pr.base,
-              headSha: pr.head_sha,
-              additions: pr.additions,
-              deletions: pr.deletions,
-              filesCount: pr.files_count,
-              status: pr.status,
-              openedAt: pr.opened_at ? new Date(pr.opened_at) : null,
-              updatedAt: pr.updated_at ? new Date(pr.updated_at) : null,
-            })
-            .onConflictDoUpdate({
-              target: [t.pullRequests.repoId, t.pullRequests.number],
-              set: {
-                title: pr.title,
-                headSha: pr.head_sha,
-                status: pr.status,
-                updatedAt: pr.updated_at ? new Date(pr.updated_at) : null,
-              },
-            });
+          await container.pullsRepo.upsertFromForge(workspaceId, repo.id, pr, { withOpenedAt: true });
         }
       } catch (err) {
         app.log.warn({ err }, 'GitHub PR sync skipped (no token / offline); serving persisted PRs');
@@ -109,6 +83,9 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
           await container.db
             .update(t.pullRequests)
             .set({
+              base: detail.base,
+              headSha: detail.head_sha,
+              baseSha: detail.base_sha ?? null,
               additions: detail.additions,
               deletions: detail.deletions,
               filesCount: detail.files_count,
@@ -209,6 +186,7 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
         branch: r.branch,
         base: r.base,
         head_sha: r.headSha,
+        base_sha: r.baseSha,
         additions: r.additions,
         deletions: r.deletions,
         files_count: r.filesCount,
@@ -279,6 +257,10 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
         .update(t.pullRequests)
         .set({
           body: detail.body ?? null,
+          base: detail.base,
+          headSha: detail.head_sha,
+          baseSha: detail.base_sha ?? null,
+          filesHeadSha: detail.head_sha,
           // Diff stats aren't on GitHub's PR-list payload — backfill them from
           // the detail fetch so the Pull Requests list shows real size/files.
           additions: detail.additions,
@@ -300,6 +282,7 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
         branch: pr.branch,
         base: pr.base,
         head_sha: pr.headSha,
+        base_sha: pr.baseSha,
         additions: pr.additions,
         deletions: pr.deletions,
         files_count: pr.filesCount,

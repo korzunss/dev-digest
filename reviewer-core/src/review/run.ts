@@ -4,6 +4,7 @@ import type {
   Finding,
   Intent,
   LLMProvider,
+  LlmRouting,
   PromptAssembly,
   Review,
   RunEventKind,
@@ -12,7 +13,11 @@ import type {
 import { Review as ReviewSchema } from '@devdigest/shared';
 import { assemblePrompt } from '../prompt.js';
 import { groundFindings, groundingSummary } from '../grounding.js';
-import { reduceReviews, scoreFromFindings, sliceDiff } from './reduce.js';
+import { reduceReviews, scoreFromFindings, sliceDiff, verdictFromFindings } from './reduce.js';
+import { summarizeFindings } from './summary.js';
+import { callWithDeadline, describeRouting, type FailedCallUsage } from './llm-call.js';
+import { LlmOutputInvalidError, LlmOutputTruncatedError } from '../llm/errors.js';
+import { buildRepoContext, type RepoRuleSet } from './repo-rules.js';
 import { applyScopeFilter, ScopedReview, type ScopedFinding } from './scope.js';
 
 /**
@@ -34,6 +39,11 @@ import { applyScopeFilter, ScopedReview, type ScopedFinding } from './scope.js';
 export const DEFAULT_MAP_THRESHOLD_LINES = 400;
 /** Default structured-output reprompt retries (matches REVIEW_MAX_RETRIES). */
 export const DEFAULT_REVIEW_MAX_RETRIES = 2;
+/**
+ * Default diff size (tokens) above which a multi-file diff is reviewed
+ * map-reduce even for a `single-pass` agent (assumption: 100k).
+ */
+export const DEFAULT_SINGLE_PASS_MAX_DIFF_TOKENS = 100_000;
 
 export type ReviewStrategy = 'auto' | 'single-pass' | 'map-reduce';
 export type ReviewMode = 'single-pass' | 'map-reduce';
@@ -58,8 +68,20 @@ export interface ReviewInput {
   strategy?: ReviewStrategy;
   /** Resolved skill bodies (NOT slugs). */
   skills?: string[];
-  /** Curated memory items. */
+  /** Repo context items (untrusted; rendered as `## Repo context`). */
   memory?: string[];
+  /**
+   * Repo rule sets (plan 10), loaded by the caller at the PR's base SHA. Each
+   * chunk gets the root sets plus those whose `scope` prefixes one of its paths.
+   */
+  repoRules?: RepoRuleSet[];
+  /**
+   * The PR's FULL changed-path list (even when the caller reviews a subset of
+   * the diff). Rendered into every chunk's repo context. Absent ⇒ no list.
+   */
+  changedFiles?: string[];
+  /** Cap on the rule text per chunk. Default `DEFAULT_REPO_RULES_MAX_CHARS`. */
+  repoRulesMaxChars?: number;
   /** Project-context spec chunks (untrusted; delimiter-wrapped downstream). */
   specs?: string[];
   /**
@@ -88,6 +110,11 @@ export interface ReviewInput {
    * server's tiktoken adapter). Falls back to a chars/4 estimate when absent.
    */
   countTokens?: (s: string) => number;
+  /**
+   * Price book for estimating a deadline-aborted attempt; absent ⇒ that
+   * attempt's tokens are counted unpriced.
+   */
+  estimateCost?: (model: string, tokensIn: number, tokensOut: number) => number | null;
   /** Task framing line, e.g. "Review PR #482 …". */
   task?: string;
   /** Override the structured-output retry budget. */
@@ -107,10 +134,44 @@ export interface ReviewInput {
    * type, e.g. the server's RunCancelledError); the engine stays agnostic.
    */
   checkCancelled?: () => void;
+  /** Run-level cancellation; aborts the in-flight LLM call (passed as `req.signal`). */
+  signal?: AbortSignal;
+  /** Per-call deadline in ms (no answer → abort + one retry). Unset = none. */
+  callDeadlineMs?: number;
+  /** Output-token safety cap sent as `max_tokens` on every call. Unset = none. */
+  maxOutputTokens?: number;
+  /** OpenRouter: only route to endpoints supporting every request parameter. */
+  requireParameters?: boolean;
+  /** Gateway routing hint for the first attempt. */
+  routing?: LlmRouting;
+  /** Gateway routing hint for the single retry (e.g. `{}` = default balancing). */
+  retryRouting?: LlmRouting;
+  /** Override DEFAULT_SINGLE_PASS_MAX_DIFF_TOKENS. */
+  singlePassMaxDiffTokens?: number;
+  /**
+   * Map-reduce only: a chunk whose final error is truncated/invalid output is skipped while
+   * skipped ≤ max(1, floor(chunks × fraction)); unset = never skip (any final error fails the run).
+   */
+  maxSkippedChunkFraction?: number;
+}
+
+/** Thrown when too many chunks were skipped, or when no chunk produced a review at all. */
+export class ReviewChunksSkippedError extends Error {
+  constructor(
+    readonly skipped: number,
+    readonly total: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'ReviewChunksSkippedError';
+  }
 }
 
 export interface ReviewOutcome {
-  /** The reduced, GROUNDED review (findings that survived the citation gate). */
+  /**
+   * The reduced, GROUNDED review (findings that survived the citation gate). Verdict, score
+   * and the map-reduce summary are derived from those final findings, not from model output.
+   */
   review: Review;
   /** Human-readable grounding summary, e.g. "3/4 passed". */
   grounding: string;
@@ -133,27 +194,146 @@ export interface ReviewOutcome {
   costSource: CostSource | null;
   /** Joined raw model outputs (for the run trace). */
   raw: string;
+  /** Chunks skipped on truncated/invalid output (empty when nothing was skipped). */
+  skipped: { label: string; reason: string }[];
 }
 
-function selectMode(strategy: ReviewStrategy, diff: UnifiedDiff, threshold: number): ReviewMode {
-  if (strategy === 'single-pass') return 'single-pass';
-  if (strategy === 'map-reduce') return diff.files.length > 1 ? 'map-reduce' : 'single-pass';
-  // auto: map-reduce only when the diff is both large AND multi-file (else 1 call).
-  const totalLines = diff.files.reduce((n, f) => n + f.additions + f.deletions, 0);
-  return totalLines > threshold && diff.files.length > 1 ? 'map-reduce' : 'single-pass';
+type ModeReason = 'strategy' | 'size-guard' | 'oversize-single-file';
+
+function selectMode(
+  strategy: ReviewStrategy,
+  diff: UnifiedDiff,
+  threshold: number,
+  diffTokens: number,
+  maxSinglePassTokens: number,
+): { mode: ReviewMode; reason: ModeReason } {
+  let mode: ReviewMode;
+  if (strategy === 'single-pass') mode = 'single-pass';
+  else if (strategy === 'map-reduce') mode = diff.files.length > 1 ? 'map-reduce' : 'single-pass';
+  else {
+    // auto: map-reduce only when the diff is both large AND multi-file (else 1 call).
+    const totalLines = diff.files.reduce((n, f) => n + f.additions + f.deletions, 0);
+    mode = totalLines > threshold && diff.files.length > 1 ? 'map-reduce' : 'single-pass';
+  }
+  // Size guard: no single call for a huge diff, whatever the strategy.
+  if (mode === 'single-pass' && diffTokens > maxSinglePassTokens) {
+    return diff.files.length > 1
+      ? { mode: 'map-reduce', reason: 'size-guard' }
+      : { mode, reason: 'oversize-single-file' };
+  }
+  return { mode, reason: 'strategy' };
+}
+
+/** Running token/cost totals of a review, across reviewed and skipped chunks. */
+interface UsageTotals {
+  tokensIn: number;
+  tokensOut: number;
+  /** null once any chunk could not be priced. */
+  costUsd: number | null;
+  costSource: CostSource | undefined;
+}
+
+/** Adds one call's usage. Cost source is worst-wins: one estimate makes the whole run an estimate. */
+function addUsage(
+  acc: UsageTotals,
+  u: { tokensIn: number; tokensOut: number; costUsd: number | null; costSource: CostSource | undefined },
+): void {
+  acc.tokensIn += u.tokensIn;
+  acc.tokensOut += u.tokensOut;
+  acc.costUsd = acc.costUsd == null || u.costUsd == null ? null : acc.costUsd + u.costUsd;
+  if (u.costSource === 'estimate') acc.costSource = 'estimate';
+  else if (u.costSource === 'api' && acc.costSource !== 'estimate') acc.costSource = 'api';
+}
+
+type ChunkCall = Awaited<ReturnType<typeof callWithDeadline<Review>>>;
+type SkippableError = LlmOutputTruncatedError | LlmOutputInvalidError;
+
+/**
+ * One chunk's LLM call. A truncated / invalid output becomes `{ ok: false }`
+ * (with the failed call's usage, when known) only when `canSkip`; every other
+ * error, and any error when skipping is off, propagates unchanged.
+ */
+async function reviewChunk(
+  input: ReviewInput,
+  opts: {
+    label: string;
+    messages: ReturnType<typeof assemblePrompt>['messages'];
+    schema: ZodType<Review>;
+    maxRetries: number;
+    canSkip: boolean;
+    emit: (kind: RunEventKind, msg: string, data?: unknown) => void;
+  },
+): Promise<{ ok: true; res: ChunkCall } | { ok: false; err: SkippableError; usage?: FailedCallUsage }> {
+  // A box, not a `let`: a closure assignment to a `let` is invisible to narrowing in the catch below.
+  const failed: { usage?: FailedCallUsage } = {};
+  try {
+    const res = await callWithDeadline<Review>({
+      llm: input.llm,
+      request: {
+        model: input.model,
+        schema: opts.schema,
+        schemaName: 'Review',
+        messages: opts.messages,
+        maxRetries: opts.maxRetries,
+        ...(input.sessionId ? { sessionId: input.sessionId } : {}),
+        ...(input.maxOutputTokens != null ? { maxTokens: input.maxOutputTokens } : {}),
+        ...(input.requireParameters != null ? { requireParameters: input.requireParameters } : {}),
+        ...(input.routing ? { routing: input.routing } : {}),
+      },
+      ...(input.retryRouting ? { retryRouting: input.retryRouting } : {}),
+      ...(input.callDeadlineMs != null ? { deadlineMs: input.callDeadlineMs } : {}),
+      ...(input.signal ? { signal: input.signal } : {}),
+      ...(input.checkCancelled ? { checkCancelled: input.checkCancelled } : {}),
+      ...(input.estimateCost ? { estimateCost: input.estimateCost } : {}),
+      ...(input.countTokens ? { countTokens: input.countTokens } : {}),
+      label: opts.label,
+      emit: opts.emit,
+      onFinalFailure: (u) => {
+        failed.usage = u;
+      },
+    });
+    return { ok: true, res };
+  } catch (err) {
+    if (!opts.canSkip || !(err instanceof LlmOutputTruncatedError || err instanceof LlmOutputInvalidError)) {
+      throw err;
+    }
+    return { ok: false, err, ...(failed.usage ? { usage: failed.usage } : {}) };
+  }
 }
 
 export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutcome> {
   const threshold = input.mapThresholdLines ?? DEFAULT_MAP_THRESHOLD_LINES;
   const maxRetries = input.maxRetries ?? DEFAULT_REVIEW_MAX_RETRIES;
-  const mode = selectMode(input.strategy ?? 'auto', input.diff, threshold);
+  const diffTokens = input.countTokens?.(input.diff.raw) ?? Math.ceil(input.diff.raw.length / 4);
+  const maxSinglePass = input.singlePassMaxDiffTokens ?? DEFAULT_SINGLE_PASS_MAX_DIFF_TOKENS;
+  const { mode, reason } = selectMode(
+    input.strategy ?? 'auto',
+    input.diff,
+    threshold,
+    diffTokens,
+    maxSinglePass,
+  );
   const emit = (kind: RunEventKind, msg: string, data?: unknown) =>
     input.onEvent?.({ kind, msg, data });
+
+  const allPaths = input.diff.files.map((f) => f.path);
+  const hasRepoContext = input.repoRules !== undefined || input.changedFiles !== undefined;
+  // Per-chunk memory: caller memory + the rule sets scoped to the chunk's paths
+  // + the changed-file list. With neither field set, `memory` passes through.
+  const memoryFor = (chunkPaths: string[]): string[] | undefined => {
+    if (!hasRepoContext) return input.memory;
+    const items = [
+      ...(input.memory ?? []),
+      ...buildRepoContext(input.repoRules ?? [], chunkPaths, input.changedFiles, {
+        ...(input.repoRulesMaxChars != null ? { rulesMaxChars: input.repoRulesMaxChars } : {}),
+      }),
+    ];
+    return items.length > 0 ? items : undefined;
+  };
 
   const promptParts = {
     system: input.systemPrompt,
     skills: input.skills,
-    memory: input.memory,
     specs: input.specs,
     callers: input.callers,
     repoMap: input.repoMap,
@@ -169,15 +349,32 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
 
   // Whole-diff assembly is the trace default; overwritten below for single-pass.
   let assembly: PromptAssembly = assemblePrompt(
-    { ...promptParts, diff: input.diff.raw },
+    { ...promptParts, memory: memoryFor(allPaths), diff: input.diff.raw },
     assembleOpts,
   ).assembly;
 
   const chunks =
     mode === 'map-reduce'
-      ? input.diff.files.map((f) => ({ label: f.path, diffText: sliceDiff(input.diff, f.path) }))
-      : [{ label: 'all files', diffText: input.diff.raw }];
+      ? input.diff.files.map((f) => ({
+          label: f.path,
+          paths: [f.path],
+          diffText: sliceDiff(input.diff, f.path),
+        }))
+      : [{ label: 'all files', paths: allPaths, diffText: input.diff.raw }];
 
+  const k = (n: number) => Math.round(n / 1000);
+  if (reason === 'size-guard') {
+    emit(
+      'info',
+      `Diff is ~${k(diffTokens)}k tokens (> ${k(maxSinglePass)}k) → map-reduce over ${input.diff.files.length} files instead of one pass`,
+    );
+  } else if (reason === 'oversize-single-file') {
+    emit('info', `Warning: diff is ~${k(diffTokens)}k tokens in one file — cannot split; reviewing in one pass`);
+  }
+  emit(
+    'info',
+    `LLM call: ${input.model} · routing ${describeRouting(input.routing, input.requireParameters)} · max_tokens=${input.maxOutputTokens ?? 'none'} · deadline ${input.callDeadlineMs != null ? `${Math.round((input.callDeadlineMs / 60_000) * 10) / 10} min` : 'none'}`,
+  );
   emit(
     'info',
     mode === 'map-reduce'
@@ -186,11 +383,13 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
   );
 
   const partials: Review[] = [];
-  let tokensIn = 0;
-  let tokensOut = 0;
-  let costUsd: number | null = 0;
-  let costSource: CostSource | undefined;
+  const usage: UsageTotals = { tokensIn: 0, tokensOut: 0, costUsd: 0, costSource: undefined };
   const raws: string[] = [];
+  const skipped: { label: string; reason: string }[] = [];
+  const allowed =
+    mode === 'map-reduce' && input.maxSkippedChunkFraction != null
+      ? Math.max(1, Math.floor(chunks.length * input.maxSkippedChunkFraction))
+      : 0;
 
   for (const chunk of chunks) {
     // Cancellation checkpoint — stop before the next (expensive) LLM call.
@@ -202,31 +401,83 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
       mode === 'map-reduce' ? `map: reviewing ${chunk.label}` : `Reviewing ${chunk.label} in one pass`,
       { file: chunk.label },
     );
-    const a = assemblePrompt({ ...promptParts, diff: chunk.diffText }, assembleOpts);
+    const a = assemblePrompt(
+      { ...promptParts, memory: memoryFor(chunk.paths), diff: chunk.diffText },
+      assembleOpts,
+    );
     if (mode === 'single-pass') assembly = a.assembly;
-    const res = await input.llm.completeStructured<Review>({
-      model: input.model,
-      schema: reviewSchema,
-      schemaName: 'Review',
+    const startedAt = Date.now();
+    const out = await reviewChunk(input, {
+      label: chunk.label,
       messages: a.messages,
+      schema: reviewSchema,
       maxRetries,
-      ...(input.sessionId ? { sessionId: input.sessionId } : {}),
+      canSkip: allowed > 0,
+      emit,
     });
-    tokensIn += res.tokensIn;
-    tokensOut += res.tokensOut;
-    costUsd = costUsd == null || res.costUsd == null ? null : costUsd + res.costUsd;
-    // Worst-wins: one estimated chunk makes the whole run an estimate.
-    if (res.costSource === 'estimate') costSource = 'estimate';
-    else if (res.costSource === 'api' && costSource !== 'estimate') costSource = 'api';
+    if (!out.ok) {
+      const { err, usage: u } = out;
+      skipped.push({ label: chunk.label, reason: err.name });
+      if (u) {
+        addUsage(usage, {
+          tokensIn: u.tokensIn,
+          tokensOut: u.tokensOut,
+          costUsd: u.costUsd,
+          costSource: u.estimated || u.unpriced ? 'estimate' : undefined,
+        });
+        emit(
+          'info',
+          `${chunk.label}: counted skipped chunk — ${u.tokensIn} in / ${u.tokensOut} out tokens${u.unpriced ? ' · could not be priced, cost excludes it' : ''}`,
+        );
+      }
+      const how = err instanceof LlmOutputTruncatedError ? ' after retry' : '';
+      emit('error', `${chunk.label}: skipped — ${err.name}${how} (${skipped.length}/${allowed} allowed)`);
+      if (skipped.length > allowed) {
+        emit(
+          'error',
+          `Too many files skipped (${skipped.length} of ${chunks.length}, limit ${allowed}) — failing the run`,
+        );
+        throw new ReviewChunksSkippedError(
+          skipped.length,
+          chunks.length,
+          `${skipped.length} of ${chunks.length} files could not be reviewed (limit ${allowed}); last: ${err.name}`,
+        );
+      }
+      continue;
+    }
+    const { res } = out;
+    addUsage(usage, {
+      tokensIn: res.tokensIn,
+      tokensOut: res.tokensOut,
+      costUsd: res.costUsd,
+      costSource: res.costSource,
+    });
     raws.push(res.raw);
     partials.push(res.data);
-    emit('result', `${chunk.label}: ${res.data.findings.length} candidate finding(s)`);
+    emit(
+      'result',
+      `${chunk.label}: ${res.data.findings.length} candidate finding(s) · ${res.tokensOut} output tokens · ${Math.round((Date.now() - startedAt) / 1000)} s${res.servedBy ? ` · served by ${res.servedBy}` : ''}`,
+    );
+  }
+
+  if (partials.length === 0) {
+    throw new ReviewChunksSkippedError(skipped.length, chunks.length, 'no file could be reviewed');
   }
 
   const merged = reduceReviews(partials);
+  const paths = (() => {
+    const shown = skipped.slice(0, 10).map((x) => x.label).join(', ');
+    return skipped.length > 10 ? `${shown}, +${skipped.length - 10} more` : shown;
+  })();
+  if (skipped.length > 0) {
+    emit(
+      'result',
+      `Reviewed ${chunks.length - skipped.length}/${chunks.length} files — ${skipped.length} skipped: ${paths}`,
+    );
+  }
   emit(
     'result',
-    `Reduced to ${merged.findings.length} finding(s); verdict=${merged.verdict}, score=${merged.score}`,
+    `Reduced to ${merged.findings.length} finding(s); model verdict=${merged.verdict}, score=${merged.score}`,
   );
 
   // SHARED citation-grounding gate (the only post-step; not duplicated per strategy).
@@ -250,21 +501,38 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
     finalFindings = scoped.kept;
   }
 
-  // Score is derived from the findings that SURVIVED grounding (+ scope) (not
-  // the model's self-reported number) so the score, the findings list, and the
-  // deterministic event always agree.
+  // Score, verdict and (map-reduce) summary are derived from the findings that
+  // SURVIVED grounding (+ scope), not from model output, so they, the findings
+  // list, and the deterministic event always agree. Single-pass keeps the
+  // model's own summary; map-reduce would otherwise glue N chunk summaries.
+  const skippedLabels = new Set(skipped.map((x) => x.label));
+  const reviewedFiles = new Set(chunks.filter((c) => !skippedLabels.has(c.label)).flatMap((c) => c.paths)).size;
+  const baseSummary =
+    mode === 'map-reduce'
+      ? summarizeFindings(finalFindings, { files: reviewedFiles, chunks: chunks.length - skipped.length })
+      : merged.summary;
   return {
-    review: { ...merged, findings: finalFindings, score: scoreFromFindings(finalFindings) },
+    review: {
+      ...merged,
+      findings: finalFindings,
+      score: scoreFromFindings(finalFindings),
+      verdict: verdictFromFindings(finalFindings, { partial: skipped.length > 0 }),
+      summary:
+        skipped.length > 0
+          ? `Partial review: ${skipped.length} of ${chunks.length} files not reviewed (model output cap / invalid output): ${paths}.${baseSummary ? ` ${baseSummary}` : ''}`
+          : baseSummary,
+    },
     grounding,
     dropped: ground.dropped,
     mode,
     assembly,
     chunks: chunks.map((c) => ({ label: c.label })),
-    tokensIn,
-    tokensOut,
-    costUsd,
+    tokensIn: usage.tokensIn,
+    tokensOut: usage.tokensOut,
+    costUsd: usage.costUsd,
     // No cost ⇒ no provenance to report (a source without a number is noise).
-    costSource: costUsd == null ? null : (costSource ?? null),
+    costSource: usage.costUsd == null ? null : (usage.costSource ?? null),
     raw: raws.join('\n---\n'),
+    skipped,
   };
 }

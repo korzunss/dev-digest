@@ -57,6 +57,22 @@ export interface CompletionResult {
 }
 
 /**
+ * Routing hint for gateway providers (OpenRouter maps it into its `provider`
+ * object). Direct providers ignore it; `{}` = the gateway's default balancing.
+ */
+export interface LlmRouting {
+  sort?: 'throughput' | 'latency' | 'price';
+}
+
+/** Usage of ONE completed round, reported as soon as the response arrives. */
+export interface LlmUsageReport {
+  tokensIn: number;
+  tokensOut: number;
+  costUsd: number | null;
+  costSource?: CostSource;
+}
+
+/**
  * Structured-output request. `schema` is a Zod schema; `schemaName` names the
  * tool / json_schema. `maxRetries` controls reprompt-on-error.
  */
@@ -81,12 +97,20 @@ export interface StructuredRequest<T> {
    * (e.g. structured outputs). Other providers ignore it.
    */
   requireParameters?: boolean;
+  /** Gateway routing hint; see LlmRouting. Ignored by direct providers. */
+  routing?: LlmRouting;
   /**
    * Caller-owned cancellation. Providers pass it to the SDK request and check
    * it before each reprompt attempt; an aborted call rejects. Never
    * serialised into the request body.
    */
   signal?: AbortSignal;
+  /**
+   * Called once per completed round with that round's own usage (not
+   * cumulative), before any throw that follows the round. Never serialised
+   * into the request body; providers that don't support it ignore it.
+   */
+  onUsage?: (u: LlmUsageReport) => void;
 }
 
 export interface StructuredResult<T> {
@@ -97,6 +121,8 @@ export interface StructuredResult<T> {
   costUsd: number | null;
   /** See CompletionResult.costSource. Undefined ⇒ unknown. */
   costSource?: CostSource;
+  /** Upstream provider that answered, when the gateway reports it; undefined otherwise. */
+  servedBy?: string;
   raw: string;
   attempts: number;
 }
@@ -192,6 +218,21 @@ export interface CommitFilesPayload {
   files: CommitFile[];
 }
 
+/** A merged PR that touched some of the queried paths. */
+export interface MergedPrTouching {
+  number: number;
+  title: string;
+  author: string;
+  merged_at: string;
+  paths: string[];
+}
+
+export interface MergedPrLookup {
+  /** False when this forge cannot answer the question (items is then empty). */
+  supported: boolean;
+  items: MergedPrTouching[];
+}
+
 export interface ForgeClient {
   readonly provider: ForgeProvider;
   listPullRequests(repo: RepoRef): Promise<PrMeta[]>;
@@ -217,6 +258,12 @@ export interface ForgeClient {
   getIssue(repo: RepoRef, n: number): Promise<IssueMeta>;
   /** GET /user — for "posting as @user". */
   currentLogin(): Promise<string>;
+  /** Merged PRs (newest first) that touched any of `paths`, excluding PR `excludeNumber`. */
+  listMergedPullsTouching(
+    repo: RepoRef,
+    paths: string[],
+    opts: { excludeNumber: number; commitsPerPath: number; limit: number },
+  ): Promise<MergedPrLookup>;
 }
 
 // ---------- Git (simple-git, heavy) ----------
@@ -257,7 +304,12 @@ export interface GitCommit {
 
 export interface GitClient {
   clone(repo: RepoRef, url: string, opts?: CloneOptions): Promise<{ path: string }>;
-  fetchPullHead(repo: RepoRef, n: number): Promise<void>;
+  /**
+   * Fetch the PR head ref into a local ref. Aborting `signal` stops the running
+   * git process and the call rejects with `signal.reason`. Time spent waiting
+   * for the clone's lock counts toward the signal.
+   */
+  fetchPullHead(repo: RepoRef, n: number, signal?: AbortSignal): Promise<void>;
   /**
    * Resync an already-cloned repo to the tip of `branch`: fetch from origin and
    * advance the local working tree to `origin/<branch>`. Unlike `clone`'s bare
@@ -267,6 +319,20 @@ export interface GitClient {
   sync(repo: RepoRef, branch: string): Promise<{ head: string }>;
   currentHead(repo: RepoRef): Promise<string>;
   diff(repo: RepoRef, base: string, head: string): Promise<UnifiedDiff>;
+  /**
+   * Diff two commit SHAs (`base...head`). Both must be full commit SHAs; either
+   * is fetched when missing locally, and the clone is deepened until a merge-base
+   * exists. Throws when a SHA is malformed or no merge-base is found within the
+   * deepening cap. Aborting `signal` stops the running git process and the call
+   * rejects with `signal.reason`; time spent waiting for the clone's lock counts
+   * toward the signal.
+   */
+  diffCommits(
+    repo: RepoRef,
+    base: string,
+    head: string,
+    signal?: AbortSignal,
+  ): Promise<UnifiedDiff>;
   /**
    * Names of files changed between two commits (`git diff --name-only base..head`).
    * Two-dot form is intentional — we want files reachable from `head` but not `base`,
@@ -281,9 +347,10 @@ export interface GitClient {
    * Read `path` as it existed at `ref` (a commit SHA), without checking that
    * commit out (`git show <ref>:<path>`). Used to fetch a linked doc/spec at
    * the PR's head so the intent classifier sees the version the PR actually
-   * changed (spec 006).
+   * changed (spec 006). The optional `signal` kills the git process, as for
+   * `diffCommits`.
    */
-  readFileAt(repo: RepoRef, ref: string, path: string): Promise<string>;
+  readFileAt(repo: RepoRef, ref: string, path: string, signal?: AbortSignal): Promise<string>;
   clonePathFor(repo: RepoRef): string;
 }
 

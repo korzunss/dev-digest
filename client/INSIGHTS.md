@@ -231,4 +231,8 @@ _Nothing yet._
 
 ## Open Questions
 
-_Nothing yet._
+### 2026-10-02 — the live review log stops at the first `[error]` line while the run continues
+**Symptom:** the PR #13 live log froze at `[error] … no answer … within 10 min — aborted` (11:18, 97 lines). The run went on server-side: `GET /runs/:id/events` had 156 events by 11:34, and the plan 08 retry finished that file.
+**Cause (likely, not yet reproduced in a browser):** the server sends run-error events as SSE `event: error`. On an `EventSource`, a named `error` event also fires `onerror`, and `useRunEvents` treats `onerror` as a dead connection: `es.onerror = () => { es.close(); … }` (`src/lib/hooks/reviews.ts:223-226`). The listener added for `"error"` at `:219` then never sees later events.
+**To pick up:** tell a transport error from a server `error` event (e.g. close only when `es.readyState === EventSource.CLOSED`, or have the server use another event name such as `run-error`, a cross-package change). Then add a test that an `error`-kind event leaves the stream open.
+**Evidence:** run `6098841a-12ac-4d74-9374-11db2e18f7c1`; screenshot of the frozen log vs `curl -N /runs/<id>/events`.

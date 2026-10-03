@@ -7,7 +7,7 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { Badge, Button, Icon, Skeleton, type IconName } from "@devdigest/ui";
+import { Badge, Button, Icon, SectionLabel, Skeleton, type IconName } from "@devdigest/ui";
 import type { IntentSource, PrIntentRecord } from "@devdigest/shared";
 import { useClassifyIntent, usePrIntent } from "@/lib/hooks";
 import { cardState, staleReason } from "./helpers";
@@ -87,10 +87,11 @@ function IntentBody({ intent, state, stale, t }: {
   );
 }
 
-/** The card body only — the caller (`OverviewTab`) owns the "PR Brief"
-    `SectionLabel` above it, same as every other Overview section. */
+/** The card owns its header (`SectionLabel` "Intent" inside the frame) — the
+    Overview lays the card out in a column and adds no label of its own. */
 export function IntentCard({ prId }: { prId: string | null | undefined; prHeadSha?: string | null }) {
   const t = useTranslations("brief.intentCard");
+  const tBlock = useTranslations("brief.block");
   const { data, isLoading, isError } = usePrIntent(prId);
   const classify = useClassifyIntent(prId);
 
@@ -99,6 +100,7 @@ export function IntentCard({ prId }: { prId: string | null | undefined; prHeadSh
 
   return (
     <div style={{ border: "1px solid var(--border)", borderRadius: 8, background: "var(--bg-elevated)", padding: 18 }}>
+      <SectionLabel icon="Target">{tBlock("intent")}</SectionLabel>
       {isLoading ? (
         <Skeleton height={40} />
       ) : isError ? (

@@ -1,0 +1,135 @@
+import { describe, it, expect, vi } from 'vitest';
+import { loadDiff } from '../src/modules/reviews/diff-loader.js';
+import { MockGitClient } from '../src/adapters/mocks.js';
+
+const BASE = 'b'.repeat(40);
+const REF = { owner: 'acme', name: 'api' };
+
+// The mock's default git diff touches only src/config.ts.
+function file(path: string, patch: string | null = '@@ -1,1 +1,2 @@\n a\n+b') {
+  return { path, patch, additions: 1, deletions: 0 };
+}
+
+function makePull(over: Record<string, unknown> = {}) {
+  return {
+    id: 'pr-1',
+    base: 'main',
+    headSha: 'h1',
+    baseSha: BASE,
+    filesHeadSha: null,
+    filesCount: 0,
+    ...over,
+  } as never;
+}
+
+const repoWith = (files: ReturnType<typeof file>[]) => ({ getPrFiles: async () => files as never });
+
+describe('loadDiff', () => {
+  it('diffs by baseSha, never by the branch name, and reports source git', async () => {
+    const git = new MockGitClient();
+    const r = await loadDiff(git, repoWith([]), makePull(), REF);
+    expect(git.diffCommitsCalls).toEqual([{ base: BASE, head: 'h1' }]);
+    expect(r.source).toBe('git');
+    expect(r.note).toBeNull();
+  });
+
+  it('switches to pr_files when they are fresh + complete and git has an outside path', async () => {
+    const git = new MockGitClient();
+    const pull = makePull({ filesHeadSha: 'h1', filesCount: 1 });
+    const r = await loadDiff(git, repoWith([file('other.ts')]), pull, REF);
+    expect(r.source).toBe('pr_files');
+    expect(r.diff.files.map((f) => f.path)).toEqual(['other.ts']);
+    expect(r.note).toContain('outside the PR file list');
+  });
+
+  it('keeps the git diff when pr_files are stale or incomplete', async () => {
+    const git = new MockGitClient();
+    const stale = makePull({ filesHeadSha: 'h0', filesCount: 1 });
+    expect((await loadDiff(git, repoWith([file('other.ts')]), stale, REF)).source).toBe('git');
+    const incomplete = makePull({ filesHeadSha: 'h1', filesCount: 5 });
+    expect((await loadDiff(git, repoWith([file('other.ts')]), incomplete, REF)).source).toBe('git');
+  });
+
+  it('falls back to pr_files when diffCommits fails', async () => {
+    const git = new MockGitClient({ diffCommitsError: new Error('no merge base') });
+    const r = await loadDiff(git, repoWith([file('a.ts')]), makePull(), REF);
+    expect(r.source).toBe('pr_files');
+    expect(r.note).toContain('no merge base');
+  });
+
+  it('uses pr_files when baseSha is null, without calling diffCommits', async () => {
+    const git = new MockGitClient();
+    const r = await loadDiff(git, repoWith([file('a.ts')]), makePull({ baseSha: null }), REF);
+    expect(git.diffCommitsCalls).toHaveLength(0);
+    expect(r.source).toBe('pr_files');
+  });
+
+  it('uses the legacy branch diff with a note when nothing else is available', async () => {
+    const git = new MockGitClient();
+    const r = await loadDiff(git, repoWith([file('a.ts', null)]), makePull({ baseSha: null }), REF);
+    expect(r.source).toBe('legacy_branch');
+    expect(r.note).toContain('legacy branch diff');
+  });
+
+  it('throws with the reason when baseSha is set and neither git nor pr_files work', async () => {
+    const git = new MockGitClient({ diffCommitsError: new Error('no merge base') });
+    await expect(loadDiff(git, repoWith([file('a.ts', null)]), makePull(), REF)).rejects.toThrow(
+      /base\.\.\.head diff unavailable \(no merge base\)/,
+    );
+  });
+  describe('stopped git', () => {
+    const abortAware = () => {
+      const seen: { signal?: AbortSignal } = {};
+      const git = {
+        diff: async () => {
+          throw new Error('not used');
+        },
+        diffCommits: (_r: unknown, _b: string, _h: string, signal?: AbortSignal) => {
+          seen.signal = signal;
+          return new Promise<never>((_, reject) => {
+            if (signal?.aborted) return reject(signal.reason);
+            signal?.addEventListener('abort', () => reject(signal.reason), { once: true });
+          });
+        },
+      };
+      return { git: git as never, seen };
+    };
+
+    it('names the timeout, aborts the signal and warns', async () => {
+      const { git, seen } = abortAware();
+      const warn = vi.fn();
+      const r = await loadDiff(git, repoWith([file('a.ts')]), makePull(), REF, {
+        timeoutMs: 20,
+        logger: { warn },
+      });
+      expect(r.source).toBe('pr_files');
+      expect(r.note).toContain('timed out after 0 s — git stopped');
+      expect(seen.signal?.aborted).toBe(true);
+      expect(warn).toHaveBeenCalledWith(
+        expect.objectContaining({ owner: 'acme', name: 'api', reason: 'timeout' }),
+        'diffCommits stopped',
+      );
+    });
+
+    it('names the batch cancellation', async () => {
+      const { git } = abortAware();
+      const warn = vi.fn();
+      const ac = new AbortController();
+      ac.abort(new Error('All runs cancelled'));
+      const r = await loadDiff(git, repoWith([file('a.ts')]), makePull(), REF, {
+        signal: ac.signal,
+        logger: { warn },
+      });
+      expect(r.note).toContain('all runs cancelled — git stopped');
+      expect(warn).toHaveBeenCalledWith(expect.objectContaining({ reason: 'cancelled' }), 'diffCommits stopped');
+    });
+
+    it('does not warn on a plain failure', async () => {
+      const warn = vi.fn();
+      const git = new MockGitClient({ diffCommitsError: new Error('no merge base') });
+      const r = await loadDiff(git, repoWith([file('a.ts')]), makePull(), REF, { logger: { warn } });
+      expect(r.note).toContain('no merge base');
+      expect(warn).not.toHaveBeenCalled();
+    });
+  });
+});

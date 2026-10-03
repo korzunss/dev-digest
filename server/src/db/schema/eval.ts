@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, integer, boolean, jsonb, timestamp, doublePrecision } from 'drizzle-orm/pg-core';
+import { pgTable, uniqueIndex, uuid, text, integer, boolean, jsonb, timestamp, doublePrecision } from 'drizzle-orm/pg-core';
 import { workspaces } from './core';
 import { pullRequests } from './pulls';
 
@@ -17,7 +17,10 @@ export const evalCases = pgTable('eval_cases', {
   inputMeta: jsonb('input_meta'),
   expectedOutput: jsonb('expected_output'),
   notes: text('notes'),
-});
+}, (t) => ({
+  // Backs the onConflictDoUpdate in modules/eval/repository.ts.
+  ownerNameUq: uniqueIndex('eval_cases_owner_name_idx').on(t.workspaceId, t.ownerKind, t.ownerId, t.name),
+}));
 
 export const evalRuns = pgTable('eval_runs', {
   id: uuid('id').primaryKey().defaultRandom(),

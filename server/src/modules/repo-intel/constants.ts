@@ -30,6 +30,15 @@ export const EXCLUDED_DIRS = [
 export const MAX_CALLERS_PER_SYMBOL = 20;
 
 /**
+ * Blast radius ignores test files as callers: `.test.` (covers `.it.test.`) or
+ * a `test/` / `__tests__/` path segment. Distinct from the rank-sample junk list.
+ */
+export function isBlastTestPath(path: string): boolean {
+  const p = path.toLowerCase();
+  return p.includes('.test.') || /(^|\/)(test|__tests__)\//.test(p);
+}
+
+/**
  * [T1] Bumped whenever the AST extractor or symbol schema changes. A mismatch
  * with `repo_index_state.indexer_version` forces a full reindex.
  *

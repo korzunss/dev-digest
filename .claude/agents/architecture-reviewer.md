@@ -74,7 +74,7 @@ everything you read stays in your context.
 scope, its `insights/gotchas.md`, `INSIGHTS.md` and `AGENTS.md`; and the
 section of the package deep-dive for the layer in scope —
 `server/docs/architecture.md`, `client/docs/ui-architecture.md`,
-`reviewer-core/docs/pipeline.md`. The preloaded skills are the primary rule
+`reviewer-core/docs/pipeline.md`; for `mcp-server/`, its `AGENTS.md`. The preloaded skills are the primary rule
 source. When a doc disagrees with the code or a skill, judge by the skill and
 the code, and put the doc drift under *Handoff* for the `doc-writer`.
 
@@ -99,6 +99,7 @@ or a quoted line, not an impression.
 | A10 | Thin routes: a handler validates (through the route's Zod schema), calls the service, and replies — no `db`/`db/schema`, no adapter, no business branching, no `Schema.parse(req.body)` | `server/AGENTS.md` ("Schema-first routes") · `fastify-best-practices` · `onion-architecture` | read the handler; `rg -n "db\.|from '.*db/schema|\.parse\(" <routes.ts>` |
 | A11 | Grounding gate: every `reviewer-core` path that returns findings goes through `groundFindings()`; nothing loosens or bypasses it | `reviewer-core/AGENTS.md` · `reviewer-core/docs/pipeline.md` · `reviewer-core/INSIGHTS.md` | command A11 below, then trace the changed return paths |
 | A12 | `process.env` only at its chokepoints: `server/src/platform/config.ts`, `server/src/adapters/secrets/local.ts`, `server/src/adapters/git/simple-git.ts`, and the CLI scripts `server/src/db/{migrate,seed,backfill-run-cost}.ts`; everywhere else config comes from `AppConfig` / the injected `SecretsProvider` | `server/AGENTS.md` (secrets) | command A12 below |
+| A13 | `mcp-server/` layering (D17): `core/` is pure (shared `import type` only; no `http/`, `tools/`, SDK, `fetch`, `process.env`, timers); `tools/` and `server.ts` never import `http/` or `fetch`; `process.env` only in `src/index.ts`; stdout is JSON-RPC only | `mcp-server/AGENTS.md` · `onion-architecture` (layer-map §7) | command A13 below |
 
 ```bash
 # A2 — reviewer-core purity: node/db/forge imports, HTTP clients, global fetch, env
@@ -109,6 +110,13 @@ rg -n "new [A-Z]\w*(Client|Provider|Adapter)\(" server/src/modules
 rg -n "groundFindings" reviewer-core/src
 # A12 — env reads outside the chokepoints
 rg -ln "process\.env" server/src --glob '!**/vendor/**'
+# A13 — mcp-server layering (each must print nothing)
+rg -n "process\.env" mcp-server/src --glob '!index.ts'
+rg -n "console\.log|process\.stdout" mcp-server/src
+rg -n "from ['\"].*http/" mcp-server/src --glob '!index.ts' --glob '!http/**'
+rg -n "^import .*(@modelcontextprotocol|\.\./(http|tools)/)" mcp-server/src/core
+rg -n "^import \{.*@devdigest/shared" mcp-server/src
+rg -n "setTimeout|Date\.now|process\.|fetch\(" mcp-server/src/core
 ```
 
 ### Known exceptions — pre-existing, not new

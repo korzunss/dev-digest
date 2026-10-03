@@ -204,6 +204,8 @@ export const PrMeta = z.object({
   branch: z.string(),
   base: z.string(),
   head_sha: z.string(),
+  // PR base commit; absent on the GitLab list payload.
+  base_sha: z.string().nullish(),
   additions: z.number().int(),
   deletions: z.number().int(),
   files_count: z.number().int(),

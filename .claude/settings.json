@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__devdigest__list_agents",
+      "mcp__devdigest__get_findings",
+      "mcp__devdigest__get_conventions",
+      "mcp__devdigest__get_blast_radius"
+    ],
+    "ask": [
+      "mcp__devdigest__run_agent_on_pr"
+    ]
+  }
+}

@@ -1,6 +1,6 @@
 # DevDigest — repo map
 
-Local-first AI pull-request review. Four **standalone** packages, not a workspace:
+Local-first AI pull-request review. Five **standalone** packages, not a workspace:
 each has its own `package.json` + lockfile; cross-package code is shared through
 tsconfig path aliases, never published modules.
 
@@ -15,6 +15,7 @@ Node ≥22 · TypeScript 5 · vitest everywhere · Docker runs Postgres only.
 | `client/`                  | Next.js studio                            | :3000 |
 | `reviewer-core/`           | pure engine: diff → prompt → LLM → findings | —   |
 | `e2e/`                     | deterministic agent-browser flows          | —    |
+| `mcp-server/`              | local stdio MCP server, thin client over the API | — |
 | `server/src/vendor/shared` | `@devdigest/shared` — Zod contracts        | —    |
 
 ## Commands
@@ -24,7 +25,7 @@ that package's `AGENTS.md`, which loads automatically when you work in its folde
 
 ## Conventions (non-default)
 
-- **Package managers differ.** `client/` and `server/` use **pnpm**;
+- **Package managers differ.** `client/` and `server/` use **pnpm**, as does `mcp-server/`;
   `reviewer-core/` and `e2e/` use **npm**. Use the one matching the lockfile.
 - **Contracts change in `shared` first** (`server/src/vendor/shared`), then in the
   consumers. `client/src/vendor/shared` is a vendored copy — keep them in sync.
@@ -127,7 +128,9 @@ that package's `AGENTS.md`, which loads automatically when you work in its folde
 ## Do not touch
 
 - `*/src/vendor/**` — vendored code, changed upstream, not edited by hand.
-- `server/src/db/migrations/**` — generated; add via `pnpm db:generate`.
+- `server/src/db/migrations/**` — generated; add via `pnpm db:generate`. The one
+  hand-written kind: a data migration goes into the empty stub made by
+  `pnpm db:generate --custom`, and only into that file (plan 12).
 - `server/clones/**` — runtime checkouts of imported repos. **Exclude it from
   every search/grep**: it contains full copies of other repos (and of this one),
   so matches there are noise.

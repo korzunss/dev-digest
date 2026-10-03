@@ -42,7 +42,10 @@ src/index.ts           the public surface — if it isn't exported here, it's in
   step — and `server-unit` CI is path-filtered to run on `reviewer-core/**`.
 - `assemblePrompt` accepts optional slots (`skills`, `memory`, `specs`,
   `callers`) that the starter server doesn't pass. Omitted slots simply leave
-  their section out — an empty section is not a bug.
+  their section out — an empty section is not a bug. `memory` is rendered as
+  untrusted `## Repo context` (repo rules + changed-file list, selected per
+  chunk by path in `src/review/repo-rules.ts`) followed by the trusted
+  `REPO_RULES_GUARD`.
 
 ## Read on demand
 

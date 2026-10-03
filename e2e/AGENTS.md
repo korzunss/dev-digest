@@ -33,11 +33,12 @@ sorts after the numbered ones; name new flows `09-…`, `10-…` to place them.
 
 ## Conventions (non-default)
 
-- **Deterministic locators only** — `--url`, `--text`, `find role|text|label`.
+- **Deterministic locators only** — `--url`, `--text`, `--fn`, `find role|text|label … click`.
   The AI `chat` command is never used; that's what keeps runs stable and key-free.
 - **`wait` steps are the assertions.** A non-zero exit fails the step and the
   flow, so `wait --text` / `wait --url` already assert. `"assert": {…}` adds an
-  optional substring check on stdout.
+  optional substring check on stdout. `wait --text` is case-sensitive against the
+  rendered (CSS-transformed) text.
 - **Flows target read-only seeded data** (`acme/payments-api`, PR #482, the
   seeded agents) so nothing can trigger a model call.
 - `{BASE}` in a step is substituted with `E2E_BASE_URL` (default `:3000`).

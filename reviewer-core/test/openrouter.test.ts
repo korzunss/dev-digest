@@ -14,8 +14,18 @@ import { z } from 'zod';
 
 const createMock = vi.fn();
 
+const { APIUserAbortError, APIConnectionError, APIConnectionTimeoutError } = vi.hoisted(() => {
+  class APIUserAbortError extends Error {}
+  class APIConnectionError extends Error {}
+  class APIConnectionTimeoutError extends APIConnectionError {}
+  return { APIUserAbortError, APIConnectionError, APIConnectionTimeoutError };
+});
+
 vi.mock('openai', () => ({
   default: class MockOpenAI {
+    static APIUserAbortError = APIUserAbortError;
+    static APIConnectionError = APIConnectionError;
+    static APIConnectionTimeoutError = APIConnectionTimeoutError;
     chat = { completions: { create: createMock } };
     constructor(_opts: unknown) {
       void _opts;
@@ -24,6 +34,8 @@ vi.mock('openai', () => ({
 }));
 
 import { OpenRouterProvider } from '../src/llm/openrouter.js';
+import OpenAI from 'openai';
+import { LlmConnectionError, LlmOutputInvalidError, LlmOutputTruncatedError } from '../src/llm/errors.js';
 
 const TestSchema = z.object({ ok: z.boolean() });
 
@@ -131,5 +143,160 @@ describe('OpenRouterProvider.completeStructured — signal (S16b)', () => {
       }),
     ).rejects.toThrow();
     expect(createMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('OpenRouterProvider.completeStructured — routing, served-by, failures', () => {
+  const base = {
+    model: 'm/x',
+    schema: TestSchema,
+    schemaName: 'Test',
+    messages: [{ role: 'user' as const, content: 'hi' }],
+  };
+
+  it('sends provider { require_parameters, sort } for openrouter', async () => {
+    respondOk();
+    await new OpenRouterProvider('k').completeStructured({
+      ...base,
+      requireParameters: true,
+      routing: { sort: 'throughput' },
+    });
+    const body = createMock.mock.calls[0]![0] as { provider?: unknown };
+    expect(body.provider).toEqual({ require_parameters: true, sort: 'throughput' });
+  });
+
+  it('omits provider for id openai or when nothing is set', async () => {
+    respondOk();
+    await new OpenRouterProvider('k', { id: 'openai' }).completeStructured({
+      ...base,
+      requireParameters: true,
+      routing: { sort: 'throughput' },
+    });
+    await new OpenRouterProvider('k').completeStructured({ ...base, routing: {} });
+    expect((createMock.mock.calls[0]![0] as { provider?: unknown }).provider).toBeUndefined();
+    expect((createMock.mock.calls[1]![0] as { provider?: unknown }).provider).toBeUndefined();
+  });
+
+  it('servedBy mirrors the top-level provider field', async () => {
+    createMock.mockResolvedValue({
+      provider: 'AtlasCloud',
+      choices: [{ message: { content: JSON.stringify({ ok: true }) } }],
+      usage: { prompt_tokens: 1, completion_tokens: 1 },
+    });
+    const r = await new OpenRouterProvider('k').completeStructured(base);
+    expect(r.servedBy).toBe('AtlasCloud');
+    respondOk();
+    const r2 = await new OpenRouterProvider('k').completeStructured(base);
+    expect(r2.servedBy).toBeUndefined();
+  });
+
+  it('finish_reason length throws LlmOutputTruncatedError after one call', async () => {
+    createMock.mockResolvedValue({
+      choices: [{ finish_reason: 'length', message: { content: '{"ok' } }],
+      usage: { prompt_tokens: 1, completion_tokens: 32000 },
+    });
+    await expect(
+      new OpenRouterProvider('k').completeStructured({ ...base, maxTokens: 32000 }),
+    ).rejects.toBeInstanceOf(LlmOutputTruncatedError);
+    expect(createMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('three invalid answers throw LlmOutputInvalidError', async () => {
+    createMock.mockResolvedValue({
+      choices: [{ finish_reason: 'stop', message: { content: '{"nope":1}' } }],
+      usage: { prompt_tokens: 1, completion_tokens: 1 },
+    });
+    await expect(new OpenRouterProvider('k').completeStructured(base)).rejects.toBeInstanceOf(
+      LlmOutputInvalidError,
+    );
+    expect(createMock).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe('OpenRouterProvider.completeStructured — connection errors', () => {
+  const call = () =>
+    new OpenRouterProvider('k').completeStructured({
+      model: 'm',
+      schema: TestSchema,
+      schemaName: 'Test',
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+
+  it('maps a connection failure to LlmConnectionError(timedOut=false)', async () => {
+    createMock.mockRejectedValue(new OpenAI.APIConnectionError());
+    await expect(call()).rejects.toMatchObject({ name: 'LlmConnectionError', timedOut: false });
+  });
+
+  it('maps a header timeout to LlmConnectionError(timedOut=true)', async () => {
+    createMock.mockRejectedValue(new OpenAI.APIConnectionTimeoutError());
+    await expect(call()).rejects.toMatchObject({ name: 'LlmConnectionError', timedOut: true });
+  });
+
+  it('rethrows an abort unchanged', async () => {
+    const abort = new OpenAI.APIUserAbortError();
+    createMock.mockRejectedValue(abort);
+    await expect(call()).rejects.toBe(abort);
+  });
+});
+
+describe('OpenRouterProvider.completeStructured — onUsage', () => {
+  const req = {
+    model: 'm',
+    schema: TestSchema,
+    schemaName: 'Test',
+    messages: [{ role: 'user' as const, content: 'hi' }],
+  };
+  const invalid = (prompt: number, completion: number, cost?: number) => ({
+    choices: [{ finish_reason: 'stop', message: { content: '{"nope":1}' } }],
+    usage: { prompt_tokens: prompt, completion_tokens: completion, ...(cost != null ? { cost } : {}) },
+  });
+
+  it('O1 reports the real round before a later round throws', async () => {
+    createMock
+      .mockResolvedValueOnce(invalid(1000, 200, 0.002))
+      .mockRejectedValueOnce(Object.assign(new Error('boom'), { status: 503 }));
+    const onUsage = vi.fn();
+    await expect(new OpenRouterProvider('k').completeStructured({ ...req, onUsage })).rejects.toThrow('boom');
+    expect(onUsage).toHaveBeenCalledTimes(1);
+    expect(onUsage).toHaveBeenCalledWith({ tokensIn: 1000, tokensOut: 200, costUsd: 0.002, costSource: 'api' });
+  });
+
+  it('O2 reports a truncated round before throwing', async () => {
+    createMock.mockResolvedValue({
+      choices: [{ finish_reason: 'length', message: { content: '{"ok' } }],
+      usage: { prompt_tokens: 1, completion_tokens: 32000, cost: 0.1 },
+    });
+    const onUsage = vi.fn();
+    await expect(
+      new OpenRouterProvider('k').completeStructured({ ...req, maxTokens: 32000, onUsage }),
+    ).rejects.toBeInstanceOf(LlmOutputTruncatedError);
+    expect(onUsage).toHaveBeenCalledTimes(1);
+    expect(onUsage.mock.calls[0]![0]).toMatchObject({ tokensOut: 32000 });
+  });
+
+  it('O3 falls back to estimateCost, else null cost without costSource', async () => {
+    createMock.mockResolvedValue(invalid(10, 5));
+    const est = vi.fn();
+    await expect(
+      new OpenRouterProvider('k', { estimateCost: () => 0.5 }).completeStructured({ ...req, maxRetries: 0, onUsage: est }),
+    ).rejects.toBeInstanceOf(LlmOutputInvalidError);
+    expect(est).toHaveBeenCalledWith({ tokensIn: 10, tokensOut: 5, costUsd: 0.5, costSource: 'estimate' });
+    const none = vi.fn();
+    await expect(
+      new OpenRouterProvider('k').completeStructured({ ...req, maxRetries: 0, onUsage: none }),
+    ).rejects.toBeInstanceOf(LlmOutputInvalidError);
+    expect(none).toHaveBeenCalledWith({ tokensIn: 10, tokensOut: 5, costUsd: null });
+  });
+
+  it('O4 three invalid rounds report per-round, not cumulative, numbers', async () => {
+    createMock
+      .mockResolvedValueOnce(invalid(10, 1, 0.01))
+      .mockResolvedValueOnce(invalid(20, 2, 0.02))
+      .mockResolvedValueOnce(invalid(30, 3, 0.03));
+    const onUsage = vi.fn();
+    await expect(new OpenRouterProvider('k').completeStructured({ ...req, onUsage })).rejects.toBeInstanceOf(
+      LlmOutputInvalidError,
+    );
+    expect(onUsage.mock.calls.map((c) => [c[0].tokensIn, c[0].tokensOut])).toEqual([[10, 1], [20, 2], [30, 3]]);
   });
 });

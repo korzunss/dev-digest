@@ -84,3 +84,16 @@ result to the verifier.
 | [03-brainstormer-agent](03-brainstormer-agent.md) | done | none | `.claude/agents`, repo docs |
 | [04-security-reviewer-agent](04-security-reviewer-agent.md) | done | none | `.claude/agents`, `.claude/skills`, repo docs |
 | [05-decisions-first-planning](05-decisions-first-planning.md) | done | none | `.claude/agents`, repo docs |
+| [06-mcp-server](06-mcp-server.md) | done | none | mcp-server (new), repo config (`.mcp.json`, `.claude/settings.json`, CI) |
+| [07-review-diff-base-sha](07-review-diff-base-sha.md) | done | none | shared, server, client (contract mirror) |
+| [08-llm-call-reliability](08-llm-call-reliability.md) | done | none | shared, reviewer-core, server, client (contract mirror) |
+| [09-review-eval-fixture](09-review-eval-fixture.md) | done | none | server (new `modules/eval`, `eval:review` script) |
+| [10-agent-precision](10-agent-precision.md) | in-progress | none (idea [06](../ideas/06-fewer-false-criticals.md)) | reviewer-core, server (eval, seed prompts + agents sync CLI, reviews), `docs/agent-prompts` |
+| [11-diff-commits-cancellation](11-diff-commits-cancellation.md) | done | none | shared (port; client `fetchPullHead` mirror), server |
+| [12-eval-write-integrity](12-eval-write-integrity.md) | done | none | server (eval module, schema + 2 migrations, `db/client.ts` type) |
+| [13-count-failed-llm-attempt-usage](13-count-failed-llm-attempt-usage.md) | done | none | shared (port; client mirror), reviewer-core, server (run-executor wiring) |
+| [14-e2e-flows-agent-browser](14-e2e-flows-agent-browser.md) | done | none | e2e (flows 02/04/05/08/09/10 + docs), server (CLI-only conventions seed + tests) |
+| [15-e2e-ci-flow10-and-runner-stderr](15-e2e-ci-flow10-and-runner-stderr.md) | done | none | e2e (flow 10 guard, runner stderr, one `flows.md` citation) |
+| [16-sync-atomicity-and-rules-abort](16-sync-atomicity-and-rules-abort.md) | done | none | shared (`GitClient.readFileAt`; client mirror), server (agents sync/repository, reviews repo-rules + executor, git adapter) |
+| [17-map-reduce-summary](17-map-reduce-summary.md) | done | none | reviewer-core (`run.ts` summary + verdict from final findings, new `summary.ts`), docs (`pipeline.md`, `agent-prompts/README.md`) |
+| [18-blast-radius](18-blast-radius.md) | done | none | shared (`brief.ts`, `ForgeClient`; client mirror), server (new `modules/blast`, repo-intel facade, forge adapters), client (OverviewTab, hooks, i18n), mcp-server (`get_blast_radius`) |

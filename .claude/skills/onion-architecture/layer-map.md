@@ -114,3 +114,19 @@ The outermost edge. A Fastify plugin per feature, registered in `modules/index.t
 - Parsing/validating a request, shaping a response → **route** (Zod schema).
 - "Given a diff, produce grounded findings" → **reviewer-core** (pure).
 - "Feature A needs something feature B owns" → **`container`**, never a direct cross-module import.
+
+---
+
+## 7. `mcp-server/` — the same rule in a small package
+
+The stdio MCP server applies the dependency rule with a package-local port
+(`DevDigestApi`, not in `@devdigest/shared`). Gate: `rg` edge checks
+(architecture-reviewer A13); there is no `depcruise` for this package.
+
+| Path | Layer | May import | Must not import |
+|---|---|---|---|
+| `src/core/*.ts` | application (pure) | `import type` from `@devdigest/shared`, `core/` | `http/`, `tools/`, `@modelcontextprotocol/*`, `fetch`, `process.env`, timers |
+| `src/http/client.ts` | adapter | `core/ports.ts`, `core/errors.ts`, shared types | `tools/`, `server.ts` |
+| `src/tools/*.ts`, `src/server.ts` | transport | `core/`, SDK, `zod/v3` | `http/`, `fetch`, `process.env` |
+| `src/index.ts` | composition root | everything | — |
+| `src/log.ts` | cross-cutting | stderr only | stdout |

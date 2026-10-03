@@ -16,6 +16,7 @@ export {
   assemblePrompt,
   wrapUntrusted,
   INJECTION_GUARD,
+  REPO_RULES_GUARD,
   type PromptParts,
   type AssembledPrompt,
 } from './prompt.js';
@@ -34,6 +35,18 @@ export {
 
 // Map-reduce helpers (reduce partials, slice a file's diff).
 export { reduceReviews, sliceDiff } from './review/reduce.js';
+
+// Per-chunk repo-rule selection (plan 10) — pure, path-prefix based.
+export {
+  buildRepoContext,
+  selectRepoRules,
+  renderChangedFiles,
+  DEFAULT_REPO_RULES_MAX_CHARS,
+  DEFAULT_CHANGED_FILES_MAX,
+  DEFAULT_CHANGED_FILES_MAX_CHARS,
+  type RepoRuleSet,
+  type RepoContextCaps,
+} from './review/repo-rules.js';
 
 // Out-of-scope filter (spec 006 D6) — runs after grounding, wired into
 // reviewPullRequest when ReviewInput.intent is set.
@@ -69,14 +82,18 @@ export { fileSummariesFromDiff, type FileSummary } from './intent/file-summaries
 // The engine entry point: given (diff + resolved agent inputs + LLM) → grounded Review.
 export {
   reviewPullRequest,
+  ReviewChunksSkippedError,
   DEFAULT_MAP_THRESHOLD_LINES,
   DEFAULT_REVIEW_MAX_RETRIES,
+  DEFAULT_SINGLE_PASS_MAX_DIFF_TOKENS,
   type ReviewInput,
   type ReviewOutcome,
   type ReviewEvent,
   type ReviewStrategy,
   type ReviewMode,
 } from './review/run.js';
+
+export { callWithDeadline, describeRouting, LLM_WAIT_HEARTBEAT_MS, type CallWithDeadlineOptions, type FailedCallUsage } from './review/llm-call.js';
 
 // Output: grounded Review → GitHubReviewPayload (body + inline comments + event).
 export {
@@ -89,6 +106,13 @@ export {
 // The single OpenAI-compatible structured provider (OpenRouter), shared by the
 // CI runner and the server's openrouter path. Owns session grouping + guards.
 export { OpenRouterProvider, type OpenRouterProviderOptions } from './llm/openrouter.js';
+export {
+  LlmDeadlineError,
+  LlmConnectionError,
+  LlmOutputTruncatedError,
+  LlmOutputInvalidError,
+  isTransientLlmError,
+} from './llm/errors.js';
 
 // Smart Diff (L03) — pure path -> role classification for the reviewer-ordered
 // Files changed tab. No I/O; the rules are data so a later prompt filter can

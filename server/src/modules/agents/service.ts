@@ -9,7 +9,7 @@ import type {
   ReviewStrategy,
 } from '@devdigest/shared';
 import { AgentsRepository } from './repository.js';
-import { ValidationError } from '../../platform/errors.js';
+import { NotFoundError, ValidationError } from '../../platform/errors.js';
 import { toAgentDto, toAgentVersionDto } from './helpers.js';
 
 /**
@@ -156,8 +156,52 @@ export class AgentsService {
     const agent = await this.repo.getById(workspaceId, agentId);
     if (!agent) return undefined;
     await this.assertSkillsInWorkspace(workspaceId, skillIds);
-    await this.repo.setSkills(agentId, skillIds);
+    await this.repo.transaction((r) => r.setSkills(agentId, skillIds));
     return this.skillLinks(agentId);
+  }
+
+  /**
+   * Built-in sync for one agent, in ONE transaction: detach the linked skills
+   * named in `detachSkillNames` (others keep their order), set the prompt, bump
+   * the version and snapshot. A detach alone also bumps the version, so the
+   * snapshot records the post-detach skill set. `dryRun` reports without
+   * writing. Returns undefined when the agent isn't in this workspace.
+   */
+  async syncBuiltin(
+    workspaceId: string,
+    agentId: string,
+    input: { systemPrompt: string; detachSkillNames: readonly string[]; dryRun?: boolean },
+  ): Promise<
+    { detached: string[]; changed: boolean; fromVersion: number; toVersion: number } | undefined
+  > {
+    return this.repo.transaction(async (repo) => {
+      // Row lock: a concurrent sync/edit waits here, so `version` below is current.
+      const agent = await repo.lockById(workspaceId, agentId);
+      if (!agent) return undefined;
+      const links = await repo.linkedSkills(agentId);
+      const drop = new Set(input.detachSkillNames);
+      const detached = links.filter((l) => drop.has(l.skill.name)).map((l) => l.skill.name);
+      const promptChanged = agent.systemPrompt !== input.systemPrompt;
+      const changed = detached.length > 0 || promptChanged;
+      const v = agent.version;
+      if (!changed) return { detached, changed, fromVersion: v, toVersion: v };
+      if (input.dryRun) return { detached, changed, fromVersion: v, toVersion: v + 1 };
+      if (detached.length > 0) {
+        await repo.setSkills(
+          agentId,
+          links.filter((l) => !drop.has(l.skill.name)).map((l) => l.skill.id),
+        );
+      }
+      const row = await repo.update(
+        workspaceId,
+        agentId,
+        promptChanged ? { systemPrompt: input.systemPrompt } : {},
+        { bumpVersion: true },
+      );
+      // Throw, don't return: a vanished row must roll back the detach above.
+      if (!row) throw new NotFoundError(`agent ${agentId} vanished during sync`);
+      return { detached, changed, fromVersion: v, toVersion: row.version };
+    });
   }
 
   /** Link a single skill (append or set order) — additive to existing links. */

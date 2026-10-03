@@ -27,7 +27,12 @@ import type {
 import type { PullRow } from '../../db/rows.js';
 import { TimeoutError, withTimeout } from '../../platform/resilience.js';
 import { toRepoRef, forgeHostOf } from '../../platform/forge-resolve.js';
-import { INTENT_REVIEW_BUDGET_MS, MAX_DOC_BYTES, SOURCE_TIMEOUT_MS } from './constants.js';
+import {
+  GIT_DIFF_TIMEOUT_MS,
+  INTENT_REVIEW_BUDGET_MS,
+  MAX_DOC_BYTES,
+  SOURCE_TIMEOUT_MS,
+} from './constants.js';
 import { capConfidence, descriptionHash, extractIntentLinks, headersFromPatch, staleness } from './helpers.js';
 import { IntentRepository, type IntentUpsert, type PrIntentRow, type RepoRow } from './repository.js';
 
@@ -47,7 +52,7 @@ export type IntentStore = Pick<IntentRepository, keyof IntentRepository>;
  */
 export interface IntentServiceDeps {
   repo: IntentStore;
-  git: Pick<GitClient, 'diff' | 'fetchPullHead' | 'readFileAt'>;
+  git: Pick<GitClient, 'diff' | 'diffCommits' | 'fetchPullHead' | 'readFileAt'>;
   forge: (ref: RepoRef) => Promise<Pick<ForgeClient, 'getIssue'>>;
   llm: (id: FeatureModelChoice['provider']) => Promise<LLMProvider>;
   tokenizer: { count(text: string): number };
@@ -180,7 +185,12 @@ export class IntentService {
     opts.onLog?.(msg, data);
   }
 
-  private async fileSummaries(pull: PullRow, repo: RepoRow, diff?: UnifiedDiff): Promise<FileSummary[]> {
+  private async fileSummaries(
+    pull: PullRow,
+    repo: RepoRow,
+    diff?: UnifiedDiff,
+    signal?: AbortSignal,
+  ): Promise<FileSummary[]> {
     if (diff) return fileSummariesFromDiff(diff);
     const prFiles = await this.deps.repo.getPrFiles(pull.id);
     if (prFiles.length > 0) {
@@ -192,7 +202,10 @@ export class IntentService {
       }));
     }
     try {
-      const fetched = await this.deps.git.diff(toRepoRef(repo), pull.base, pull.headSha);
+      const ref = toRepoRef(repo);
+      const fetched = pull.baseSha
+        ? await this.deps.git.diffCommits(ref, pull.baseSha, pull.headSha, withDeadline(signal, GIT_DIFF_TIMEOUT_MS))
+        : await this.deps.git.diff(ref, pull.base, pull.headSha);
       return fileSummariesFromDiff(fetched);
     } catch {
       return [];
@@ -215,7 +228,7 @@ export class IntentService {
     const repoRef = toRepoRef(repo);
     const { provider, model } = await this.deps.resolveModel(pull.workspaceId, 'review_intent');
 
-    const files = await this.fileSummaries(pull, repo, opts.diff);
+    const files = await this.fileSummaries(pull, repo, opts.diff, signal);
     signal?.throwIfAborted();
     const links = extractIntentLinks(pull.body, {
       host: forgeHostOf(repo.provider as ForgeProvider, repo.apiBase),
@@ -272,9 +285,9 @@ export class IntentService {
         // Best-effort: the PR head may not be in the local clone yet (a doc
         // added by the PR itself). Fetch failure alone must not fail the read
         // — `readFileAt` below is what actually decides ok/failed.
-        await withTimeout(this.deps.git.fetchPullHead(repoRef, pull.number), SOURCE_TIMEOUT_MS).catch(
-          () => undefined,
-        );
+        await this.deps.git
+          .fetchPullHead(repoRef, pull.number, withDeadline(signal, SOURCE_TIMEOUT_MS))
+          .catch(() => undefined);
         const content = await withTimeout(
           this.deps.git.readFileAt(repoRef, pull.headSha, link.path),
           SOURCE_TIMEOUT_MS,
@@ -417,4 +430,10 @@ export class IntentService {
       classified_at: row.classifiedAt.toISOString(),
     };
   }
+}
+
+/** A deadline signal, combined with the caller's abort signal when present. */
+function withDeadline(signal: AbortSignal | undefined, ms: number): AbortSignal {
+  const deadline = AbortSignal.timeout(ms);
+  return signal ? AbortSignal.any([signal, deadline]) : deadline;
 }

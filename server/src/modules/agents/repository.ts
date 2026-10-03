@@ -1,5 +1,5 @@
 import { and, asc, desc, eq, inArray } from 'drizzle-orm';
-import type { Db } from '../../db/client.js';
+import type { DbExecutor } from '../../db/client.js';
 import * as t from '../../db/schema.js';
 import type { CiFailOn, Provider, ReviewStrategy } from '@devdigest/shared';
 import { DEFAULT_AGENT_DESCRIPTION, INITIAL_AGENT_VERSION } from './constants.js';
@@ -49,7 +49,15 @@ export interface LinkedSkillRow {
 }
 
 export class AgentsRepository {
-  constructor(private db: Db) {}
+  constructor(private db: DbExecutor) {}
+
+  /**
+   * Run `fn` in one DB transaction. `fn` receives a repository bound to the
+   * transaction: a throw inside `fn` rolls back every write made through it.
+   */
+  transaction<T>(fn: (repo: AgentsRepository) => Promise<T>): Promise<T> {
+    return this.db.transaction((tx) => fn(new AgentsRepository(tx)));
+  }
 
   async list(workspaceId: string): Promise<AgentRow[]> {
     return this.db.select().from(t.agents).where(eq(t.agents.workspaceId, workspaceId));
@@ -67,6 +75,20 @@ export class AgentsRepository {
       .select()
       .from(t.agents)
       .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.id, id)));
+    return row;
+  }
+
+  /**
+   * `getById` that takes a row lock (`SELECT … FOR UPDATE`). Call it first in
+   * a transaction that read-modify-writes `version`: a concurrent editor then
+   * waits for commit and reads the bumped version instead of racing it.
+   */
+  async lockById(workspaceId: string, id: string): Promise<AgentRow | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(t.agents)
+      .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.id, id)))
+      .for('update');
     return row;
   }
 
@@ -107,18 +129,20 @@ export class AgentsRepository {
 
   /**
    * Update an agent. Any config change bumps the version and snapshots the new
-   * config into agent_versions (reproducibility for eval).
+   * config into agent_versions (reproducibility for eval). `bumpVersion` forces
+   * the bump for a change `isConfigChange` ignores (a skill-set change).
    */
   async update(
     workspaceId: string,
     id: string,
     patch: UpdateAgent,
+    opts: { bumpVersion?: boolean } = {},
   ): Promise<AgentRow | undefined> {
     const existing = await this.getById(workspaceId, id);
     if (!existing) return undefined;
 
     // A config-affecting change (anything except just toggling enabled) bumps version.
-    const configChanged = isConfigChange(existing, patch);
+    const configChanged = isConfigChange(existing, patch) || opts.bumpVersion === true;
     const nextVersion = configChanged ? existing.version + 1 : existing.version;
 
     const [row] = await this.db

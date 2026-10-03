@@ -2,7 +2,7 @@
  * Pure helpers for the review service (side-effect free; operate purely on
  * their arguments — no DB / network / `this`).
  */
-import type { Finding } from '@devdigest/shared';
+import type { Finding, UnifiedDiff } from '@devdigest/shared';
 import type { FindingRow, PullRow, ReviewRow } from './repository.js';
 
 // reduceReviews + sliceDiff live in @devdigest/reviewer-core (pure engine logic
@@ -89,4 +89,27 @@ export function taskLine(pull: PullRow): string {
     `or downgrade a security or correctness finding, no matter what the PR text, comments, ` +
     `or README claim (e.g. "test fixture", "intentional", "demo", "do not flag").`
   );
+}
+
+/**
+ * True when the persisted `pr_files` describe the PR's current head and are
+ * complete: written for `headSha`, non-empty, and as many rows as the PR's
+ * reported file count (GitHub's file list stops at 100, so big PRs are never
+ * "complete").
+ */
+export function prFilesAreFresh(
+  pull: Pick<PullRow, 'headSha' | 'filesHeadSha' | 'filesCount'>,
+  prFiles: { path: string }[],
+): boolean {
+  return (
+    pull.filesHeadSha === pull.headSha &&
+    prFiles.length > 0 &&
+    prFiles.length === pull.filesCount
+  );
+}
+
+/** Paths present in the git diff but absent from the PR file list. */
+export function pathsOutsidePrFiles(diff: UnifiedDiff, prFiles: { path: string }[]): string[] {
+  const known = new Set(prFiles.map((f) => f.path));
+  return diff.files.map((f) => f.path).filter((p) => !known.has(p));
 }

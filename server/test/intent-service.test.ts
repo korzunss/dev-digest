@@ -32,7 +32,9 @@ function makePull(overrides: Partial<PullRow> = {}): PullRow {
     branch: 'feature',
     base: 'main',
     headSha: 'sha-1',
+    baseSha: null,
     lastReviewedSha: null,
+    filesHeadSha: null,
     additions: 3,
     deletions: 1,
     filesCount: 1,
@@ -100,6 +102,7 @@ function makeStore(pull: PullRow, repo: RepoRow) {
 function makeGit(overrides: Partial<IntentServiceDeps['git']> = {}): IntentServiceDeps['git'] {
   return {
     diff: vi.fn(async (): Promise<UnifiedDiff> => EMPTY_DIFF),
+    diffCommits: vi.fn(async (): Promise<UnifiedDiff> => EMPTY_DIFF),
     fetchPullHead: vi.fn(async () => undefined),
     readFileAt: vi.fn(async () => {
       throw new Error('readFileAt should not be called in this test');
@@ -353,5 +356,43 @@ describe('IntentService — built from IntentServiceDeps fakes, no container (S1
     expect(record).toBeDefined();
     expect(upserts).toHaveLength(1);
     expect(seenSignal).toBeUndefined();
+  });
+
+  it('diffs by base SHA via diffCommits when pr_files are empty and baseSha is set (AC6)', async () => {
+    const pull = makePull({ baseSha: 'b'.repeat(40) });
+    const repo = makeRepo();
+    const { store } = makeStore(pull, repo);
+    const git = makeGit();
+    const deps: IntentServiceDeps = {
+      repo: store,
+      git,
+      forge: async () => ({ getIssue: async () => { throw new Error('no linked issue in this test'); } }),
+      llm: async () => makeFastLlm(),
+      tokenizer: { count: (s) => Math.ceil(s.length / 4) },
+      resolveModel: async () => ({ provider: 'openrouter', model: 'm' }),
+    };
+
+    await new IntentService(deps).classify('ws-1', pull.id);
+
+    expect(git.diffCommits).toHaveBeenCalledWith(expect.anything(), 'b'.repeat(40), pull.headSha, expect.any(AbortSignal));
+    expect(git.diff).not.toHaveBeenCalled();
+  });
+  it('fetchPullHead receives an AbortSignal as its 3rd argument', async () => {
+    const pull = makePull({ body: 'See docs/plan.md for the design.' });
+    const repo = makeRepo();
+    const { store } = makeStore(pull, repo);
+    const git = makeGit({ readFileAt: vi.fn(async () => 'doc content') });
+    const deps: IntentServiceDeps = {
+      repo: store,
+      git,
+      forge: async () => ({ getIssue: async () => { throw new Error('none'); } }),
+      llm: async () => makeFastLlm(),
+      tokenizer: { count: (s) => Math.ceil(s.length / 4) },
+      resolveModel: async () => ({ provider: 'openrouter', model: 'm' }),
+    };
+
+    await new IntentService(deps).classify('ws-1', pull.id);
+
+    expect(git.fetchPullHead).toHaveBeenCalledWith(expect.anything(), pull.number, expect.any(AbortSignal));
   });
 });

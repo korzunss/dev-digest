@@ -6,16 +6,26 @@ import { RunLogger } from '../../platform/run-logger.js';
 import * as schema from '../../db/schema.js';
 import type { AgentRow } from '../../db/rows.js';
 import type { ReviewRepository, FindingRow, PullRow, ReviewRow } from './repository.js';
-import { REVIEW_STRATEGY } from './constants.js';
+import {
+  REVIEW_STRATEGY,
+  REVIEW_CALL_DEADLINE_MS,
+  REVIEW_MAX_OUTPUT_TOKENS,
+  REVIEW_ROUTING,
+  REVIEW_RETRY_ROUTING,
+  REVIEW_SINGLE_PASS_MAX_DIFF_TOKENS,
+  REVIEW_MAX_SKIPPED_CHUNK_FRACTION,
+  REVIEW_REPO_RULES_MAX_CHARS,
+} from './constants.js';
 import { taskLine } from './helpers.js';
-import { loadDiff } from './diff-loader.js';
+import { loadRepoRules, type LoadedRepoRules } from './repo-rules.js';
+import { loadDiff, type LoadedDiff } from './diff-loader.js';
 // The path guard is a pure function owned by the context module; importing it
 // keeps ONE definition of "which files may be read out of a clone".
 import { resolveDocPath } from '../context/helpers.js';
 import { renderSkillBlock } from '../skills/helpers.js';
 import { MAX_DOC_BYTES } from '../context/constants.js';
 
-/** Thrown by a run when the user cancels it mid-flight (between map files). */
+/** Thrown by a run when the user cancels it mid-flight (between chunks or mid-call). */
 export class RunCancelledError extends Error {
   constructor() {
     super('Run cancelled');
@@ -116,16 +126,34 @@ export class ReviewRunExecutor {
     };
 
     let diff: UnifiedDiff;
+    let diffSource: LoadedDiff['source'];
+    // One batch signal for the pre-work (diff + repo rules): each signalForAll
+    // call adds an abort listener to every run's signal.
+    const batchSignal = this.container.runBus.signalForAll(jobs.map((j) => j.runId));
     try {
-      diff = await runLog.step('Loading PR diff', () => loadDiff(this.container, this.repo, workspaceId, pull, repo), {
-        kind: 'tool',
-      });
+      const loaded = await runLog.step(
+        'Loading PR diff',
+        () =>
+          loadDiff(
+            this.container.git,
+            this.repo,
+            pull,
+            { owner: repo.owner, name: repo.name },
+            { signal: batchSignal, logger },
+          ),
+        { kind: 'tool' },
+      );
+      diff = loaded.diff;
+      diffSource = loaded.source;
+      if (loaded.note) runLog.info(loaded.note);
     } catch (err) {
       runLog.error(`Failed to load PR diff: ${(err as Error).message}`);
       await failAll(`Failed to load PR diff: ${(err as Error).message}`);
       return;
     }
-    runLog.info(`Diff ready — ${diff.files.length} changed file(s); starting ${jobs.length} agent run(s)`);
+    const diffLabel =
+      diffSource === 'git' ? 'git base...head' : diffSource === 'pr_files' ? 'PR file list' : 'legacy branch diff';
+    runLog.info(`Diff ready — ${diff.files.length} changed file(s) (source: ${diffLabel}); starting ${jobs.length} agent run(s)`);
 
     // Resolve the PR's intent ONCE, shared by every queued agent job (spec 006
     // D4-A). `ensureForReview` never throws — a classification failure means
@@ -142,6 +170,31 @@ export class ReviewRunExecutor {
       { kind: 'tool' },
     );
 
+    // Repo rules at the PR's BASE sha (the head is author-controlled), loaded
+    // ONCE for every agent. Never fails the run: a failure means no rules.
+    const changedPaths = diff.files.map((f) => f.path);
+    let repoRules: LoadedRepoRules = { sets: [], read: 0, missing: 0 };
+    if (!pull.baseSha) {
+      runLog.info('repo rules: skipped (no base SHA)');
+    } else {
+      try {
+        repoRules = await runLog.step(
+          'Loading repo rules',
+          () =>
+            loadRepoRules(this.container.git, { owner: repo.owner, name: repo.name }, pull.baseSha, changedPaths, {
+              signal: batchSignal,
+            }),
+          { kind: 'tool' },
+        );
+        runLog.info(
+          `repo rules: ${repoRules.sets.length} file(s) from base ${pull.baseSha.slice(0, 7)} (${repoRules.read} read, ${repoRules.missing} missing)`,
+        );
+      } catch {
+        // step() already logged the failure line; carry on without rules.
+        runLog.info('repo rules: skipped (load failed)');
+      }
+    }
+
     for (const { agent, runId } of jobs) {
       const agentStart = Date.now();
       logger?.info(
@@ -149,7 +202,7 @@ export class ReviewRunExecutor {
         `review: agent "${agent.name}" started (${agent.provider}/${agent.model})`,
       );
       try {
-        const outcome = await this.runOneAgent(workspaceId, pull, repo, diff, intent, agent, runId, runLog);
+        const outcome = await this.runOneAgent(workspaceId, pull, repo, diff, intent, agent, runId, runLog, repoRules, changedPaths);
         logger?.info(
           {
             runId,
@@ -182,6 +235,8 @@ export class ReviewRunExecutor {
     agent: AgentRow,
     runId: string,
     parentLog: RunLogger,
+    repoRules: LoadedRepoRules,
+    changedPaths: string[],
   ): Promise<RunOutcome> {
     const start = Date.now();
     // Narrow the fanned-out pre-work logger to THIS run; the shared diff/intent
@@ -240,6 +295,7 @@ export class ReviewRunExecutor {
       // The pure review pipeline lives in @devdigest/reviewer-core (shared with
       // the CI runner). The service owns only I/O: repo-intel context resolution
       // above, and persistence + observability below.
+      const cancelSignal = this.container.runBus.signalFor(runId);
       const outcome = await reviewPullRequest({
         systemPrompt: agent.systemPrompt,
         model: agent.model,
@@ -266,12 +322,28 @@ export class ReviewRunExecutor {
         // Structured PR intent (spec 006), resolved once for all jobs above.
         // Absent ⇒ identical prompt/schema to today's (AC12).
         ...(intent ? { intent } : {}),
+        // Untrusted repo rules (base SHA) + the PR's full changed-file list; the
+        // engine scopes the rules per chunk. Omitted when empty ⇒ today's prompt.
+        ...(repoRules.sets.length > 0 ? { repoRules: repoRules.sets } : {}),
+        ...(changedPaths.length > 0 ? { changedFiles: changedPaths } : {}),
+        repoRulesMaxChars: REVIEW_REPO_RULES_MAX_CHARS,
         countTokens: (s) => this.container.tokenizer.count(s),
+        estimateCost: (model, tokensIn, tokensOut) => this.container.priceBook.estimate(model, tokensIn, tokensOut),
         task,
         sessionId: `${repo.owner}/${repo.name}#${pull.number}:${agent.name}`,
         onEvent: (e) => runLog.event(e.kind, e.msg, e.data),
+        signal: cancelSignal,
+        callDeadlineMs: REVIEW_CALL_DEADLINE_MS,
+        maxOutputTokens: REVIEW_MAX_OUTPUT_TOKENS,
+        requireParameters: true,
+        routing: REVIEW_ROUTING,
+        retryRouting: REVIEW_RETRY_ROUTING,
+        singlePassMaxDiffTokens: REVIEW_SINGLE_PASS_MAX_DIFF_TOKENS,
+        maxSkippedChunkFraction: REVIEW_MAX_SKIPPED_CHUNK_FRACTION,
         checkCancelled: () => {
-          if (this.container.runBus.isCancelled(runId)) throw new RunCancelledError();
+          if (cancelSignal.aborted || this.container.runBus.isCancelled(runId)) {
+            throw new RunCancelledError();
+          }
         },
       });
       const { tokensIn, tokensOut, costUsd, costSource, grounding } = outcome;

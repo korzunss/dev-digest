@@ -47,11 +47,13 @@ export interface Flow {
 
 **Selectors are deterministic only.** Every `cmd` in the current specs is one
 of: `open <url>`, `wait --load networkidle`, `wait --url <substring>`,
-`wait --text <substring>`, `click --text <text>`, or
-`find text|role <value> click [--name <name>]` (see e.g.
-`e2e/specs/02-repo-pulls-detail.flow.json:8`,
-`e2e/specs/04-pr-findings.flow.json:10`,
-`e2e/specs/09-skills.flow.json:10`). None of them is the AI `chat` command —
+`wait --text <substring>`, `wait --fn <js>`,
+`find text|role|label <value> click [--name <name>] [--exact]`, or
+`click xpath=<expr>` (the `xpath=` prefix is required by 0.38; only for a dialog-scoped button). agent-browser 0.38 has no text-based
+`click` flag. `wait --text` is a case-sensitive substring of the
+*rendered* text, so CSS `textTransform: uppercase` changes what it must say (see
+e.g. the `wait --text` steps in `02-repo-pulls-detail` and `04-pr-findings`, and the
+`USED BY` Stats-tiles step in `09-skills`). None of them is the AI `chat` command —
 `e2e/AGENTS.md:36-37` states that's deliberate: it's what keeps runs stable and
 key-free. A `wait` step **is** the assertion (a timeout is a non-zero exit); the
 `"assert"` block only adds a check on top, it never replaces the `wait`.
@@ -71,7 +73,7 @@ someone adds later.
 The ordering also has to protect against flows that mutate shared, persisted
 state. `10-conventions.flow.json` is the only flow that writes anything: it
 rejects and accepts convention candidates and creates a real skill row (steps
-at `e2e/specs/10-conventions.flow.json:14-32`). It runs after every flow that
+at `e2e/specs/10-conventions.flow.json:16-34`). It runs after every flow that
 enumerates skills or agents by name (`03-agents`, `09-skills`), so the skill it
 creates (`payments-api-conventions`) can't appear as noise in an assertion that
 doesn't expect it. Flows `02`, `04`, `05` and `08` additionally assume the
@@ -97,7 +99,7 @@ flows `09-…`, `10-…` to place them").
 | `07-settings` | `/settings/api-keys` and `/settings/models` each render their section title ("API Keys", "Feature Models"). | None. |
 | `08-severity-filter` | PR list's FINDINGS chip (1 critical) deep-links into `/pulls/482?severity=CRITICAL&tab=findings`; clearing the filter brings the WARNING finding back. | Same first-repo assumption; PR #482 seeded with one CRITICAL and one WARNING finding (`e2e/specs/08-severity-filter.flow.json:3`). |
 | `09-skills` | `/skills` rail → open a seeded skill (`secret-leakage-gate`) → walk Config/Context/Preview/Versions/Stats/Evals tabs → open agent `Test Quality Reviewer` → its Skills tab lists an attached skill (`test-coverage-nudge`). | Seeded skill `secret-leakage-gate` with v1/context/stats data; seeded agent `Test Quality Reviewer` with an attached skill. |
-| `10-conventions` | Sidebar → `/repos/:id/conventions` → reject one candidate, bulk-accept the rest, open the create-skill modal, confirm the preview, create the skill, confirm it lands in `/skills` as `payments-api-conventions`. Never presses "Run extraction / Re-scan" (the one model-calling button). | Grounded, pending convention candidates already seeded for `acme/payments-api`, at least two (`e2e/specs/10-conventions.flow.json:3`). |
+| `10-conventions` | Sidebar → `/repos/:id/conventions` → reject one candidate, bulk-accept the rest, open the create-skill modal, confirm the preview, create the skill, confirm it lands in `/skills` as `payments-api-conventions`. Never presses "Run extraction / Re-scan" (the one model-calling button). | Grounded, pending convention candidates seeded by `pnpm db:seed` (`seedDemoConventions`: a done scan and 3 pending rules) for `acme/payments-api` (`e2e/specs/10-conventions.flow.json:3`). |
 | `11-gitlab-affordances` | Settings → API Keys shows the GitLab PAT row, its scope hint (`read_api + write_repository`) and `GITLAB_HOST` pointer, alongside the pre-existing GitHub row; onboarding's copy accepts a GitLab URL. Deliberately doesn't import a real GitLab project. | None beyond the app booting; GitLab import itself is covered by `server/test/gitlab.it.test.ts` and `server/test/gitlab-adapter.test.ts` (`e2e/specs/11-gitlab-affordances.flow.json:3`). |
 
 All of them target **read-only** seeded fixtures except `10-conventions`,
@@ -150,7 +152,7 @@ env knobs, in [`../README.md`](../README.md#run-locally):
    doing that), and `steps` using only the deterministic locators in §1.
 3. Start each flow with its own `open` step; don't rely on where the shared
    session's page happens to be left by whatever runs before it (§2).
-4. If the flow needs seed data that isn't already there, say so in
+4. If the flow needs seed data that isn't already there (e.g. the convention candidates `pnpm db:seed` writes), say so in
    `description` (see `10-conventions.flow.json`'s PRECONDITION line) rather
    than let it fail silently against an empty state.
 5. If the flow could ever need write access to a fixture no other flow

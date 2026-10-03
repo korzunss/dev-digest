@@ -103,6 +103,16 @@ describe("IntentCard — ok state", () => {
   });
 });
 
+describe("IntentCard — header", () => {
+  it("renders the Intent header inside the card frame", () => {
+    mockLoaded(respond(record()));
+    mockClassify();
+    const { container } = renderCard();
+    expect(container.firstElementChild).toHaveTextContent(brief.block.intent);
+    expect(screen.getByText(brief.block.intent)).toBeInTheDocument();
+  });
+});
+
 describe("IntentCard — empty / low-confidence / missing-context each have distinct copy", () => {
   it("shows the empty-state copy when no intent has been classified yet", () => {
     mockLoaded(respond(null));

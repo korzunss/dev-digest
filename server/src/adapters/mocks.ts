@@ -9,6 +9,8 @@ import type {
   StructuredResult,
   Embedder,
   ForgeClient,
+  MergedPrTouching,
+  MergedPrLookup,
   ForgeProvider,
   RepoRef,
   PrMeta,
@@ -152,6 +154,8 @@ export interface MockForgeOptions {
   comments?: PrReviewComment[];
   /** Which forge this mock stands in for (default 'github'). */
   provider?: ForgeProvider;
+  /** Merged PRs returned by listMergedPullsTouching. */
+  mergedPulls?: MergedPrTouching[];
 }
 
 export class MockForgeClient implements ForgeClient {
@@ -176,6 +180,7 @@ export class MockForgeClient implements ForgeClient {
           branch: 'feat/rate-limit-public',
           base: 'main',
           head_sha: 'a1b2c3d4',
+          base_sha: 'b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0',
           additions: 247,
           deletions: 38,
           files_count: 9,
@@ -195,6 +200,7 @@ export class MockForgeClient implements ForgeClient {
       branch: 'feat/rate-limit-public',
       base: 'main',
       head_sha: 'a1b2c3d4',
+      base_sha: 'b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0',
       additions: 247,
       deletions: 38,
       files_count: 9,
@@ -270,6 +276,19 @@ export class MockForgeClient implements ForgeClient {
   async currentLogin(): Promise<string> {
     return this.opts.login ?? 'mock-user';
   }
+
+  async listMergedPullsTouching(
+    _repo: RepoRef,
+    _paths: string[],
+    opts: { excludeNumber: number; commitsPerPath: number; limit: number },
+  ): Promise<MergedPrLookup> {
+    return {
+      supported: true,
+      items: (this.opts.mergedPulls ?? [])
+        .filter((p) => p.number !== opts.excludeNumber)
+        .slice(0, opts.limit),
+    };
+  }
 }
 
 // ---------- Mock Git ----------
@@ -284,11 +303,14 @@ export interface MockGitOptions {
   syncedHead?: string;
   /** `readFileAt` fixtures, keyed `"<ref>:<path>"` (spec 006 linked docs). */
   filesAt?: Record<string, string>;
+  /** When set, `diffCommits` rejects with this error. */
+  diffCommitsError?: Error;
 }
 
 export class MockGitClient implements GitClient {
   public cloned: { repo: RepoRef; url: string }[] = [];
   public syncs: { repo: RepoRef; branch: string }[] = [];
+  public diffCommitsCalls: { base: string; head: string }[] = [];
   private syncedHead?: string;
 
   constructor(private opts: MockGitOptions = {}) {}
@@ -319,6 +341,11 @@ export class MockGitClient implements GitClient {
       'diff --git a/src/config.ts b/src/config.ts\n--- a/src/config.ts\n+++ b/src/config.ts\n@@ -10,3 +10,4 @@\n   port: 3000,\n+  stripeKey: "sk_live_xxx",\n   redisUrl: x,';
     return parseUnifiedDiff(raw);
   }
+  async diffCommits(_repo: RepoRef, base: string, head: string): Promise<UnifiedDiff> {
+    this.diffCommitsCalls.push({ base, head });
+    if (this.opts.diffCommitsError) throw this.opts.diffCommitsError;
+    return this.diff();
+  }
   async blame(): Promise<BlameLine[]> {
     return [{ line: 1, sha: 'a1b2c3d4', author: 'marisa.koch', date: '2026-06-01', summary: 'init' }];
   }
@@ -329,7 +356,13 @@ export class MockGitClient implements GitClient {
     return this.opts.files?.[path] ?? '';
   }
 
-  async readFileAt(_repo: RepoRef, ref: string, path: string): Promise<string> {
+  async readFileAt(
+    _repo: RepoRef,
+    ref: string,
+    path: string,
+    signal?: AbortSignal,
+  ): Promise<string> {
+    signal?.throwIfAborted();
     const content = this.opts.filesAt?.[`${ref}:${path}`];
     if (content === undefined) throw new Error('not found');
     return content;

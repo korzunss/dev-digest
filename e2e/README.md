@@ -15,8 +15,8 @@ A spec lives in `specs/NN-name.flow.json`: a `name`, an optional
 one shared `agent-browser` session. `{BASE}` is replaced with `E2E_BASE_URL`.
 A non-zero exit from a `cmd` fails the step and the flow, so `wait --text` /
 `wait --url` **are** the assertions; `"assert": { "stdoutIncludes": … }` only
-adds a substring check on top. Locators are deterministic only (`--url`,
-`--text`, `find role|text|label`) — never the AI `chat` command, so runs stay
+adds a substring check on top. `wait --text` matches case-sensitively against the *rendered* text (CSS `text-transform` changes what it must say). Locators are deterministic only (`--url`,
+`--text`, `--fn`, `find role|text|label … click`) — never the AI `chat` command, so runs stay
 stable and key-free. Full format reference, why the `NN-` prefix is run order,
 and the flow-by-flow catalogue: [`docs/flows.md`](docs/flows.md).
 

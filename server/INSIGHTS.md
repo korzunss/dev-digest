@@ -21,6 +21,12 @@ _Nothing yet._
 
 ## What Doesn't Work
 
+### 2026-09-29 — a review diff by base *branch name* reviews unrelated commits, silently
+**Symptom:** a reviewer run on PR #8 of korzunss/dev-digest (74 files, +8 693) logged `Diff ready — 343 changed file(s)`, sent ~606k input tokens in one call, and returned 0 findings / score 100; the only candidate finding cited a file not in the PR and was dropped by grounding. Looks like a clean PR or a weak model.
+**Cause:** `loadDiff` ran `git diff ${pull.base}...${headSha}` where `pull.base` is the branch name (`octokit.ts` stores `pr.base.ref`). In the shallow clone the local `main` was stale (`c6af1e4`, while `origin/main` was current), so the merge-base was weeks old and the diff swept in every PR since. A non-empty diff never reaches the `pr_files` fallback.
+**Rule:** diff by commits, never by a ref name — `base_sha...head_sha` via `GitClient.diffCommits` (plan 07). When `base_sha` is set and that fails, fail the run rather than fall back to the branch diff. To diagnose a suspiciously clean review, compare the run log's `Diff ready — N changed file(s)` (`run_traces.trace->'log'`) with the PR's `pr_files` count.
+**Evidence:** `server/src/modules/reviews/diff-loader.ts` · `git diff --stat main...17975bf` → 345 files vs `git diff --stat 5a3f105...17975bf` → 74 files (in `server/clones/korzunss/dev-digest`) · `docs/plans/07-review-diff-base-sha.md`
+
 ### 2026-09-23 — an optional "disambiguation" field turned into an authorisation bypass
 
 **Symptom:** `parseRepoUrl` rejects an unknown forge host — unless the request
@@ -179,6 +185,30 @@ callback at all · `specs/001-run-cost-badge.md` → "Postgres indexes the colum
 foreign key POINTS AT"
 
 ## Tool & Library Notes
+
+### 2026-09-30 — a data migration goes into a `pnpm db:generate --custom` stub, generated *before* the schema edit
+**Symptom:** a new unique index needed existing duplicate rows cleaned first. drizzle-kit only emits DDL, and `migrations/**` is "generated only", so there seemed to be no legitimate place for the cleanup SQL. The custom migration's snapshot then showed hundreds of changed lines in a plain `diff`, which looked like schema drift.
+**Cause:** `drizzle-kit generate --custom --name <x>` (0.30.6) creates an empty, journaled `.sql` stub, and its snapshot is a copy of the previous one. So it must run *before* the schema edit, or the index lands in the custom snapshot and the DDL migration comes out empty. The copy has reordered keys but identical content. The migrator applies all pending migrations in **one transaction** (`drizzle-orm/pg-core/dialect.js:60`), so the data fix and the DDL that needs it succeed or fail together.
+**Rule:** for a data fix that a DDL change depends on, run `pnpm db:generate --custom --name <x>` first and hand-write only that stub (the one exception in AGENTS.md "Do not touch"). Then edit the schema and run `pnpm db:generate` for the DDL. Compare snapshots with `jq -S 'del(.id,.prevId)'`, not `diff`. Write each statement so it also runs outside a transaction (no temp tables), and separate statements with `--> statement-breakpoint`.
+**Evidence:** `server/src/db/migrations/0020_dedupe_eval_cases.sql`, `0021_unique_veda.sql` · `server/test/eval-cases-dedupe.it.test.ts` · `docs/plans/12-eval-write-integrity.md` → Design notes, Verification log
+
+### 2026-09-30 — `withTimeout` does not stop a git call; pass an `AbortSignal` to the adapter, and test the kill path deterministically
+**Symptom:** after `loadDiff`'s 90 s `withTimeout` fired, the review fell back to `pr_files`, but `git fetch --deepen` kept running in the shared clone. That process could hold `shallow.lock` or `index.lock` and break a concurrent `sync` or the next review of the same repo. A later "abort during fetch" test passed without ever killing a fetch.
+**Cause:** `withTimeout` (`platform/resilience.ts:13-24`) is a `Promise.race`: the caller stops waiting, and nothing is cancelled. For the test there were two problems. (1) `beforeAll` had already fetched the SHAs into the shared clone, so the later case ran on local objects. (2) `AbortSignal.timeout(1)` fired before or during `cat-file`, not during the fetch.
+**Rule:** bound a git call by passing a signal into `GitClient` (`diffCommits`/`fetchPullHead` take `signal?`, and simple-git's `abort` sends SIGINT). Never wrap a git call in `withTimeout`: `JobRunner` (`platform/jobs.ts:67`) still does, and that is a known orphan path. To test a kill mid-fetch, give the case its own clone and make the fetch deterministically slow with `git config remote.origin.uploadpack 'sleep 3 #'` (the `#` comments out the appended path). Then assert the call rejects well under 3 s, that no `*.lock` is left behind, and that a follow-up succeeds. Don't use `sh -c 'sleep 3; exec git-upload-pack "$@"'`: with that wrapper over `file://`, `git fetch` ignores SIGINT and the test hangs. Over real HTTPS (`github.com`, `fetch --deepen=5000`), SIGINT stopped git within 8 ms and left no locks or helpers, so production is unaffected.
+**Evidence:** `server/src/adapters/git/simple-git.ts` (`gitAt`, `toGitStopError`) · `server/test/simple-git-diff-commits.test.ts:81-108` · `node_modules/simple-git/dist/cjs/index.js:1928-1943` (the task settles on the child's `close`, and `kill` = SIGINT) · `docs/plans/11-diff-commits-cancellation.md` → Verification log
+
+### 2026-09-30 — `loadConfig()` never fails on a missing `DATABASE_URL`; it falls back to local Postgres
+**Symptom:** moving the eval CLI's manual `if (!process.env.DATABASE_URL) throw …` onto `loadConfig().databaseUrl` (architecture F1) silently changed "unset → error" into "unset → connect to the local default".
+**Cause:** `EnvSchema` gives `DATABASE_URL` a default (`postgres://devdigest:devdigest@localhost:5432/devdigest`).
+**Rule:** replacing a direct env read with `loadConfig()` is right for the chokepoint rule, but check the schema for a default first; if a script must refuse to run without an explicit URL, keep that check separately.
+**Evidence:** `server/src/platform/config.ts:16-18,82-88` · `server/src/modules/eval/cli.ts`
+
+### 2026-09-29 — simple-git `raw(['merge-base', a, b])` resolves empty instead of throwing when there is no merge base
+**Symptom:** a merge-base check wrapped in `try/catch` "passed" on a shallow repo, then the following `git diff a...b` failed with `fatal: a...b: no merge base` (exit 128).
+**Cause:** `git merge-base` exits 1 with no stderr when it finds nothing; simple-git's `raw` only rejects when stderr has content, so it resolves with `''`.
+**Rule:** detect "no merge base" by empty (trimmed) output, not by a throw. In a shallow clone, fetch both SHAs (`git fetch --depth=1 origin <sha>` works on GitHub) and loop `git fetch --deepen=N` + `merge-base` with a cap; git ≥ 2.28 is required — older git silently degrades `a...b` to a two-dot diff.
+**Evidence:** `server/src/adapters/git/simple-git.ts` (`hasMergeBase`) · `server/test/simple-git-diff-commits.test.ts`
 
 ### 2026-09-22 — `pnpm db:generate` hangs forever when one table both drops and adds a column
 

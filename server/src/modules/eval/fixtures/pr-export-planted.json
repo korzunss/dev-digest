@@ -1,0 +1,311 @@
+{
+  "id": "pr-export-planted-v1",
+  "repo": "korzunss/dev-digest",
+  "pr": 12,
+  "base_sha": "6d6fb39dbaae8bd35f036d4fea036e07e96088f2",
+  "head_sha": "3b8ea1e1a9d665bd3ac1d973fd9e9c423b4ab50c",
+  "line_tolerance": 8,
+  "lanes": {
+    "general": "General Reviewer",
+    "security": "Security Reviewer",
+    "performance": "Performance Reviewer",
+    "test_quality": "Test Quality Reviewer",
+    "api_contract": "API Contract Reviewer"
+  },
+  "issues": [
+    {
+      "id": "sql-injection",
+      "lane": "security",
+      "title": "SQL injection via raw SQL",
+      "locations": [
+        {
+          "file": "server/src/modules/pr-export/routes.ts",
+          "start_line": 23,
+          "end_line": 26
+        }
+      ],
+      "categories": [
+        "security",
+        "bug"
+      ],
+      "keywords": [
+        "injection",
+        "sql.raw",
+        "raw sql"
+      ]
+    },
+    {
+      "id": "ssrf-webhook",
+      "lane": "security",
+      "title": "SSRF through user-supplied webhook URL",
+      "locations": [
+        {
+          "file": "server/src/modules/pr-export/routes.ts",
+          "start_line": 55,
+          "end_line": 62
+        }
+      ],
+      "categories": [
+        "security"
+      ],
+      "keywords": [
+        "ssrf",
+        "server-side request",
+        "arbitrary url",
+        "user-supplied url",
+        "fetch"
+      ]
+    },
+    {
+      "id": "hardcoded-key",
+      "lane": "security",
+      "title": "Hard-coded signing key",
+      "locations": [
+        {
+          "file": "server/src/modules/pr-export/routes.ts",
+          "start_line": 12,
+          "end_line": 13
+        }
+      ],
+      "categories": [
+        "security"
+      ],
+      "keywords": [
+        "hardcoded",
+        "hard-coded",
+        "signing key",
+        "secret"
+      ]
+    },
+    {
+      "id": "no-authz",
+      "lane": "security",
+      "title": "Missing authorization / workspace scoping",
+      "locations": [
+        {
+          "file": "server/src/modules/pr-export/routes.ts",
+          "start_line": 18,
+          "end_line": 20
+        },
+        {
+          "file": "server/src/modules/pr-export/routes.ts",
+          "start_line": 55,
+          "end_line": 56
+        }
+      ],
+      "categories": [
+        "security"
+      ],
+      "keywords": [
+        "auth",
+        "workspace",
+        "access control",
+        "tenant",
+        "idor"
+      ]
+    },
+    {
+      "id": "key-in-log",
+      "lane": "security",
+      "title": "Key written to logs",
+      "locations": [
+        {
+          "file": "server/src/modules/pr-export/routes.ts",
+          "start_line": 57,
+          "end_line": 57
+        }
+      ],
+      "categories": [
+        "security"
+      ],
+      "keywords": [
+        "log"
+      ]
+    },
+    {
+      "id": "n-plus-one",
+      "lane": "performance",
+      "title": "N+1 query per PR",
+      "locations": [
+        {
+          "file": "server/src/modules/pr-export/routes.ts",
+          "start_line": 29,
+          "end_line": 38
+        }
+      ],
+      "categories": [
+        "perf",
+        "bug"
+      ],
+      "keywords": [
+        "n+1",
+        "n + 1",
+        "per pr",
+        "per-pr",
+        "in a loop",
+        "each pr"
+      ]
+    },
+    {
+      "id": "deep-clone",
+      "lane": "performance",
+      "title": "Deep clone via JSON.parse/stringify",
+      "locations": [
+        {
+          "file": "server/src/modules/pr-export/routes.ts",
+          "start_line": 44,
+          "end_line": 44
+        }
+      ],
+      "categories": [
+        "perf",
+        "bug"
+      ],
+      "keywords": [
+        "json.parse",
+        "json.stringify",
+        "deep clone",
+        "deep-clone",
+        "clone"
+      ]
+    },
+    {
+      "id": "paginate-off-by-one",
+      "lane": "general",
+      "title": "Pagination off-by-one",
+      "locations": [
+        {
+          "file": "server/src/modules/pr-export/helpers.ts",
+          "start_line": 12,
+          "end_line": 15
+        }
+      ],
+      "categories": [
+        "bug"
+      ],
+      "keywords": [
+        "off-by-one",
+        "off by one",
+        "paginat",
+        "page"
+      ]
+    },
+    {
+      "id": "risk-else-if",
+      "lane": "general",
+      "title": "Risk level else-if bug",
+      "locations": [
+        {
+          "file": "server/src/modules/pr-export/helpers.ts",
+          "start_line": 18,
+          "end_line": 25
+        }
+      ],
+      "categories": [
+        "bug"
+      ],
+      "keywords": [
+        "else",
+        "critical",
+        "double",
+        "11"
+      ]
+    },
+    {
+      "id": "average-nan",
+      "lane": "general",
+      "title": "Average yields NaN on empty input",
+      "locations": [
+        {
+          "file": "server/src/modules/pr-export/helpers.ts",
+          "start_line": 29,
+          "end_line": 31
+        }
+      ],
+      "categories": [
+        "bug"
+      ],
+      "keywords": [
+        "nan",
+        "empty",
+        "divide",
+        "division",
+        "zero"
+      ]
+    },
+    {
+      "id": "empty-catch",
+      "lane": "general",
+      "title": "Empty catch swallows errors",
+      "locations": [
+        {
+          "file": "server/src/modules/pr-export/routes.ts",
+          "start_line": 50,
+          "end_line": 52
+        }
+      ],
+      "categories": [
+        "bug",
+        "style"
+      ],
+      "keywords": [
+        "catch",
+        "swallow",
+        "silent",
+        "error"
+      ]
+    },
+    {
+      "id": "tests-cannot-fail",
+      "lane": "test_quality",
+      "title": "Tests that cannot fail",
+      "locations": [
+        {
+          "file": "server/test/pr-export-helpers.test.ts",
+          "start_line": 5,
+          "end_line": 16
+        }
+      ],
+      "categories": [
+        "test"
+      ],
+      "keywords": [
+        "cannot fail",
+        "tobedefined",
+        "weak",
+        "vacuous",
+        "assert",
+        "tautolog"
+      ]
+    }
+  ],
+  "acceptable_extras": [
+    {
+      "id": "missing-zod-schemas",
+      "lane": "api_contract",
+      "title": "Missing Zod schemas on routes",
+      "locations": [
+        {
+          "file": "server/src/modules/pr-export/routes.ts",
+          "start_line": 18,
+          "end_line": 20
+        },
+        {
+          "file": "server/src/modules/pr-export/routes.ts",
+          "start_line": 55,
+          "end_line": 56
+        }
+      ],
+      "categories": [
+        "bug",
+        "style",
+        "security"
+      ],
+      "keywords": [
+        "zod",
+        "schema",
+        "validat"
+      ]
+    }
+  ]
+}

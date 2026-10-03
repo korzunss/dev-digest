@@ -15,6 +15,7 @@ aliases, not published modules):
 | `client/`        | `@devdigest/web`            | Next.js 15 web app (the studio)                       | 3000 |
 | `reviewer-core/` | `@devdigest/reviewer-core`  | Pure review engine: diff → prompt → LLM → findings    | —    |
 | `e2e/`           | `@devdigest/e2e`            | Deterministic browser e2e (agent-browser)             | —    |
+| `mcp-server/`    | `@devdigest/mcp-server`     | Local stdio MCP server: 5 review tools over the API   | —    |
 | `server/src/vendor/shared` | `@devdigest/shared` | Zod contracts shared across every package             | —    |
 
 `repo-intel` (the codebase indexer that powers the **Indexed** badge and feeds
@@ -33,6 +34,9 @@ flowchart LR
     WEB -->|"REST /repos /pulls /agents /runs …"| API
     API --> PG
   end
+
+  CC["Claude Code"] -->|"MCP (stdio)"| MCP["mcp-server/<br/>5 review tools"]
+  MCP -->|"REST"| API
 
   CLONE["git clone (add repo)"] --> INDEX["repo-intel<br/>index symbols + import graph<br/>→ repo map"]
   API --> CLONE
@@ -143,6 +147,7 @@ path filter — full strategy in **[`TESTING.md`](TESTING.md)**.
 | server unit (hermetic) | `server-unit.yml` | no |
 | server integration (real Postgres) | `server-integration.yml` | yes |
 | reviewer-core (engine) | `reviewer-core.yml` | no |
+| mcp-server (MCP tools) | `mcp-server.yml` | no |
 | web e2e (agent-browser, real stack) | `e2e-web.yml` | yes |
 
 Server tests split by filename: `*.it.test.ts` are DB-backed (testcontainers

@@ -77,6 +77,7 @@ The target follows the files the task touched — check with `git diff --name-on
 | only `client/**` | `client/INSIGHTS.md` |
 | only `server/**` | `server/INSIGHTS.md` |
 | only `reviewer-core/**` | `reviewer-core/INSIGHTS.md` |
+| only `mcp-server/**` | `mcp-server/INSIGHTS.md` |
 | only `e2e/**` | `e2e/INSIGHTS.md` |
 | two or more packages, `*/src/vendor/shared`, `scripts/`, `docker-compose.yml`, CI | `INSIGHTS.md` (repo root) |
 

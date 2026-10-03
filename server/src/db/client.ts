@@ -1,8 +1,13 @@
 import postgres from 'postgres';
 import { drizzle, type PostgresJsDatabase } from 'drizzle-orm/postgres-js';
+import type { PgDatabase } from 'drizzle-orm/pg-core';
+import type { PostgresJsQueryResultHKT } from 'drizzle-orm/postgres-js';
 import { schema } from './schema.js';
 
 export type Db = PostgresJsDatabase<typeof schema>;
+
+/** A root `Db` or a transaction; what a repository that can join a transaction accepts. */
+export type DbExecutor = PgDatabase<PostgresJsQueryResultHKT, typeof schema>;
 
 export interface DbHandle {
   db: Db;
