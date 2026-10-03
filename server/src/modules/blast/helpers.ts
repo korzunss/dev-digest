@@ -14,7 +14,11 @@ export function buildBlastSummary(
   return reason ? `${base} · degraded: ${reason}` : base;
 }
 
-/** Pure transform of the facade's flat `BlastResult` into the grouped contract. */
+/**
+ * Pure grouping of the facade's flat `BlastResult` into the contract; caller
+ * selection (declaring files, tests, caps) is the facade's job — nothing is
+ * dropped here.
+ */
 export function toBlastRadius(result: BlastResult): BlastRadius {
   const facts = result.factsByFile ?? {};
   const bySymbol = new Map<string, BlastResult['callers']>();
@@ -26,26 +30,21 @@ export function toBlastRadius(result: BlastResult): BlastRadius {
 
   const downstream: BlastRadius['downstream'] = [];
   for (const [symbol, rows] of bySymbol) {
-    const declFiles = new Set(
-      result.changedSymbols.filter((s) => s.name === symbol).map((s) => s.file),
-    );
-    const callers = rows.filter((c) => !declFiles.has(c.file));
-    if (callers.length === 0) continue;
     const rank = Math.max(
       0,
       ...result.changedSymbols.filter((s) => s.name === symbol).map((s) => s.rank),
     );
     downstream.push({
       symbol,
-      callers: callers.map((c) => ({
+      callers: rows.map((c) => ({
         name: c.symbol,
         file: c.file,
         line: c.line,
         depth: c.depth,
         via: c.via,
       })),
-      endpoints_affected: sortedUnion(callers.map((c) => facts[c.file]?.endpoints ?? [])),
-      crons_affected: sortedUnion(callers.map((c) => facts[c.file]?.crons ?? [])),
+      endpoints_affected: sortedUnion(rows.map((c) => facts[c.file]?.endpoints ?? [])),
+      crons_affected: sortedUnion(rows.map((c) => facts[c.file]?.crons ?? [])),
       rank,
     });
   }

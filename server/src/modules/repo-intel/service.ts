@@ -272,6 +272,13 @@ export class RepoIntelService implements RepoIntel {
       changedSymbols.push({ file: s.path, name: s.name, kind: s.kind, rank: 0 });
     }
 
+    const declFilesByName = new Map<string, Set<string>>();
+    for (const c of changedSymbols) {
+      const files = declFilesByName.get(c.name) ?? new Set<string>();
+      files.add(c.file);
+      declFilesByName.set(c.name, files);
+    }
+
     const callerRows: BlastCallerRow[] = [];
     const endpoints = new Set<string>();
     const factsByFile: Record<string, { endpoints: string[]; crons: string[] }> = {};
@@ -287,7 +294,7 @@ export class RepoIntelService implements RepoIntel {
       }
       const callerFiles = new Set<string>();
       for (const r of refs) {
-        if (r.fromPath === sym.file) continue; // skip the decl's own file
+        if (declFilesByName.get(sym.name)?.has(r.fromPath)) continue; // any declaring file of this name is not a caller
         if (isBlastTestPath(r.fromPath)) continue; // D11: tests are not blast
         if ((perSymbol.get(sym.name) ?? 0) >= MAX_CALLERS_PER_SYMBOL) break;
         const callerName = enclosingSymbolName(allSymbols, r.fromPath, r.line);

@@ -14,7 +14,7 @@ the package never emits JS · `pnpm start` (stdio server) · `pnpm inspect` (MCP
 src/core/ports.ts      DevDigestApi port + Clock
 src/core/errors.ts     ApiError { status, code }
 src/core/resolve.ts    resolveRepo · resolvePull · resolveAgent (matching, pure)
-src/core/findings.ts   latestReviews · conciseReview (sort, cap 20, truncate)
+src/core/findings.ts   latestReviews · conciseReview (sort, cap 20, truncate) · prFindings (PR picture, total_findings)
 src/core/conventions.ts  acceptedConventions
 src/core/run-review.ts runAndWait (trigger once, bounded poll) · runStatus
 src/http/client.ts     createHttpApi — the only I/O (fetch)

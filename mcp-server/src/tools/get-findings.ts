@@ -1,6 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod/v3';
-import { conciseReview, latestReviews, SEVERITIES } from '../core/findings.js';
+import { latestReviews, prFindings, SEVERITIES } from '../core/findings.js';
 import { resolveAgent, resolvePull, resolveRepo } from '../core/resolve.js';
 import { runStatus } from '../core/run-review.js';
 import { noReviewText, resolutionText, runCancelledText, runFailedText, unknownRunText } from './messages.js';
@@ -11,7 +11,7 @@ export function registerGetFindings(server: McpServer, deps: ToolDeps): void {
     'get_findings',
     {
       description:
-        'Get the latest finished review of a pull request: verdict, score and top findings per agent. Read-only; use it after run_agent_on_pr or to see an earlier review.',
+        'Get the whole review picture of a pull request in one call: the latest review of every agent with its findings, plus total_findings. Read-only. Pass agent or run_id only to narrow it.',
       inputSchema: {
         repo: z.string().min(1).max(200).describe('Repository as owner/name'),
         pr: z.number().int().positive().describe('Pull request number, not an internal id'),
@@ -43,11 +43,7 @@ export function registerGetFindings(server: McpServer, deps: ToolDeps): void {
           ...(run_id !== undefined ? { runId: run_id } : {}),
         });
         if (reviews.length > 0) {
-          return ok({
-            reviews: reviews.map((rv) =>
-              conciseReview(rv, min_severity !== undefined ? { minSeverity: min_severity } : {}),
-            ),
-          });
+          return ok(prFindings({ repo, pr }, reviews, min_severity !== undefined ? { minSeverity: min_severity } : {}));
         }
         if (run_id !== undefined) {
           const s = await runStatus(deps.api, p.pullId, run_id);
