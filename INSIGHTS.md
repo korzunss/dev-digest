@@ -4,6 +4,21 @@ An append-only log of things that cost someone time. Package-local findings go i
 that package's `INSIGHTS.md`; this file is for what crosses package boundaries —
 two or more packages, the `shared` contracts, `scripts/`, Docker, CI.
 
+**Where every insight lives.** A map, not a summary — the rules themselves stay
+in each package's files. There is no root `gotchas.md`: cross-package rules stay
+in this file.
+
+| Package | Log (append-only) | Rules in force |
+|---|---|---|
+| repo-wide | this file | — |
+| `server/` | [`server/INSIGHTS.md`](server/INSIGHTS.md) | [`server/insights/gotchas.md`](server/insights/gotchas.md) |
+| `client/` | [`client/INSIGHTS.md`](client/INSIGHTS.md) | [`client/insights/gotchas.md`](client/insights/gotchas.md) |
+| `reviewer-core/` | [`reviewer-core/INSIGHTS.md`](reviewer-core/INSIGHTS.md) | [`reviewer-core/insights/gotchas.md`](reviewer-core/insights/gotchas.md) |
+| `mcp-server/` | [`mcp-server/INSIGHTS.md`](mcp-server/INSIGHTS.md) | [`mcp-server/insights/gotchas.md`](mcp-server/insights/gotchas.md) |
+| `e2e/` | [`e2e/INSIGHTS.md`](e2e/INSIGHTS.md) | [`e2e/insights/gotchas.md`](e2e/insights/gotchas.md) |
+
+A new package gets a row here when its `INSIGHTS.md` is created.
+
 **How to use it.** Write an entry when a symptom took more than a few minutes to
 explain — especially when the code looks correct and behaves otherwise. The
 `engineering-insights` skill routes a finding to the right file, picks the
