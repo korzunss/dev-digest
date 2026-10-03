@@ -1,5 +1,5 @@
 # Development Plan: Mentor review follow-ups (MCP `get_findings` PR picture, blast decl-file filter in one place)
-Status: in-progress
+Status: done
 Save as: docs/plans/19-mentor-review-followups.md
 Spec: none
 
@@ -197,3 +197,10 @@ Implementer (2026-10-03): skills read, code re-checked against them, no change n
 | `engineering-insights` | preload | — | no new insight |
 - 2026-10-03, plan-verifier delta (S5, T5, SK1, SK2): **complete — needs sign-off** — 51 met · 0 partial · 0 missing · 2 not-verifiable (R3, R4). Note: S5's "summary counts 2 callers for it" is not literal — the summary is global; the group count is asserted by the files `toEqual`, the global one by `4 callers`.
 - 2026-10-03, test-writer (R4): every new/changed test fails under a targeted mutation, 3/3 stable runs, production shasums restored — `findings.ts` (`total`→`returned`, null-last flip, run_id tie-break removed), `tools-run` (`total_findings` key renamed), `repo-intel/service.ts` (fallback back to `r.fromPath === sym.file`), `blast/helpers.ts` (declFiles filter reinstated). Added test: `findings.test.ts` › "breaks agent ties by run_id". R4 → met; R3 awaits user sign-off.
+- 2026-10-03, main session manual check on live data (API at `347d081`, MCP reconnected; no paid runs):
+  - `get_findings` korzunss/dev-digest#12 (5 agents): `{repo, pr, total_findings, reviews}`, reviews sorted by agent, `total_findings` 24 = Σ `total`, equal to an independent `jq` count over `GET /pulls/:id/reviews`; `agent` → 1 review, 4; `min_severity: CRITICAL` → 14 (expected 14); `run_id` → 1 review, 7; a PR with no review → "No finished review … Call run_agent_on_pr". ✅
+  - Blast, index path, all 15 PRs of korzunss/dev-digest: no caller in a declaring file of its symbol, no test-path caller, incl. #1/#2/#8 which have same-name symbols in several changed files. ✅
+  - Blast, fallback path (second API on :3101, `REPO_INTEL_ENABLED=false`, 0 running runs so boot reaping touched nothing): #1, #2, #8, #10, #14, #15 → `degraded: true`, `reason: flag_off`, no declaring-file or test-path callers. ✅ API output is the same as before by design (the helper used to drop those rows); the behaviour change is proven by the break-checked unit test.
+  - MCP `get_blast_radius` #14 = the API map (3 callers, 3 endpoints). ✅
+  - Side note (pre-existing, out of scope): after ~200 scripted reads the global 120/min API limit returned 429 and `get_findings` reported "Review rate limit reached (10/min)" — `mcp-server/src/tools/messages.ts:15` maps every 429 to the review limit.
+- 2026-10-03, user sign-off: "помічаємо як виконаний план" — accepts R3 (plan file first staged after implementation; content above the marker taken as the approved version). R4 was closed by test-writer. Status → done.

@@ -17,7 +17,11 @@ the section guide and the promotion rule (a standing rule becomes one line under
 
 ## What Works
 
-_Nothing yet._
+### 2026-10-03 — check a flag-off path live with a second API on another port, after confirming no run is `running`
+**Symptom:** the blast fallback path runs only with `REPO_INTEL_ENABLED=false`. Restarting the developer's own `./scripts/dev.sh` API to flip the flag would interrupt their session.
+**Cause:** config is read once at boot (`loadConfig()`), so a flag can't be flipped on a live process. On boot, `buildApp` also reaps every `agent_runs` row in `running` (`src/app.ts:70-85`). It assumes a single API per DB, so a second instance would mark the first one's in-flight runs as failed.
+**Rule:** for a live check of a config-gated path, start a second instance with `REPO_INTEL_ENABLED=false API_PORT=3101 ./node_modules/.bin/tsx src/server.ts` and query `:3101`. Before starting it, check that `select count(*) from agent_runs where status='running'` is 0 (`docker exec devdigest-postgres psql …`). Stop it when done. Never start it while a review is running.
+**Evidence:** `server/src/app.ts:78` ("assumes a SINGLE API instance per DB") · `server/src/platform/config.ts:34,97` · `docs/plans/19-mentor-review-followups.md` → *Verification log* (manual check, fallback)
 
 ## What Doesn't Work
 
