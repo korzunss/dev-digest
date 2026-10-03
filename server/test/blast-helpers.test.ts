@@ -14,7 +14,6 @@ function result(over: Partial<BlastResult> = {}): BlastResult {
       { file: 'src/r1.ts', symbol: 'h1', viaSymbol: 'alpha', line: 3, rank: 0, depth: 1, via: null },
       { file: 'src/r2.ts', symbol: 'h2', viaSymbol: 'beta', line: 7, rank: 0, depth: 1, via: null },
       { file: 'src/r3.ts', symbol: 'h3', viaSymbol: 'beta', line: 9, rank: 0, depth: 2, via: 'h2' },
-      { file: 'src/a.ts', symbol: 'self', viaSymbol: 'alpha', line: 1, rank: 0, depth: 1, via: null },
     ],
     impactedEndpoints: [],
     factsByFile: {
@@ -44,9 +43,19 @@ describe('toBlastRadius', () => {
     expect(beta.crons_affected).toEqual(['0 * * * *']);
   });
 
-  it('drops a caller living in the declaring file', () => {
-    const alpha = toBlastRadius(result()).downstream.find((d) => d.symbol === 'alpha')!;
-    expect(alpha.callers.map((c) => c.file)).toEqual(['src/r1.ts']);
+  it('keeps every caller it is given', () => {
+    const out = toBlastRadius(
+      result({
+        callers: [
+          ...result().callers,
+          { file: 'src/a.ts', symbol: 'self', viaSymbol: 'alpha', line: 1, rank: 0, depth: 1, via: null },
+        ],
+      }),
+    );
+    const alpha = out.downstream.find((d) => d.symbol === 'alpha')!;
+    expect(alpha.callers.map((c) => c.file)).toEqual(['src/r1.ts', 'src/a.ts']);
+    // alpha's 2 rows + beta's 2 → nothing dropped from the call-site count either.
+    expect(out.summary).toContain('4 callers');
   });
 
   it('carries depth and via, and omits symbols without callers', () => {

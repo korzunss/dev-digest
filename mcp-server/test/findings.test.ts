@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FINDINGS_CAP, RATIONALE_MAX, conciseReview, latestReviews } from '../src/core/findings.js';
+import { FINDINGS_CAP, RATIONALE_MAX, conciseReview, latestReviews, prFindings } from '../src/core/findings.js';
 import { makeReview } from './fakes.js';
 import type { FindingRecord } from '@devdigest/shared';
 
@@ -81,5 +81,51 @@ describe('conciseReview', () => {
       makeReview({ findings: [finding({ title: 't'.repeat(500) })] }),
     );
     expect(out.findings[0]?.title).toHaveLength(RATIONALE_MAX + 1);
+  });
+});
+
+describe('prFindings', () => {
+  const input = { repo: 'acme/web', pr: 7 };
+
+  it('sorts by agent name with unnamed agents last', () => {
+    const out = prFindings(input, [
+      makeReview({ id: '1', agent_name: 'Security' }),
+      makeReview({ id: '2', agent_name: null, run_id: 'run-n' }),
+      makeReview({ id: '3', agent_name: 'Bugs', run_id: 'run-b' }),
+    ]);
+    expect(out.reviews.map((r) => r.agent)).toEqual(['Bugs', 'Security', null]);
+  });
+
+  // two reviews of the same agent are ordered by run_id, so the output is stable
+  it('breaks agent ties by run_id', () => {
+    const out = prFindings(input, [
+      makeReview({ id: '1', agent_name: 'Bugs', run_id: 'run-b' }),
+      makeReview({ id: '2', agent_name: 'Bugs', run_id: 'run-a' }),
+    ]);
+    expect(out.reviews.map((r) => r.run_id)).toEqual(['run-a', 'run-b']);
+  });
+
+  it('counts total_findings before the cap', () => {
+    const many = Array.from({ length: 25 }, (_, i) => finding({ id: `f${i}` }));
+    const out = prFindings(input, [
+      makeReview({ findings: many }),
+      makeReview({ agent_name: 'Bugs', run_id: 'run-b', findings: [finding(), finding()] }),
+    ]);
+    expect(out.total_findings).toBe(27);
+    expect(out.reviews.find((r) => r.agent === 'Security')?.returned).toBe(FINDINGS_CAP);
+  });
+
+  it('does not count dismissed or filtered-out findings', () => {
+    const findings = [
+      finding({ severity: 'CRITICAL' }),
+      finding({ severity: 'WARNING' }),
+      finding({ severity: 'CRITICAL', dismissed_at: '2026-01-01' }),
+    ];
+    expect(prFindings(input, [makeReview({ findings })]).total_findings).toBe(2);
+    expect(prFindings(input, [makeReview({ findings })], { minSeverity: 'CRITICAL' }).total_findings).toBe(1);
+  });
+
+  it('echoes repo and pr, and handles empty input', () => {
+    expect(prFindings(input, [])).toEqual({ repo: 'acme/web', pr: 7, total_findings: 0, reviews: [] });
   });
 });

@@ -75,3 +75,34 @@ export function conciseReview(review: ReviewRecord, opts: { minSeverity?: Severi
     findings,
   };
 }
+
+export interface PrFindings {
+  repo: string;
+  pr: number;
+  total_findings: number;
+  reviews: ConciseReview[];
+}
+
+function byNullLast(a: string | null, b: string | null): number {
+  if (a === b) return 0;
+  if (a === null) return 1;
+  if (b === null) return -1;
+  return a.localeCompare(b);
+}
+
+/** Whole PR picture: concise reviews sorted by agent, `total_findings` = sum of per-review `total`, before the cap. */
+export function prFindings(
+  input: { repo: string; pr: number },
+  reviews: ReviewRecord[],
+  opts: { minSeverity?: Severity } = {},
+): PrFindings {
+  const concise = reviews
+    .map((rv) => conciseReview(rv, opts))
+    .sort((a, b) => byNullLast(a.agent, b.agent) || byNullLast(a.run_id, b.run_id));
+  return {
+    repo: input.repo,
+    pr: input.pr,
+    total_findings: concise.reduce((sum, r) => sum + r.total, 0),
+    reviews: concise,
+  };
+}

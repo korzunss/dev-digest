@@ -57,10 +57,29 @@ describe('run_agent_on_pr', () => {
 
 describe('get_findings', () => {
   it('returns the latest review per agent without triggering', async () => {
-    const { api, client } = await setup({ reviews: [makeReview()] });
+    const { api, client } = await setup({
+      reviews: [makeReview(), makeReview({ agent_id: 'a2', agent_name: 'Bugs', id: 'r2', run_id: 'run-2' })],
+    });
     const res = await client.callTool({ name: 'get_findings', arguments: { repo: 'acme/web', pr: 7 } });
-    expect(JSON.parse(textOf(res)).reviews).toHaveLength(1);
+    const body = JSON.parse(textOf(res));
+    expect(body.repo).toBe('acme/web');
+    expect(body.pr).toBe(7);
+    expect(body.reviews.map((r: { agent: string }) => r.agent)).toEqual(['Bugs', 'Security']);
+    expect(body.total_findings).toBe(body.reviews.reduce((n: number, r: { total: number }) => n + r.total, 0));
     expect(triggers(api.calls)).toEqual([]);
+  });
+
+  it('narrows to one agent in the same shape', async () => {
+    const { client } = await setup({
+      reviews: [makeReview(), makeReview({ agent_id: 'a2', agent_name: 'Bugs', id: 'r2', run_id: 'run-2' })],
+    });
+    const res = await client.callTool({
+      name: 'get_findings',
+      arguments: { repo: 'acme/web', pr: 7, agent: 'Security' },
+    });
+    const body = JSON.parse(textOf(res));
+    expect(body.reviews).toHaveLength(1);
+    expect(body.total_findings).toBe(0);
   });
 
   it('points to run_agent_on_pr when there is no review', async () => {

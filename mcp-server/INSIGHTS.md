@@ -54,7 +54,11 @@ _Nothing yet._
 
 ## Recurring Errors & Fixes
 
-_Nothing yet._
+### 2026-10-03 — "Review rate limit reached (10/min)" from a read-only tool means the API's global 120/min limit
+**Symptom:** during plan 19's manual check, `get_findings` (read-only, starts no review) failed with "Review rate limit reached (10/min). Wait a minute…"; the same call succeeded a minute later.
+**Cause:** `apiErrorText` maps every HTTP 429 to the review message (`src/tools/messages.ts:15-16`), but the API has two limits: 10/min on `POST /pulls/:id/review` (`server/src/modules/reviews/routes.ts:29`) and a global 120/min on every route (`server/src/app.ts:96`). ~200 scripted `curl` reads from the same host used up the global one.
+**Rule:** when a read tool reports the review limit, first suspect the global 120/min limit — usually your own scripted calls to `:3001`. Throttle the script or wait a minute. Do not lower the MCP poll interval to "recover". Fixing the message needs the 429 body or route to tell the two limits apart (not done; out of plan 19's scope).
+**Evidence:** `mcp-server/src/tools/messages.ts:15` · `server/src/app.ts:96` · `docs/plans/19-mentor-review-followups.md` → *Verification log* (manual check, side note)
 
 ## Session Notes
 

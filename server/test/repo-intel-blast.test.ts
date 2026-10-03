@@ -264,4 +264,26 @@ describe('RepoIntel.getBlastRadius — test files and call sites (D11/D12)', () 
       ['src/c.ts', 30],
     ]);
   });
+
+  it('fallback path excludes every declaring file of a changed name', async () => {
+    const container = {
+      config: { repoIntelEnabled: false },
+      db: {} as never,
+      codeIndex: {
+        symbols: async () => [sym('src/a.ts', 'foo'), sym('src/b.ts', 'foo')],
+        references: async () => [
+          { fromPath: 'src/b.ts', line: 5 },
+          { fromPath: 'src/a.ts', line: 9 },
+          { fromPath: 'src/c.ts', line: 10 },
+        ],
+      },
+    } as never;
+    const svc = new RepoIntelService(container);
+    (svc as unknown as { repo: Record<string, unknown> }).repo = {
+      getRepoBasics: async () => ({ owner: 'o', name: 'n', clonePath: '/tmp/x' }),
+      getFileFacts: async () => [],
+    };
+    const r = await svc.getBlastRadius('r', ['src/a.ts', 'src/b.ts']);
+    expect(r.callers.map((c) => c.file)).toEqual(['src/c.ts']);
+  });
 });
