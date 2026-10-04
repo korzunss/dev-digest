@@ -233,6 +233,11 @@ Done-when for prose, it picks a short token that cannot wrap (an id, a heading,
 a backticked literal) instead of a sentence fragment.
 **Evidence:** `docs/plans/05-decisions-first-planning.md` → S3/S5 Done-when ·
 implementer run: 100 tool uses · `.claude/agents/plan-verifier.md`, `AGENTS.md`
+**Extended 2026-10-04 (plan 20):** a count threshold has the opposite problem.
+`grep -c` counts matching *lines*, so a Done-when like `grep -c 'spec-creator' … ≥ 2`
+made the implementer add a second mention just to pass (S4, S5); the verifier
+then had to read the lines to tell content from padding. Prefer a per-token
+`grep -n` loop or a heading loop that checks the required content itself.
 
 ### 2026-09-27 — `rg` edge checks catch comments and prose, and `rg` is not a binary here
 **Symptom:** a plan Done-when "`rg -n "_components|FindingCard|FindingRecord"
@@ -325,6 +330,12 @@ tree looks right in exactly the case the index is wrong.
 
 ## Recurring Errors & Fixes
 
+### 2026-10-04 — an implementer hand-back can be the single word "placeholder" although the edits landed
+**Symptom:** in plan 20 the implementer's hand-back was literally `placeholder` twice (G1, and the AC8a fix-mode run) — no step table, no Done-when output, no handoff — while the files were in fact edited. Asking for "the full report before handing back" in the prompt did not prevent the second one.
+**Cause:** the agent called its hand-back before writing the report (its own words when resumed); the run is short (5–8 tool uses), so nothing in the transcript forces the report.
+**Rule:** treat a hand-back without a step table as "unknown", never as done: read `git diff` (or `git diff` against the index when the wave is staged) yourself and re-run the step's Done-when before logging it. When the plan needs the handoff or the `## Skills` table (next group, `SK` items), resume the same implementer with SendMessage and ask for the report — it then writes a normal one.
+**Evidence:** `docs/plans/20-spec-creator-agent.md` → *Verification log* (AC8a line) and *Handoffs → G2* · resumed G1 run: "I called the hand-back before writing the report"
+
 ### 2026-09-17 — `TS2719: Two different types with this name exist` after adding a contract field
 
 **Symptom:** adding a required field to a Zod contract in `shared` makes
@@ -347,6 +358,12 @@ of the type or a tsconfig `paths` problem.
 _Nothing yet._
 
 ## Open Questions
+
+### 2026-10-04 — does `spec-creator` pass 1 over-classify display details as blocking?
+**Symptom:** in the plan 20 smoke test (T1, feature "show the run's total token count in the review header") pass 1 returned B1–B5 as blocking; B3 (in/out split in a tooltip) and B4 (show cost too) are display details that fit an inline `[NEEDS CLARIFICATION: Qn]` in the draft.
+**Cause:** unknown from one run — the "blocking = scope/boundaries" definition in `.claude/agents/spec-creator.md` (*Passes*) has no counter-example.
+**Rule:** watch the first real specs (SPEC-08+). If display/format questions keep landing in pass 1, add a "not blocking: format, labels, tooltips" counter-example to the agent's pass-1 template.
+**Evidence:** `docs/plans/20-spec-creator-agent.md` → *Verification log* (T1 line)
 
 ### 2026-09-30 — agent precision (plan 10): what to try next, and how to measure it honestly
 **Symptom:** on PR #12 the five agents found 9/12 planted issues (eval baseline, `pnpm eval:review`, plan 09) but 24 findings were only 13 unique: SQL injection reported by 4 agents, SSRF and off-by-one by 3–4; API Contract produced 5 findings, none in its lane. Missed: key written to a log (Security), `JSON.parse(JSON.stringify())` per row (Performance), `averageRisk([])` → `NaN` (General).

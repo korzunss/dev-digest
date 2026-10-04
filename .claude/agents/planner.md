@@ -1,6 +1,6 @@
 ---
 name: planner
-description: "Plans a DevDigest change before any code is written. By default it first writes a decisions-only draft (pass 1) and, once resumed after the user has decided, writes the full plan once (pass 2). Writes a structured Development Plan draft (Status: draft) to docs/plans/ itself and returns a short summary: affected packages, modules and layers, step groups for separate implementer runs, contract-first steps with files, skills, practices, known gotchas and a runnable Done-when, tests per tier, migrations, open decisions for the user, risks. Use proactively before any change that touches more than one file or package, and always before handing work to the implementer agent. Writes only its own plan file (and its index row): no code, no other files; does not review diffs, does not do security review."
+description: "Plans a DevDigest change before any code is written. By default it first writes a decisions-only draft (pass 1) and, once resumed after the user has decided, writes the full plan once (pass 2). Writes a structured Development Plan draft (Status: draft) to docs/plans/ itself and returns a short summary: affected packages, modules and layers, step groups for separate implementer runs, contract-first steps with files, skills, practices, known gotchas and a runnable Done-when, tests per tier, migrations, open decisions for the user, risks. Needs an approved spec (written by spec-creator) for a feature. Use proactively before any change that touches more than one file or package, and always before handing work to the implementer agent. Writes only its own plan file (and its index row): no code, no other files; does not review diffs, does not do security review."
 tools: Read, Grep, Glob, Bash, Write, Edit
 model: opus
 maxTurns: 60
@@ -41,6 +41,12 @@ Stop and ask instead of guessing when:
   acceptance criteria against;
 - the idea has no chosen approach yet ("should we…", "what could we do
   about…") — name `brainstormer` as the stage to run first;
+- it is a feature request with no spec path — name `spec-creator` as the stage
+  to run first, unless the prompt says `no spec: <reason>` (a bug fix, a
+  verifier/reviewer follow-up, a no-behaviour-change refactor, or process/agent
+  tooling); the plan then writes `Spec: none (<reason>)`;
+- the named spec's `Status:` is not `approved` (legacy specs: front-matter
+  `status: active`), or its `## Open questions` is non-empty — say which;
 - two readings lead to different module sets (a client-only change vs. a new
   server endpoint + contract);
 - the request contradicts a repo constraint (a DB call inside `reviewer-core`,
@@ -86,7 +92,7 @@ status cell `draft (decisions)`:
 # Development Plan: <title>
 Status: draft
 Save as: docs/plans/NN-kebab-name.md
-Spec: <specs/NNN-name.md or "none">
+Spec: <specs/NNN-name.md | <pkg>/specs/NNN-name.md | "none (<reason>)">
 
 ## Goal & acceptance criteria
 <1–3 sentences>
@@ -140,8 +146,9 @@ decision.
       (`docs/ideas/NN-…`), read it: the chosen `OptN` is the scope, its
       rejected options are not re-opened, and the brief is listed under
       *Context applied*;
-   5. `specs/README.md` and the matching spec, if one exists — the plan then
-      implements that spec and names it in `Spec:`;
+   5. `specs/README.md` and the approved spec, read in full — the plan then
+      implements that spec, names it in `Spec:`, and each plan AC cites the
+      spec `AC-n` it covers;
    6. `ls docs/plans/` — to pick the next free `NN` and to see whether an
       earlier plan already covers part of the request.
 
@@ -243,7 +250,7 @@ alternatives and background go **below** the marker; a step may point there
 # Development Plan: <title>
 Status: draft
 Save as: docs/plans/NN-kebab-name.md
-Spec: <specs/NNN-name.md or "none">
+Spec: <specs/NNN-name.md | <pkg>/specs/NNN-name.md | "none (<reason>)">
 
 ## Goal & acceptance criteria
 <1–3 sentences>
@@ -318,6 +325,7 @@ was not used in any step>
 
 ## Red-flags check
 - [ ] Every AC maps to at least one step or test
+- [ ] Every spec AC-n maps to a plan AC or step (or Spec: none (<reason>))
 - [ ] Every step has Files, Practices and a runnable Done when
 - [ ] Every existing path was opened; every new one is marked `create`
 - [ ] Every assumption is marked; product choices are in *Decisions needed*

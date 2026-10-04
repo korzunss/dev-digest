@@ -14,11 +14,12 @@ reviewer and the next session — and it records what was decided and why.
 | | `specs/` | `docs/plans/` |
 |---|---|---|
 | Answers | **what** and **why** — the problem, scope, acceptance | **how** — steps, files, layers, skills, checks |
-| Written by | a person (or `doc-writer`) before design | the `planner` agent |
+| Written by | the `spec-creator` agent, approved by the user | the `planner` agent |
 | Lifetime | describes the feature for as long as it exists | a record of one piece of work |
 
-A plan that implements a spec names it in its `Spec:` line. A plan never
-replaces a spec, and a spec never lists implementation steps.
+A plan that implements a spec names it in its `Spec:` line. After the spec is approved the main session asks whether to run research (default yes); when the plan becomes `done` (a `complete` verification, or `complete — needs sign-off` once the user has accepted the listed items) it sets the spec to `implemented` (see `AGENTS.md`). A plan never
+replaces a spec, and a spec never lists implementation steps. A feature plan
+names an approved spec.
 
 ## Naming
 
@@ -32,7 +33,7 @@ Every plan starts with a status line:
 ```md
 # Development Plan: <title>
 Status: draft
-Spec: <specs/NNN-name.md or "none">
+Spec: <specs/NNN-name.md or "none (<reason>)">
 ```
 
 | Status | Meaning |
@@ -98,3 +99,4 @@ result to the verifier.
 | [17-map-reduce-summary](17-map-reduce-summary.md) | done | none | reviewer-core (`run.ts` summary + verdict from final findings, new `summary.ts`), docs (`pipeline.md`, `agent-prompts/README.md`) |
 | [18-blast-radius](18-blast-radius.md) | done | none | shared (`brief.ts`, `ForgeClient`; client mirror), server (new `modules/blast`, repo-intel facade, forge adapters), client (OverviewTab, hooks, i18n), mcp-server (`get_blast_radius`) |
 | [19-mentor-review-followups](19-mentor-review-followups.md) | done | none | mcp-server (`get_findings` PR picture), server (blast decl-file rule in the repo-intel facade only) |
+| [20-spec-creator-agent](20-spec-creator-agent.md) | done | none | `.claude/agents`, spec folders (`specs/`, `<pkg>/specs/`, new `mcp-server/specs/`), repo docs |

@@ -71,7 +71,18 @@ that package's `AGENTS.md`, which loads automatically when you work in its folde
   `docs/ideas/NN-kebab-name.md` plus its index row, adding only `Status:` and
   `## Choice recorded`. A correction re-runs `brainstormer` with the brief's
   path; it returns only the changed sections. *Facts needed* seed the
-  researcher's ≤8 questions, and the planner gets the brief's path.
+  researcher's ≤8 questions, and the brief's path goes to `spec-creator` first
+  (for a feature), then to the `planner`.
+- **Spec stage** for every feature, before research and planning: `spec-creator`
+  pass 1 returns ≤8 blocking questions and writes no file; after the user
+  answers, pass 2 writes the spec (`Status: draft`). The main session sets
+  `approved` only on the user's explicit yes with *Open questions* empty, then
+  **asks** whether to run research (default yes), then the `planner` gets the
+  spec path. A bug fix, verifier/reviewer follow-up, no-behaviour-change refactor or tooling
+  plan skips it with `no spec: <reason>`. When its plan becomes `done` (a `complete`
+  verification, or `complete — needs sign-off` once the user has accepted the
+  listed items) the main session sets the spec to `implemented`; it also keeps the spec's
+  Changelog.
 - Research before planning is **repo-mode only** (≤8 questions to the
   `researcher`). External research runs for the questions pass 1's *Risks &
   open questions* lists, after the user answers *Decisions needed* and before
@@ -151,7 +162,7 @@ that package's `AGENTS.md`, which loads automatically when you work in its folde
 - Architecture and the end-to-end review flow → `README.md`
 - Test strategy, unit/integration split, CI path filters → `TESTING.md`
 - Built-in agent prompts → `docs/README.md`
-- Cross-package feature specs → `specs/README.md`
+- Feature specs (root `specs/` cross-package, `<pkg>/specs/` single-package) → `specs/README.md`
 - Hard-won gotchas: cross-package → `INSIGHTS.md`, package-local → `<pkg>/INSIGHTS.md`
   (the log) and `<pkg>/insights/gotchas.md` (the rules in force)
 - Package deep-dives → `server/docs/architecture.md`, `client/docs/ui-architecture.md`,

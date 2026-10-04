@@ -43,10 +43,11 @@ Required:
   points there. A plan pasted into the prompt is not a substitute: ask for the
   path;
 - a **diff source**: a base ref, or "the working tree" (the implementer does not
-  commit).
+  commit);
+- the **spec** named in the plan's `Spec:` line (`specs/NNN-*.md`,
+  `<pkg>/specs/…`) — read it yourself; skip when the line says `none (…)`.
 
-Optional: the spec it came from (`specs/NNN-*.md`, `<pkg>/specs/…`), the
-Implementation Report(s), the Test Report, which step groups are done
+Optional: the Implementation Report(s), the Test Report, which step groups are done
 ("G1–G2"), and **the result of the full integration run** the main session
 makes after the last group (`cd server && pnpm exec vitest run .it.test`). The
 `## Skills` table for `SK` items comes from the plan's `## Handoffs → G<n>`
@@ -113,7 +114,9 @@ the touched fields must match).
      exists in **both** vendored copies);
    - `O1…n`: each *Out of scope* item;
    - `R1…n`: the process rules below (*Process rules*);
-   - `SP1…n`: each *Acceptance* line of the spec, when one is given.
+   - `SP` items, when the plan names a spec: new-format spec (has `Spec ID:`) →
+     one item per `AC-n`, id `SP-AC-n`; legacy spec → each *Acceptance* line,
+     `SP1…n`. The `SP-AC-n` results feed the report's `**Spec:**` line.
 
    Every enumerated item is checked and accounted for: a row in the matrix when
    its status is not `met`, otherwise inside the `met:` (or, in delta mode,
@@ -225,6 +228,7 @@ Write "None." in an empty section.
 # Plan Verification — <plan title>
 
 **Plan:** `docs/plans/NN-kebab-name.md` · **Status in file:** <approved | in-progress> · **Groups verified:** <all | G1–G2>
+**Spec:** <path | none> · AC-n met: <ids> · not met: <ids>
 **Result:** complete | complete — needs sign-off | incomplete | contradicted — <counts: 14 met · 2 partial · 1 missing · 0 contradicted · 1 not-verifiable> · <N of M items met>
 **Read-only:** `git status --porcelain` unchanged: yes | no — <what changed>
 

@@ -9,6 +9,7 @@ set. For exact rules and output templates, open the agent file.
 | Agent | Responsibility | Tools | Model | Permission mode | `maxTurns` |
 |---|---|---|---|---|---|
 | [`brainstormer`](brainstormer.md) | Turns a vague idea into at most 5 substantively different approaches, including the status quo, with one recommendation and a go/needs-clarification/kill verdict; optional stage before `researcher`/`planner` | `Read, Grep, Glob` | `opus` | default | 25 |
+| [`spec-creator`](spec-creator.md) | Turns a feature request (+ optional idea brief) into a spec (what/why, EARS acceptance criteria) in two passes; writes only its own spec file and index row | `Read, Grep, Glob, Write, Edit` | `opus` | default | 40 |
 | [`researcher`](researcher.md) | Answers questions with sourced evidence, about this repo or external libraries and APIs | `Read, Grep, Glob, Bash, WebSearch, WebFetch` | `sonnet` | default | 40 |
 | [`planner`](planner.md) | Turns a request into a Development Plan (`Status: draft`) before any code is written; writes only that plan file and its index row | `Read, Grep, Glob, Bash, Write, Edit` | `opus` | default | 60 |
 | [`implementer`](implementer.md) | Executes an approved plan one step group per run across `server/`, `reviewer-core/`, `client/`, `e2e/` and verifies its own changes; closes gaps in fix mode | `Read, Grep, Glob, Edit, Write, Bash` | `sonnet` | `acceptEdits` | 100 |
@@ -16,14 +17,16 @@ set. For exact rules and output templates, open the agent file.
 | [`architecture-reviewer`](architecture-reviewer.md) | Checks a diff or a module against the architectural boundaries (A1–A12), returns evidence-backed findings with fix-mode ids and PASS/BLOCK | `Read, Grep, Glob, Bash` | `opus` | default | 40 |
 | [`security-reviewer`](security-reviewer.md) | Traces untrusted data from a source to a sink across DevDigest's own trust boundaries (X1–X11), returns evidence-backed `SF` findings and PASS/BLOCK | `Read, Grep, Glob, Bash` | `opus` | default | 40 |
 | [`plan-verifier`](plan-verifier.md) | Verifies the code against every plan and spec item and the pipeline's process rules, as a traceability matrix; unverifiable items go to the user for sign-off | `Read, Grep, Glob, Bash` | `opus` | default | 60 |
-| [`doc-writer`](doc-writer.md) | Documents finished, verified features and turns notes into docs or specs with diagrams, filed in the right section with an index row | `Read, Grep, Glob, Edit, Write, Bash` | `sonnet` | `acceptEdits` | 40 |
+| [`doc-writer`](doc-writer.md) | Documents finished, verified features and turns notes into docs with diagrams, filed in the right section with an index row | `Read, Grep, Glob, Edit, Write, Bash` | `sonnet` | `acceptEdits` | 40 |
 
 None of them has the `Agent` tool. Only the main session delegates, so there is
 no nested spawning.
 
 **What enforces the limits.** `researcher`, `architecture-reviewer`,
 `security-reviewer`, `plan-verifier` and `brainstormer` have no `Edit`/`Write`
-in `tools`, so they cannot write files through those tools. `planner` has
+in `tools`, so they cannot write files through those tools. `spec-creator` has
+`Write`/`Edit`, but only for its own spec file and that folder's index row, and
+no `Bash` — a **prompt rule**, no hook (D8). `planner` has
 `Write`/`Edit`, but only for its own plan file and index row — a **prompt
 rule**, like everything else below. Dropping `Edit` and keeping only `Write`
 was considered (D4) and declined: it enforces nothing (`Write` can still
@@ -52,11 +55,17 @@ that reviews a *user's* pull request.
 ```mermaid
 flowchart LR
   req([request]) -. vague idea .-> brainstormer
+  req --> sc[spec-creator<br/>pass 1: B1…, pass 2: draft]
   brainstormer --> idea[brief saved verbatim<br/>docs/ideas/NN]
   idea --> pick{you pick OptN}
-  pick --> planner
+  pick --> sc
   pick -. facts needed .-> researcher
-  req --> planner
+  sc --> spec{you approve spec,<br/>Open questions empty}
+  spec --> rq{research?<br/>default yes}
+  rq -- yes --> researcher
+  rq -- no --> planner
+  researcher -. repo facts .-> planner
+  req -. no spec: reason .-> planner
   planner --> pass1[pass 1:<br/>decisions-only draft]
   pass1 --> record[you decide,<br/>main session records]
   record -. EXT questions .-> researcher
@@ -77,6 +86,7 @@ flowchart LR
   gate -- gaps: fix mode --> implementer
   gate -- plan change --> record
   gate -- complete or signed off:<br/>Status: done --> dw[doc-writer]
+  gate -- complete or signed off:<br/>Status: done --> impl[spec: implemented]
   researcher -. on demand .-> planner
   researcher -. on demand .-> implementer
 ```
@@ -90,6 +100,14 @@ The main session drives every hop:
    session, which adds only `Status:` and `## Choice recorded`. The chosen
    option becomes the planner's scope; *Facts needed* seeds the researcher's
    questions.
+   The spec stage follows (D7, D13, D16): for a feature, `spec-creator` pass 1
+   returns at most 8 blocking questions `B1…` and writes no file; after the
+   user answers, pass 2 writes the spec (`Status: draft`, `Spec ID: SPEC-NN`).
+   The main session sets it `approved` only on the user's explicit yes with
+   *Open questions* empty, then **asks** whether to research (default yes),
+   then the `planner` runs with the spec path. A bug fix, verifier/reviewer follow-up,
+   no-behaviour-change refactor or tooling plan skips it with
+   `no spec: <reason>`. The main session keeps the spec's Changelog.
 1. Research before planning is repo-mode only. By default the `planner` first
    writes **pass 1**: a decisions-only draft (`docs/plans/NN-kebab-name.md`,
    `Status: draft`, ends `Steps: pending decisions`) plus the index row
@@ -127,7 +145,8 @@ The main session drives every hop:
    `plan-verifier` in **delta mode**.
 6. The plan becomes `done` after a `complete` verification, or after
    `complete — needs sign-off` once the user has accepted every listed
-   unverified item. Then the `doc-writer` documents what was delivered.
+   unverified item. The spec then becomes `implemented`, and the `doc-writer`
+   documents what was delivered.
 
 The lifecycle and its rules are in `docs/plans/README.md`.
 
@@ -139,6 +158,7 @@ agent that edits a plan file, and only its own draft or correction round.
 | Agent | Accepts a plan in status | Refuses |
 |---|---|---|
 | `brainstormer` | none — runs before a plan exists | — |
+| `spec-creator` | none — runs before a plan exists | — |
 | `planner` | pass 1 writes a new one as `draft` with `Steps: pending decisions`; pass 2 fills it, still `draft`; corrections keep it `draft` | — |
 | `implementer` | `approved`, `in-progress` | `draft`, `done`; any plan with an unresolved *Decisions needed* row |
 | `test-writer` | `approved`, `in-progress`, `done` | `draft` |
@@ -152,6 +172,7 @@ agent that edits a plan file, and only its own draft or correction round.
 | Agent | Input | Output | Stops early with |
 |---|---|---|---|
 | `brainstormer` | A vague idea, goal or "should we…" question, with no chosen approach yet | **Idea brief**: problem, decision drivers, appetite, an "already in the repo" check, at most 5 unranked options including the status quo (value, packages/contract/migration, per-run LLM cost, risk, kill criterion), a comparison table adding purity, no-go and confidence as columns, one recommendation with a go/needs-clarification/kill verdict, the cheapest experiment for the riskiest assumption, questions that would change the choice, facts needed for the researcher | *Clarification needed*: up to 3 blocking questions, each with a default; or a redirect naming `planner` when one approach is already chosen and the request asks "how" |
+| `spec-creator` | A feature request, optionally an idea-brief path and design sources; later, answers to `B1…`/`Qn` or corrections | **Pass 1 report**: at most 8 blocking questions `B1…` with recommended answers, clarification categories, `Files written: none`. **Pass 2 report**: spec path, `Spec ID`, categories, suggestions `SG1…`, open `Qn`, files written | *Clarification needed*: up to 3 questions with defaults, or a redirect naming `brainstormer` when no approach is chosen |
 | `researcher` | A concrete question, about the repo, external facts, or both | *Repo research* and/or *External research* report: answer, confidence, evidence table (`path:line` or URL), every claim labelled `fact`/`inference`, only sources actually fetched, mandatory **Not established** | *Clarification needed*: up to 3 blocking questions |
 | `planner` | A feature or change request, optionally a spec from `specs/`; later, corrections or decisions | **Pass 1** (default, `Status: draft`, `Save as: docs/plans/NN-…`): Goal & acceptance criteria, **Decisions needed**, EXT research questions, `Steps: pending decisions` — returns the path, the Decisions table and the questions. **Pass 2** (resumed once decisions are recorded, or single-pass when `single pass: <reason>` is given): the same file filled with **step groups** with handoffs, steps `S1…Sn` (files, layer, skills, practices, known gotchas, **Done when**), tests by tier, migrations and contracts, out of scope; below the brief marker: context, a `## Skills` table, design notes, risks, handed off, insights to record, red-flags check. On corrections: only the changed sections | *Clarification needed*: up to 3 blocking questions, each with a default |
 | `implementer` | Plan mode: the path of an `approved` plan in `docs/plans/` + the step group to run. Fix mode: the plan path + gap ids from `plan-verifier` or findings from `architecture-reviewer` | **Implementation Report**: plan, mode and group, status, per-step (or per-gap) table, deviations (trivial / material with a suggested plan change), skills applied, verification commands with results, not verified, diff trace, out-of-plan issues, handoff to the next group, handoff to review (architecture / security), insight candidates | *Plan deviation*: no plan file, plan not `approved`, an unresolved decision, a step without Files or Done when, a step it is not allowed to do, a fix that needs a file outside the plan, or Node < 22 |
@@ -192,14 +213,14 @@ collected here so a change to one is made in all.
 - **Exclude `server/clones/**`** from every search.
 - **Budgets.** Every agent has a `maxTurns` cap (table above). `researcher`
   states about 15 searches + fetches per mode, `planner` about 40 reads or
-  searches, `brainstormer` about 10 reads. `implementer` follows "keep the run
+  searches, `brainstormer` about 10 reads, `spec-creator` about 30 reads. `implementer` follows "keep the run
   small": narrowest test per step, full package suites once per group, related
   integration tests only, no repeat runs "to confirm stability"; the main
   session runs the full integration suite once after the last group.
 - **Report sizes.** Plan brief (above the marker) ≤ ~20,000 characters;
   reports ≤ ~700–1,000 words (implementer ~900, test-writer ~800,
   architecture-reviewer ~900, security-reviewer ~900, plan-verifier ~1,000,
-  doc-writer ~700, brainstormer: the brief itself, ~90 lines). Commands and
+  doc-writer ~700, spec-creator pass-1 report ~400, brainstormer: the brief itself, ~90 lines). Commands and
   outcomes, not logs.
 
 ## Shared ids
@@ -215,7 +236,8 @@ verifier's matrix reuse them, and the implementer's fix mode accepts them.
 | `S1…` steps with *Files*, *Practices*, *Done when* | plan | implementer report, plan-verifier (`S`, `P`, `D` rows), fix mode |
 | `T1…` Tests-table rows · `M1…` migrations and contracts · `O1…` out of scope | plan | plan-verifier |
 | `R1…R4` process rules | `plan-verifier.md` | plan-verifier |
-| `SP1…` spec acceptance lines | spec | plan-verifier |
+| `B1…` blocking questions · `Qn` spec open questions · `AC-n` spec EARS criteria (distinct from plan `AC1`) · `SG1…` suggestions · `SPEC-NN` spec id | spec-creator | user's answers, planner, plan-verifier |
+| `SP-AC-n` (new-format spec) / `SP1…` (legacy spec) | spec acceptance criteria | plan-verifier |
 | `A1…A12` checks · `F1…` findings | `architecture-reviewer.md` / its report | fix mode (*For fix mode* list) |
 | `X1…X11` checks · `SF1…` findings | `devdigest-appsec` skill / `security-reviewer.md` / its report | fix mode (*For fix mode* list) |
 
@@ -242,10 +264,11 @@ review knowledge, used only by `security-reviewer`. `researcher` preloads only
 `engineering-insights`, because its repo mode starts from the `INSIGHTS.md`
 files.
 
-The other six preload only what their job needs:
+The other seven preload only what their job needs:
 
 | Agent | Preloaded skills | Why this set |
 |---|---|---|
+| `spec-creator` | `engineering-insights` | its grounding read starts from the root `INSIGHTS.md` headings, like `brainstormer`; it places nothing and writes no code |
 | `brainstormer` | `engineering-insights` | its grounding read starts from the root `INSIGHTS.md` headings, like `researcher`; it needs no other skill because it places nothing and writes no code |
 | `test-writer` | `engineering-insights` · `react-testing-library` · `fastify-best-practices` · `drizzle-orm-patterns` · `onion-architecture` · `zod` · `typescript-expert` · `security` | test idioms per layer. `security` picks the negative cases at trust boundaries. The production-code skills (`next-best-practices`, `react-best-practices`, `frontend-architecture`, `postgresql-table-design`) are left out because it writes no production code |
 | `architecture-reviewer` | `engineering-insights` · `onion-architecture` · `frontend-architecture` · `next-best-practices` · `fastify-best-practices` · `zod` · `typescript-expert` | the skills that define boundaries and placement. No `security`: security review is out of its scope |
@@ -258,7 +281,7 @@ The other six preload only what their job needs:
 
 ## INSIGHTS.md and gotchas
 
-All nine agents **read** `<pkg>/insights/gotchas.md` first, then the root and
+All ten agents **read** `<pkg>/insights/gotchas.md` first, then the root and
 package `INSIGHTS.md`. `brainstormer` is the one exception: it reads only the
 root `INSIGHTS.md`'s `^### ` headings, never the full log, as part of its
 shallow grounding read. None of them **writes** `INSIGHTS.md`,
@@ -387,6 +410,14 @@ Researcher runs, retrieved 2026-09-27 (plan `docs/plans/03-brainstormer-agent.md
 | A new or edited agent is picked up mid-session, with a delay; wait for the "new agent types are now available" notice before spawning it | root `INSIGHTS.md`, 2026-09-25 "correction: new agents do show up mid-session" |
 | A brand-new `.claude/agents/*.md` cannot be spawned in the session that created it | root `INSIGHTS.md`, 2026-09-25 "a new `.claude/agents/*.md` can't be spawned…" |
 | `rg` is a shell function here, not a binary; process scans use `grep`, not `xargs rg` | root `INSIGHTS.md`, 2026-09-27 "`rg` … is not a binary here" |
+
+### spec-creator: repo sources
+
+| Rule | Source |
+|---|---|
+| Template, EARS, provenance, passes, placement, numbering, Changelog, pipeline wiring (D1–D15), skip rule (D16) | `docs/plans/20-spec-creator-agent.md` → Design notes and Decisions recorded |
+| Output rules go inside the fenced template, not in prose | root `INSIGHTS.md`, 2026-09-27 "in an agent prompt, the output template beats the prose rules" |
+| Grep-target literals stay on one line in backticks | root `INSIGHTS.md`, 2026-09-28 "a Done-when `grep` for a phrase fails when Markdown wraps" |
 
 ### security-reviewer: external practice
 

@@ -1,6 +1,6 @@
-# client/specs — feature specifications for `@devdigest/web`
+# mcp-server/specs — feature specifications for the MCP server
 
-Specs for work contained in the web app. Anything spanning several packages goes
+Specs for work contained in the MCP server. Anything spanning several packages goes
 in the repo-root [`specs/`](../../specs/README.md), which also carries the naming
 rules and the template.
 
@@ -12,7 +12,7 @@ Written by the `spec-creator` agent. Numbering and the template are repo-wide, i
 
 ## Index
 
-_No client specs yet._
+_No MCP server specs yet._
 
 | Spec | Status | Summary |
 |------|--------|---------|

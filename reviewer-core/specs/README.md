@@ -8,7 +8,9 @@ rules and the template.
 more than elsewhere: a change to prompt assembly or the grounding gate changes
 every review the product produces.
 
-Naming: `NNN-slug.md`, status in front-matter (`draft` | `active` | `done`).
+Written by the `spec-creator` agent. Numbering and the template are repo-wide, in
+[`specs/README.md`](../../specs/README.md). The `Status:` line is
+`draft | approved | implemented`.
 
 ## Index
 
