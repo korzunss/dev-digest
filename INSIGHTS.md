@@ -68,6 +68,7 @@ _Nothing yet._
 **Cause:** plan files and the new code stay untracked until the PR commit, so git has no approved baseline to diff against.
 **Rule:** stage (or commit) the plan file right after the user's approval and again at the end of each implementation wave; the verifier can then diff against the index instead of asking the user to sign off R3.
 **Evidence:** `docs/plans/07-review-diff-base-sha.md`, `08-llm-call-reliability.md`, `09-review-eval-fixture.md` → *Verification log* (R3 rows)
+**Extended 2026-10-04 (plans 20, 21):** staging alone is not enough. The main session re-stages the plan after every appended handoff and log line, and each `git add` replaces the index blob, so by verification time the approved text is gone and R3 is again not-verifiable. Keep R3 provable by committing the plan right after approval (a `docs(plans): approve plan NN` commit on the branch), or by not re-staging it until the verifier has run.
 
 ### 2026-09-29 — a skill listed on a step where it has nothing to do can only be closed by a plan change
 **Symptom:** plan 07's plan-verifier kept SK2–SK4 `missing` across two runs although the implementer re-read `zod` in full and recorded S2–S4 under *Not used — reason* ("no Zod schema in this step").
@@ -207,6 +208,12 @@ that path; it's runtime data, and the next resync overwrites it.
 
 ## Tool & Library Notes
 
+### 2026-10-04 — `grep -w <name>` cannot find leftovers of a rename to a hyphenated name
+**Symptom:** while planning the `planner` → `implementation-planner` rename (plan 21), a "no bare `planner` left" check written as `grep -rnw planner` would match every *new* `implementation-planner` too, so it can never come back empty.
+**Cause:** `-w` treats `-` as a word boundary — `implementation-planner` contains the whole word `planner`. The same pattern also matches prose like "Implementation planner" with a space.
+**Rule:** for a rename check use `git grep -nIiE '(^|[^-[:alnum:]_])<old>'` with pathspec exclusions for history (old plans, INSIGHTS) and genuine other meanings (the Postgres "query planner"); write the new name hyphenated everywhere, including titles.
+**Evidence:** `docs/plans/21-implementation-planner.md` → S6 Done-when, G1 handoff ("`# Implementation-planner`") · `.claude/skills/postgresql-table-design/SKILL.md:91`
+
 ### 2026-10-01 — a local review run that dies with `Socket timeout` may just be the Mac falling asleep
 **Symptom:** a 142-file review of PR #13 on the local dev stack failed after 54 min with `Invalid response body while trying to fetch https://openrouter.ai/api/v1/chat/completions: Socket timeout`. It happened before the 10-min call deadline, with no retry. It looked like a provider stall.
 **Cause:** `pmset -g log` shows `Entering Sleep state due to 'Idle Sleep'` 3 s after that chunk's request went out, and DarkWakes at exactly the run log's "still waiting" (12:30:55/56) and failure (12:35:39) timestamps. While the Mac slept, the Node process was paused. On wake, the `openai` SDK's keep-alive agent socket timeout (5 min, `reviewer-core/node_modules/openai/_shims/node-runtime.js:53-54`) fired on the dead connection, and node-fetch raised a `FetchError` (`type: 'system'`), which isn't classified as transient. The same run under `caffeinate` completed.
@@ -335,6 +342,7 @@ tree looks right in exactly the case the index is wrong.
 **Cause:** the agent called its hand-back before writing the report (its own words when resumed); the run is short (5–8 tool uses), so nothing in the transcript forces the report.
 **Rule:** treat a hand-back without a step table as "unknown", never as done: read `git diff` (or `git diff` against the index when the wave is staged) yourself and re-run the step's Done-when before logging it. When the plan needs the handoff or the `## Skills` table (next group, `SK` items), resume the same implementer with SendMessage and ask for the report — it then writes a normal one.
 **Evidence:** `docs/plans/20-spec-creator-agent.md` → *Verification log* (AC8a line) and *Handoffs → G2* · resumed G1 run: "I called the hand-back before writing the report"
+**Extended 2026-10-04 (plan 21):** a sharper prompt line did work twice: ending the implementer prompt with "Write your full Implementation Report — step table with each Done-when command and its actual output, Handoff, ## Skills — before you hand back; a one-word hand-back will be treated as 'not done'" gave full reports for G1 and G2. Keep checking the diff anyway.
 
 ### 2026-09-17 — `TS2719: Two different types with this name exist` after adding a contract field
 

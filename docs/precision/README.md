@@ -6,7 +6,7 @@ other plans, so that precision work is measured the same way each time and does
 not get mixed into unrelated changes.
 
 **How work moves here:** an item below goes through `brainstormer` (idea brief in
-`docs/ideas/`), then `planner` (`docs/plans/`). When a plan or idea starts, link it
+`docs/ideas/`), then `implementation-planner` (`docs/plans/`). When a plan or idea starts, link it
 in the item's *Status* cell. Measure every change with `pnpm eval:replay` against
 the fixtures below before calling it an improvement. A live smoke run is a sanity
 check only, not the measure.

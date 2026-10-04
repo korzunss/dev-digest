@@ -10,7 +10,7 @@ the code is only the current attempt at it.
 ## Written by
 
 The `spec-creator` agent, approved by the user. A feature goes through a spec
-before it reaches the `planner`.
+before it reaches the `implementation-planner`.
 
 ## Naming & numbering
 

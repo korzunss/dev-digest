@@ -8,11 +8,11 @@ Development Plan (**how**, once one approach is chosen).
 | | `docs/ideas/` | `specs/` | `docs/plans/` |
 |---|---|---|---|
 | Answers | *whether* / *what* — is it worth it, which approach | *what* and *why* | *how* |
-| Written by | the `brainstormer` agent (brief), saved by the main session | the `spec-creator` agent | the `planner` agent |
+| Written by | the `brainstormer` agent (brief), saved by the main session | the `spec-creator` agent | the `implementation-planner` agent |
 | Lifetime | a record of one comparison, kept even when killed | describes the feature for as long as it exists | a record of one piece of work |
 
 An idea brief never lists implementation steps. Once an option is chosen, the
-`spec-creator` (then the `planner`) reads the brief and turns the chosen option into a spec and a plan. After the spec is approved the main session asks whether to run research (default yes); the spec becomes `implemented` when its plan becomes `done` (a `complete` verification, or `complete — needs sign-off` once the user has accepted the listed items) (see `AGENTS.md`).
+`spec-creator` (then the `implementation-planner`) reads the brief and turns the chosen option into a spec and a plan. After the spec is approved the main session asks whether to run research (default yes); the spec becomes `implemented` when its plan becomes `done` (a `complete` verification, or `complete — needs sign-off` once the user has accepted the listed items) (see `AGENTS.md`).
 
 ## Naming
 
