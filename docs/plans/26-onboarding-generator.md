@@ -529,6 +529,25 @@ TQ1 `maxRetries: 0`; TQ2 `generated_at`; TQ3 `lastIndexedSha` else HEAD; TQ4 Eng
 - 2026-10-05 rank_position counts all ranked files incl. tests — a reading-path row can read 'rank #2' when the top-ranked file is a test; consider ranking within reading-path candidates
 - 2026-10-05 AC-24/AC-37: first_tasks in a never-generated skeleton has cause null (client shows 'Generate the tour to get first tasks'); confirm this is the intended non-'not available' state
 
+## Handoffs → G5
+
+### Handoff to the next group
+- Hooks `client/src/lib/hooks/onboarding.ts` (not in the barrel): `useOnboardingTour(repoId)` key `["onboarding-tour", repoId]`, polls 2 s only while `generating`; `useGenerateOnboardingTour()` writes the returned view with `setQueryData`.
+- Route `client/src/app/repos/[repoId]/onboarding-tour/`: `page.tsx` renders `TOUR_SECTIONS` (`tour-architecture`, `tour-critical-paths`, `tour-run-locally`, `tour-reading-path`, `tour-first-tasks`) as empty `TourSection` frames — S19 adds the per-section body switch in `page.tsx`. `helpers.ts`: `tourAge`, `coverageLabel`, `shareUrl`, `reasonKey`; `constants.ts`: `INDEX_REASON_CODES`, `FAILURE_REASON_CODES`, `MODEL_SETTINGS_FAILURES`. `TourStateGate` (clone states, Re-clone via `useRefreshRepo`), `TourHeader`, `OnThisPage` (+`useActiveSection`, guards missing IntersectionObserver), `TourSection` (collapsed body `hidden`, toggle aria-label = title).
+- nav.ts: `onboarding-tour` item between pulls and context with SPEC-09 comment; `activeKeyFor` no longer matches `/onboarding` as a substring.
+- i18n `onboarding.json`: plan key tree + `page.loadError`; `title` needs `{repo}`. G6 keys exist (`actions.*`, `unavailable.*`, `reasons.*`, `tasks.*`, `commands.none`, `failure.*`).
+- Deviations (trivial): failed-clone ErrorState Retry label hardcoded without onRetry + separate Re-clone button; `coverageLabel` null when `source_files_total` null.
+- Dev-server `.next/types` race can make a first typecheck fail with TS2344 AppRoutes — re-run.
+
+### Skills
+| Skill | Loaded | Applied in | Not used — reason |
+|---|---|---|---|
+| frontend-architecture | full | S13–S16 | |
+| react-best-practices | full | S13, S16 | |
+| next-best-practices | full | S13, S16 | reference files not needed |
+| typescript-expert | full | S13–S16 | |
+| onion-architecture | preload | — | client-only group |
+
 ## Verification log
 - 2026-10-05 agent: spec-p1 ab3c02452b7a30152 spec-creator 2026-10-05T13:44:31Z
 - 2026-10-05 agent: spec-p2 ab3c02452b7a30152 spec-creator 2026-10-05T13:49:39Z
@@ -562,3 +581,6 @@ TQ1 `maxRetries: 0`; TQ2 `generated_at`; TQ3 `lastIndexedSha` else HEAD; TQ4 Eng
 - 2026-10-05 agent: tests a082882a21caedd14 test-writer 2026-10-05T16:15:42Z
 - 2026-10-05 T1 (test-writer): TS2-TS6 + helpers llm-stubs.ts, temp-clone.ts; unit 716, onboarding.it 43; no production defects; prod files unchanged vs HEAD
 - 2026-10-05 env note: testcontainers ryuk 'Expected Reaper to map exposed port 8080' made every .it file skip (also context.it) — Docker env issue, not code; with TESTCONTAINERS_RYUK_DISABLED=true onboarding.it 43 + context.it 19 = 62 passed
+- 2026-10-05 T1 committed by user: f0a1952
+- 2026-10-05 agent: implement ab0812f6027f7ed9a implementer 2026-10-05T16:32:37Z
+- 2026-10-05 implement G5: done (S13-S16; client typecheck ok; client 410 tests)
