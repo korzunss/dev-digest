@@ -19,7 +19,24 @@ function looksLikeMermaid(src: string): boolean {
  * rendering — mermaid otherwise injects a "Syntax error" bomb graphic into the
  * DOM on bad input instead of throwing. Junk/unparseable input renders nothing.
  */
-export function MermaidDiagram({ chart }: { chart: string }) {
+/** `boxes` = dark rounded boxes with a mono font (onboarding tour); `default` = the stock dark theme. */
+const BOX_THEME_VARIABLES = {
+  background: "#0f1115",
+  primaryColor: "#161a22",
+  primaryBorderColor: "#3a4152",
+  primaryTextColor: "#e6e8ee",
+  lineColor: "#6b7385",
+  fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+  borderRadius: 8,
+};
+
+export function MermaidDiagram({
+  chart,
+  variant = "default",
+}: {
+  chart: string;
+  variant?: "default" | "boxes";
+}) {
   const ref = React.useRef<HTMLDivElement>(null);
   const [state, setState] = React.useState<"pending" | "ok" | "invalid">("pending");
 
@@ -34,7 +51,16 @@ export function MermaidDiagram({ chart }: { chart: string }) {
     (async () => {
       try {
         const mermaid = (await import("mermaid")).default;
-        mermaid.initialize({ startOnLoad: false, theme: "dark", securityLevel: "strict" });
+        mermaid.initialize(
+          variant === "boxes"
+            ? {
+                startOnLoad: false,
+                theme: "base",
+                themeVariables: BOX_THEME_VARIABLES,
+                securityLevel: "strict",
+              }
+            : { startOnLoad: false, theme: "dark", securityLevel: "strict" },
+        );
         // parse first; suppressErrors → returns false (no throw, no DOM bomb).
         const valid = await mermaid.parse(src, { suppressErrors: true });
         if (cancelled) return;
@@ -53,7 +79,7 @@ export function MermaidDiagram({ chart }: { chart: string }) {
     return () => {
       cancelled = true;
     };
-  }, [chart]);
+  }, [chart, variant]);
 
   // Not a (valid) diagram → render nothing rather than a broken box.
   if (state === "invalid") return null;

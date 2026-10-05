@@ -548,6 +548,26 @@ TQ1 `maxRetries: 0`; TQ2 `generated_at`; TQ3 `lastIndexedSha` else HEAD; TQ4 Eng
 | typescript-expert | full | S13–S16 | |
 | onion-architecture | preload | — | client-only group |
 
+## Handoffs → G6
+
+### Handoff to the next group (T2)
+- Components under `client/src/app/repos/[repoId]/onboarding-tour/_components/`: `ArchitectureSection({architecture})`, `UnavailableNote({availability, repoId})`, `FileRowList({rows, repo, builtSha, ordered?})`, `ReadingPath({steps, repo, builtSha})`, `RunCommands({commands})`, `FirstTasks({tasks})`; `page.tsx` has `SectionBody` switching on `sec.key`.
+- `MermaidDiagram` gains `variant="boxes"` (`theme: "base"` + themeVariables; strict + parse/suppressErrors unchanged).
+- Open: `forgeBlobUrl` at `built_sha`, new tab, `rel="noopener noreferrer"`, hidden when `built_sha` null. Copy: `navigator.clipboard.writeText(command)` + toast.
+- Test notes: mock `useToast` provider, `useResyncRepoIntel`; mock mermaid lazy import; vitest filter `onboarding-tour/`.
+- Deviations (trivial): `UnavailableNote` takes `repoId`; module-level style consts in two components; `FileRowList` `ordered` prop.
+- Review note: vendored Markdown renders `<a href>` from model text (react-markdown default URL sanitising applies).
+
+### Skills
+| Skill | Loaded | Applied in | Not used — reason |
+|---|---|---|---|
+| frontend-architecture | full | S17–S19 | |
+| react-best-practices | full | S17–S19 | |
+| next-best-practices | full | S17–S19 | |
+| typescript-expert | full | S17–S19 | |
+| security | full | S17–S19 | |
+| mermaid-diagram | full | S17 | |
+
 ## Verification log
 - 2026-10-05 agent: spec-p1 ab3c02452b7a30152 spec-creator 2026-10-05T13:44:31Z
 - 2026-10-05 agent: spec-p2 ab3c02452b7a30152 spec-creator 2026-10-05T13:49:39Z
@@ -584,3 +604,6 @@ TQ1 `maxRetries: 0`; TQ2 `generated_at`; TQ3 `lastIndexedSha` else HEAD; TQ4 Eng
 - 2026-10-05 T1 committed by user: f0a1952
 - 2026-10-05 agent: implement ab0812f6027f7ed9a implementer 2026-10-05T16:32:37Z
 - 2026-10-05 implement G5: done (S13-S16; client typecheck ok; client 410 tests)
+- 2026-10-05 G5 committed by user: d77f328
+- 2026-10-05 agent: implement a35629817e9f1ea19 implementer 2026-10-05T16:36:16Z
+- 2026-10-05 implement G6: done (S17-S19; client typecheck ok, 410 tests, pnpm build ok)

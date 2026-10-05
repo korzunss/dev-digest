@@ -2,24 +2,80 @@
 
    A dynamic route like Conventions: the repo lives in the path, so the tour is
    deep-linkable. The page is thin — hooks, the loading/error/state gates; the
-   header, the section frames and the section index are colocated under
-   `_components/`. The five section bodies are filled in by later steps. */
+   header, the section frames, the section bodies and the section index are
+   colocated under `_components/`. */
 "use client";
 
 import React from "react";
 import { useParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { ErrorState, Skeleton } from "@devdigest/ui";
+import type { OnboardingTour } from "@devdigest/shared";
 import { AppShell } from "@/components/app-shell";
 import { RepoNotFound } from "@/components/repo-not-found";
+import type { ForgeRepoRef } from "@/lib/forge-urls";
 import { useGenerateOnboardingTour, useOnboardingTour } from "@/lib/hooks/onboarding";
 import { useActiveRepo, useRepoNotFound } from "@/lib/repo-context";
+import { ArchitectureSection } from "./_components/ArchitectureSection";
+import { FileRowList } from "./_components/FileRowList";
+import { FirstTasks } from "./_components/FirstTasks";
 import { OnThisPage } from "./_components/OnThisPage";
+import { ReadingPath } from "./_components/ReadingPath";
+import { RunCommands } from "./_components/RunCommands";
 import { TourHeader } from "./_components/TourHeader";
 import { TourSection } from "./_components/TourSection";
 import { TourStateGate } from "./_components/TourStateGate";
-import { SKELETON_COUNT, SKELETON_HEIGHT, TOUR_SECTIONS } from "./constants";
+import { UnavailableNote } from "./_components/UnavailableNote";
+import { SKELETON_COUNT, SKELETON_HEIGHT, TOUR_SECTIONS, type TourSectionKey } from "./constants";
 import { s } from "./styles";
+
+/** The body of one section: its content, or the "not available" note when the server says so. */
+function SectionBody({
+  sectionKey,
+  tour,
+  repoId,
+  repo,
+}: {
+  sectionKey: TourSectionKey;
+  tour: OnboardingTour;
+  repoId: string;
+  repo: ForgeRepoRef | null;
+}) {
+  const { architecture, critical_paths, run_locally, reading_path, first_tasks } = tour;
+  const sha = tour.built_sha;
+  switch (sectionKey) {
+    case "architecture":
+      return architecture.availability.available ? (
+        <ArchitectureSection architecture={architecture} />
+      ) : (
+        <UnavailableNote availability={architecture.availability} repoId={repoId} />
+      );
+    case "criticalPaths":
+      return critical_paths.availability.available ? (
+        <FileRowList rows={critical_paths.rows} repo={repo} builtSha={sha} />
+      ) : (
+        <UnavailableNote availability={critical_paths.availability} repoId={repoId} />
+      );
+    case "runLocally":
+      return run_locally.availability.available ? (
+        <RunCommands commands={run_locally.commands} />
+      ) : (
+        <UnavailableNote availability={run_locally.availability} repoId={repoId} />
+      );
+    case "readingPath":
+      return reading_path.availability.available ? (
+        <ReadingPath steps={reading_path.steps} repo={repo} builtSha={sha} />
+      ) : (
+        <UnavailableNote availability={reading_path.availability} repoId={repoId} />
+      );
+    case "firstTasks":
+      return first_tasks.availability.available ? (
+        <FirstTasks tasks={first_tasks.tasks} />
+      ) : (
+        <UnavailableNote availability={first_tasks.availability} repoId={repoId} />
+      );
+  }
+}
 
 export default function OnboardingTourPage() {
   const t = useTranslations("onboarding");
@@ -28,7 +84,8 @@ export default function OnboardingTourPage() {
 
   const { repos, reposLoaded } = useActiveRepo();
   const repoNotFound = useRepoNotFound(repoId);
-  const repoName = repos.find((r) => r.id === repoId)?.full_name ?? "";
+  const repo = repos.find((r) => r.id === repoId) ?? null;
+  const repoName = repo?.full_name ?? "";
 
   const tour = useOnboardingTour(repoId);
   const generate = useGenerateOnboardingTour();
@@ -77,7 +134,9 @@ export default function OnboardingTourPage() {
             <div style={s.columns}>
               <div style={s.sections}>
                 {sections.map((sec) => (
-                  <TourSection key={sec.id} id={sec.id} icon={sec.icon} title={sec.title} />
+                  <TourSection key={sec.id} id={sec.id} icon={sec.icon} title={sec.title}>
+                    <SectionBody sectionKey={sec.key} tour={view.tour} repoId={repoId} repo={repo} />
+                  </TourSection>
                 ))}
               </div>
               <aside style={s.aside}>
