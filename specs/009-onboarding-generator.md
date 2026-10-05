@@ -79,11 +79,15 @@ Deterministic facts (no LLM)
   from the import graph (PageRank; hotness is 0 because clones are shallow),
   excluding tests, configuration, declaration, migration and generated files,
   and SHALL list at most 10 files, each with a one-line reason to read it.
-  [user: accepted SG5, 2026-10-05]
+  [user: accepted SG5, 2026-10-05] In the deterministic skeleton (no LLM
+  output), each row's reason SHALL be computed from the graph, e.g.
+  "rank #2 · imported by 14 files". [user: plan 26 GAP4, 2026-10-05]
 - AC-6: The system SHALL derive Critical paths from the import-graph
   dependency chains that start at the highest-ranked files, and SHALL show at
   most 6 rows, each with the file path, a one-line reason and an Open action.
-  [user: accepted SG6, 2026-10-05]
+  [user: accepted SG6, 2026-10-05] In the deterministic skeleton (no LLM
+  output), each row's reason SHALL be computed from the graph: the chain the
+  file heads, its rank or its importer count. [user: plan 26 GAP4, 2026-10-05]
 - AC-7: WHERE the repo has no import graph because its language is not indexed
   (non-JS/TS), the system SHALL show the Guided reading path and Critical paths
   sections as "not available for this language" and SHALL still show
@@ -101,8 +105,10 @@ Generation (one structured LLM call)
 - AC-10: The system SHALL send that call only a bounded set of deterministic
   facts (stack, structure, routes, scripts, ranked paths, critical-path chains,
   index coverage), never the full contents of every file.
-- AC-11: The system SHALL have the First tasks section contain 3 to 5 tasks,
-  each citing at least one file present in the repo index.
+- AC-11: The system SHALL ask the LLM for 3 to 5 first tasks, each citing at
+  least one file present in the repo index; WHEN only 1 or 2 tasks survive
+  grounding (AC-14, AC-15), the system SHALL show them with the note "only N
+  tasks could be tied to files". [user: plan 26 GAP3, 2026-10-05]
 - AC-12: The system SHALL NOT make any LLM call when the page is opened, only
   on an explicit Generate or Regenerate.
 - AC-13: WHILE a generation for a repo is in progress, the system SHALL show
@@ -114,9 +120,20 @@ Grounding
   repo index, THEN the system SHALL drop that reference (row, link, reading
   step) before the tour is stored or shown.
 - AC-15: IF a first task has no remaining valid file reference after AC-14,
-  THEN the system SHALL drop that task.
-- AC-16: IF a run command produced by the LLM names a package script that is
-  not among the collected scripts, THEN the system SHALL drop that command.
+  THEN the system SHALL drop that task; IF no task survives, including when
+  there is no index to ground against, THEN the system SHALL show First tasks
+  as "not available" with its cause per AC-37.
+  [user: plan 26 GAP3, 2026-10-05]
+- AC-16: IF any `&&`-separated part of a run command produced by the LLM is not
+  one of the allowed forms, THEN the system SHALL drop that command. The allowed
+  forms are: `cd <a package directory found in the repo>`;
+  `<package manager> install|i|ci`; `<package manager> run <collected script>`
+  or `<package manager> <collected script>`;
+  `cp <an env example file found in the repo> .env`; and `docker compose up`
+  or `docker compose up -d`, only when a compose file was found in the repo.
+  IF no LLM command survives, THEN the system SHALL show the deterministic
+  commands collected from the repo instead.
+  [user: plan 26 cross-model review X4, 2026-10-05]
 - AC-17: IF a diagram produced by the LLM cannot be rendered, THEN the system
   SHALL drop the diagram and keep the section's text.
 
@@ -132,13 +149,19 @@ Degradation and honest status
   system SHALL show an empty state that names the clone status and SHALL NOT
   offer Generate.
 - AC-21: IF the repo's clone failed, THEN the system SHALL show an error state
-  with the failure reason and an action to re-sync the repo.
+  with the failure reason and a Re-clone action that re-queues the clone
+  (re-sync does not re-clone a repo that has no clone).
+  [user: plan 26 GAP1, 2026-10-05]
 - AC-22: WHILE a clone exists and the index status is `partial`, `degraded` or
   `failed`, the system SHALL show the deterministic skeleton (or the stored
   tour) labelled with the index status and its reason.
-- AC-23: WHEN the index covers fewer files than the repo holds, the system
-  SHALL state the coverage in the page header as indexed files of total files
-  with the `partial` status (e.g. "indexed 5,000 of 12,450 files · partial").
+- AC-23: WHEN the index covers fewer source files than the repo holds, the
+  system SHALL state the coverage in the page header as "indexed N of M source
+  files · partial", where M counts only the source files of the indexed
+  languages (the JS/TS files the index sees), not every file in the clone;
+  WHEN `partial` is caused by parse or graph errors rather than the file cap,
+  the system SHALL show that reason next to the coverage.
+  [user: plan 26 GAP2, 2026-10-05]
 
 Persistence and freshness
 - AC-24: WHEN a repo with no stored tour is opened, the system SHALL show the
@@ -189,17 +212,21 @@ Untrusted content
   LLM as delimited untrusted data, and instructions found inside them SHALL NOT
   change the system's behaviour or the output's shape.
 - AC-34: The system SHALL render LLM-produced text as Markdown only, without
-  raw HTML, scripts or embeds.
+  raw HTML, scripts or embeds, and SHALL strip Markdown image syntax from it
+  so that no remote image (e.g. a tracking pixel) is loaded.
+  [user: plan 26 cross-model review X15, 2026-10-05]
 
 ## Edge cases
 
 - **Repo far past the index cap** (design: 12,450 files): a tour is generated
-  from the partial index and labelled per AC-23; the LLM still gets bounded
+  from the partial index and labelled per AC-23, counting source files of the
+  indexed languages only; the LLM still gets bounded
   facts only (AC-10).
 - **Non-JS/TS repo**: no import graph; AC-7 applies.
 - **Empty repo or a repo with no manifest/scripts**: How to run locally shows
-  "no run scripts found" instead of invented commands; grounding (AC-16) removes
-  any invented command.
+  "no run scripts found" instead of invented commands; the command allowlist
+  (AC-16) removes any invented or injected command (e.g. `curl … | sh` taken
+  from a README).
 - **Not cloned / cloning / clone failed**: AC-20, AC-21.
 - **Index degraded, partial, failed, or repo-intel switched off**: AC-8, AC-22.
 - **No API key or no model for the `onboarding` feature**: AC-18.
@@ -249,7 +276,8 @@ Untrusted content
   LLM only inside untrusted delimiters (AC-33).
 - **[llm] onboarding structured call output**: data, never instruction;
   validated against the section shape, grounded against the index (AC-14 to
-  AC-17), rendered as Markdown without HTML (AC-34); fallback AC-18/AC-19.
+  AC-17), run commands restricted to an allowlist (AC-16), rendered as
+  Markdown without HTML or images (AC-34); fallback AC-18/AC-19.
 - **[user] page actions** (Generate, Regenerate, Share link, Open, copy): carry
   only the repo id from the route; no free text reaches the LLM.
 
@@ -269,8 +297,11 @@ Untrusted content
   pipeline; resolves the model through the feature-model settings; uses the
   existing `onboarding.system.md` prompt, which already marks untrusted blocks;
   stores one tour per repo in the existing `onboarding` table (deleted with the
-  repo); re-sync uses the existing `POST /repos/:id/resync`. Clone state comes
-  from the repo record and its clone job.
+  repo); re-sync of an existing clone uses the existing
+  `POST /repos/:id/resync`, while Re-clone after a failed clone uses the
+  existing `POST /repos/:id/refresh`, which re-queues the clone
+  [user: plan 26 GAP1, 2026-10-05]. Clone state comes from the repo record and
+  its clone job.
 - **client**: a new repo-scoped page under the repo routes; one WORKSPACE nav
   item added to `vendor/ui/nav.ts`, the sanctioned vendored edit, recorded here
   and commented on the line (a vendor refresh drops it). The shell's
@@ -286,3 +317,5 @@ _None._
 ## Changelog
 
 2026-10-05 · all · approved (B1–B8 recommended options; SG1–6, SG8, SG9 accepted, SG7 rejected; AC-13/16/17/19 confirmed) · user approval after pass 2 · user
+2026-10-05 · AC-5, AC-6, AC-11, AC-15, AC-21, AC-23, Module interactions, Edge cases · Re-clone via /refresh; coverage denominator = indexed-language source files; surviving tasks shown with a note; deterministic skeleton reasons · plan 26 GAP1–4 · user
+2026-10-05 · AC-16, AC-34, Edge cases, Untrusted inputs · run-command allowlist; strip Markdown images from LLM text · plan 26 cross-model review X4/X15, user-approved · user
