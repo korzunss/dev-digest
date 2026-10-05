@@ -484,6 +484,26 @@ TQ1 `maxRetries: 0`; TQ2 `generated_at`; TQ3 `lastIndexedSha` else HEAD; TQ4 Eng
 | postgresql-table-design | full | S2 | no schema change |
 | typescript-expert | full | S2, S3 | |
 
+## Handoffs → G3
+
+### Handoff to the next group
+- `server/src/modules/onboarding/`: `constants.ts` (incl. `ONBOARDING_LLM_TIMEOUT_MS`, `ONBOARDING_MAX_TOKENS`, `ONBOARDING_SCHEMA_NAME`, `ONBOARDING_LANGUAGE`, package-manager/lockfile/stack/env/compose tables), `types.ts` (`ScriptFact`, `CloneFacts`, `EndpointFact`, `OnboardingFacts`, flat zod `OnboardingLlmOutput`), `facts.ts` (`collectCloneFacts(cloneDir)` never throws; `emptyFacts()`), `helpers.ts` (`normalisePath`, `isReadingPathCandidate`, `pickReadingPath`, `flattenCriticalPaths`, `hasGraph`, `hasIndex`, `indexAvailability`, `coverageView`, `deterministicCommands`, `buildSkeleton`, `sanitizeJobError`, `classifyGenerationError`), `repository.ts` (`getRepo`, `getLatestCloneJob`, `getTour`, `upsertTour`).
+- Skeleton reasons are data (rank position, importers, chain) rendered by the client via i18n keys `reasons.*`; reading rows carry `reason: null` until the model fills text.
+- G4 supplies `generated_at` and `built_sha`; `modules/index.ts` untouched (S12).
+- Deviations: S8 invariant test also allows the type-only import `../repo-intel/types.js` (helpers.ts) — not in the plan's allow-list; `collectCloneFacts` also returns `hasRootManifest`, `packageDirs`.
+- Process note: skill texts were truncated by the tool (54.8 KB); the agent read only their start.
+- Not verified: repository.ts beyond typecheck (covered by TS6 in T1).
+
+### Skills
+| Skill | Loaded | Applied in | Not used — reason |
+|---|---|---|---|
+| onion-architecture | preload | S4–S8 | |
+| zod | on demand (start only) | S4, S5 | |
+| typescript-expert | on demand (start only) | S4–S8 | |
+| security | on demand (start only) | S5 | |
+| drizzle-orm-patterns | on demand (start only) | S7 | |
+| postgresql-table-design | on demand (start only) | S7 | no schema change |
+
 ## Verification log
 - 2026-10-05 agent: spec-p1 ab3c02452b7a30152 spec-creator 2026-10-05T13:44:31Z
 - 2026-10-05 agent: spec-p2 ab3c02452b7a30152 spec-creator 2026-10-05T13:49:39Z
@@ -507,3 +527,6 @@ TQ1 `maxRetries: 0`; TQ2 `generated_at`; TQ3 `lastIndexedSha` else HEAD; TQ4 Eng
 - 2026-10-05 G1 committed by user: 6388fc9
 - 2026-10-05 agent: implement ac502db00f6aaa371 implementer 2026-10-05T15:12:15Z
 - 2026-10-05 implement G2: done (S2-S3; typecheck ok; repo-intel/indexer 56; server unit 583)
+- 2026-10-05 G2 committed by user: 1c81974
+- 2026-10-05 agent: implement a338b1776fc348e92 implementer 2026-10-05T15:17:46Z
+- 2026-10-05 implement G3: done (S4-S8; typecheck ok; server unit 590; onboarding-architecture 7)
