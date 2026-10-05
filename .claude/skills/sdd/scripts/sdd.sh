@@ -7,6 +7,8 @@ set -euo pipefail
 MARKER='<!-- implementer-brief:end -->'
 LOG_HEAD='## Verification log'
 FU_HEAD='## Follow-ups'
+# stage ids of SKILL.md section 2, in order
+STAGES="intake spec-p1 spec-answers spec-p2 spec-approve research plan-p1 plan-decisions ext-research plan-p2 plan-approve implement tests it-suite review fix-loop sign-off close docs insights self-review metrics handover"
 
 die() { echo "sdd: $*" >&2; exit 2; }
 
@@ -17,8 +19,16 @@ sdd.sh <subcommand> [args]
   handoff <plan> <label> [file|-]          append "## Handoffs -> <label>" below the brief marker
   log <plan> <text>                        append "- <date> <text>" to ## Verification log
   follow-up <plan> <text>                  append "- <date> <text>" to ## Follow-ups
-  handback-check [file|-]                  exit 0 when the report has the implementer step table
-  porcelain save <file> | check <file>     snapshot / compare `git status --porcelain`
+  handback-check [--log <plan> <label>] [file|-]  exit 0 when the report has the step table; --log records "handback: unknown <label>" on failure
+  porcelain save <file> | check <file>     snapshot / compare `git status --porcelain` plus the git-state block
+  git-state save <file> | check <file>     snapshot / compare HEAD, refs (minus refs/sdd/) and the stash list
+  plan-lint <plan>                         flag grep -c and multi-word .md greps in Done-when lines
+  status-check                             compare plan/spec Status: lines with their README index rows
+  agent <plan|-> <stage> <agentId> <agentType>  log "agent: ..." (- = .sdd/pending-agents.log until the plan exists)
+  agent-flush <plan>                       move .sdd/pending-agents.log into the plan's Verification log
+  usage-scan [--session <id>]              sum subagent transcript usage into .sdd/usage.jsonl (no content read)
+  flags <plan>                             no-LLM threshold flags F1-F5 and repeat: lines (reads .sdd/usage.jsonl)
+  stages                                   print the stage ids, one per line
   checkpoint <NN> <label>                  pin the work tree as refs/sdd/<NN>/<label> (temp index)
   delta <treeA> [treeB]                    name-status diff between two trees (B defaults to now)
   brief-diff <plan> <tree>                 plan text above the marker vs <tree> (ignores Status:/Execution:)
@@ -27,6 +37,7 @@ sdd.sh <subcommand> [args]
 USAGE
 }
 
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 root="$(git rev-parse --show-toplevel 2>/dev/null)" || die "not inside a git repository"
 cd "${root}"
 
@@ -182,28 +193,163 @@ cmd_follow_up() {
 }
 
 cmd_handback_check() {
-  local body
+  local body logplan="" label=""
+  if [ "${1:-}" = "--log" ]; then
+    [ $# -ge 3 ] || die "usage: handback-check --log <plan> <label> [file|-]"
+    logplan="$2"; label="$3"; shift 3
+    need_file "${logplan}"
+  fi
   body="$(read_input "${1:--}")"
   if printf '%s\n' "${body}" | grep -qF '| Step / gap |'; then return 0; fi
   echo "hand-back without a step table: treat as unknown"
+  if [ -n "${logplan}" ]; then cmd_log "${logplan}" "handback: unknown ${label}"; fi
   return 1
+}
+
+git_state_block() { # HEAD, refs minus refs/sdd/, stash list
+  echo "## git-state"
+  git rev-parse HEAD 2>/dev/null || echo "no-head"
+  git for-each-ref --format='%(refname) %(objectname)' | awk '$1 !~ /^refs\/sdd\//'
+  echo "## stash"
+  git stash list
+}
+
+snapshot_cmd() { # $1 = kind (porcelain|git-state), $2 = save|check, $3 = file
+  local kind="$1" mode="$2" file="$3" now rc=0
+  case "${mode}" in
+    save) snapshot_body "${kind}" > "${file}" ;;
+    check)
+      need_file "${file}"
+      now="$(mktemp "${TMPDIR:-/tmp}/sdd-snap.XXXXXX")"
+      snapshot_body "${kind}" > "${now}"
+      diff "${file}" "${now}" || rc=1
+      rm -f "${now}"
+      return "${rc}" ;;
+    *) die "usage: ${kind} save|check <file>" ;;
+  esac
+}
+
+snapshot_body() {
+  if [ "$1" = "porcelain" ]; then git status --porcelain; fi
+  git_state_block
+}
+
+cmd_git_state() {
+  [ $# -eq 2 ] || die "usage: git-state save|check <file>"
+  snapshot_cmd git-state "$1" "$2"
 }
 
 cmd_porcelain() {
   [ $# -eq 2 ] || die "usage: porcelain save|check <file>"
-  case "$1" in
-    save) git status --porcelain > "$2" ;;
-    check)
-      need_file "$2"
-      local now rc=0
-      now="$(mktemp "${TMPDIR:-/tmp}/sdd-porc.XXXXXX")"
-      git status --porcelain > "${now}"
-      diff "$2" "${now}" || rc=1
-      rm -f "${now}"
-      return "${rc}" ;;
-    *) die "usage: porcelain save|check <file>" ;;
+  snapshot_cmd porcelain "$1" "$2"
+}
+
+cmd_plan_lint() {
+  [ $# -eq 1 ] || die "usage: plan-lint <plan>"
+  need_file "$1"; need_marker "$1"
+  local out
+  out="$(MARKER="${MARKER}" awk '
+    BEGIN { sq = sprintf("%c", 39); trq = "tr " sq "\\n" sq " " sq " " sq }
+    $0 == ENVIRON["MARKER"] { exit }
+    /^### S[0-9]+/ { id = $2 }
+    index($0, "- **Done when:**") == 1 {
+      line = $0; sid = (id == "" ? "S?" : id)
+      if (line ~ /grep +-[A-Za-z]*c/) print "plan-lint: " sid ": grep -c"
+      if (line ~ /\.md/ && index(line, trq) == 0) {
+        rest = line; hit = 0
+        while (!hit && (p = index(rest, "grep")) > 0) {
+          rest = substr(rest, p + 4); s = rest
+          while (match(s, /^ +-[-A-Za-z0-9=]*/)) s = substr(s, RLENGTH + 1)
+          sub(/^ +/, "", s)
+          q = substr(s, 1, 1)
+          if (q == sq || q == "\"") {
+            e = index(substr(s, 2), q)
+            if (e > 0 && index(substr(s, 2, e - 1), " ") > 0) hit = 1
+          }
+        }
+        if (hit) print "plan-lint: " sid ": multi-word grep on a .md file"
+      }
+    }' "$1")"
+  if [ -n "${out}" ]; then printf '%s\n' "${out}"; return 1; fi
+  echo "plan-lint: ok"
+}
+
+index_status() { # <index file> <basename> -> column-2 cell of its row, or none
+  BASE="$2" awk -F'|' 'index($0, "(" ENVIRON["BASE"] ")") && $0 ~ /^\|/ && NF >= 4 { v = $3; gsub(/^ +| +$/, "", v); print v; f = 1; exit } END { if (!f) print "none" }' "$1"
+}
+
+cmd_status_check() {
+  [ $# -eq 0 ] || die "usage: status-check"
+  local f idx kv fval want have bad=0 dir
+  if [ -f docs/plans/README.md ]; then
+    for f in docs/plans/[0-9]*.md; do
+      [ -f "${f}" ] || continue
+      kv="$(file_status_key_value "${f}")"; [ -n "${kv}" ] || continue
+      fval="${kv#*|}"; want="${fval}"
+      if [ "${fval}" = "draft" ] && grep -q '^Steps: pending decisions' "${f}"; then want="draft (decisions)"; fi
+      have="$(index_status docs/plans/README.md "$(basename "${f}")")"
+      if [ "${want}" != "${have}" ]; then echo "status-check: ${f} file=${want} index=${have}"; bad=1; fi
+    done
+  fi
+  for f in specs/*.md */specs/*.md; do
+    [ -f "${f}" ] || continue
+    [ "$(basename "${f}")" != "README.md" ] || continue
+    dir="$(dirname "${f}")"; idx="${dir}/README.md"
+    [ -f "${idx}" ] || continue
+    kv="$(file_status_key_value "${f}")"; [ -n "${kv}" ] || continue
+    fval="${kv#*|}"
+    have="$(index_status "${idx}" "$(basename "${f}")")"
+    if [ "${fval}" != "${have}" ]; then echo "status-check: ${f} file=${fval} index=${have}"; bad=1; fi
+  done
+  if [ "${bad}" = 1 ]; then return 1; fi
+  echo "status-check: ok"
+}
+
+cmd_agent() {
+  [ $# -eq 4 ] || die "usage: agent <plan|-> <stage> <agentId> <agentType>"
+  local plan="$1" stage="$2" id="$3" type="$4" s found=0 line
+  for s in ${STAGES}; do if [ "${s}" = "${stage}" ]; then found=1; fi; done
+  [ "${found}" = 1 ] || die "unknown stage: ${stage}"
+  printf '%s' "${id}" | grep -Eq '^[A-Za-z0-9]+$' || die "bad agentId: ${id}"
+  printf '%s' "${type}" | grep -Eq '^[a-z][a-z-]*$' || die "bad agentType: ${type}"
+  line="agent: ${stage} ${id} ${type} $(date -u +%FT%TZ)"
+  if [ "${plan}" = "-" ]; then
+    mkdir -p .sdd
+    printf '%s\n' "- $(date +%F) ${line}" >> .sdd/pending-agents.log
+  else
+    cmd_log "${plan}" "${line}"
+  fi
+}
+
+cmd_agent_flush() {
+  [ $# -eq 1 ] || die "usage: agent-flush <plan>"
+  need_file "$1"
+  [ -f .sdd/pending-agents.log ] || return 0
+  local line
+  while IFS= read -r line || [ -n "${line}" ]; do
+    [ -n "${line}" ] || continue
+    append_line "$1" "${LOG_HEAD}" "${line}" 0
+  done < .sdd/pending-agents.log
+  rm -f .sdd/pending-agents.log
+}
+
+cmd_usage_scan() {
+  command -v node >/dev/null 2>&1 || die "node not found"
+  case "$#" in
+    0) node "${here}/usage-scan.mjs" --root "${root}" ;;
+    2) [ "$1" = "--session" ] || die "usage: usage-scan [--session <id>]"
+       node "${here}/usage-scan.mjs" --root "${root}" --session "$2" ;;
+    *) die "usage: usage-scan [--session <id>]" ;;
   esac
 }
+
+cmd_flags() {
+  command -v node >/dev/null 2>&1 || die "node not found"
+  [ "$#" -eq 1 ] || die "usage: flags <plan>"
+  node "${here}/flags.mjs" --root "${root}" --plan "$1"
+}
+
+cmd_stages() { local s; for s in ${STAGES}; do echo "${s}"; done; }
 
 cmd_checkpoint() {
   [ $# -eq 2 ] || die "usage: checkpoint <NN> <label>"
@@ -265,7 +411,7 @@ cmd_state() {
   kv="$(file_status_key_value "${plan}")"; pstat="${kv#*|}"
   exec_mode="$(grep -m1 '^Execution:' "${plan}" | sed 's/^Execution:[ ]*//' || true)"
   handoffs="$(grep -c '^## Handoffs →' "${plan}" || true)"
-  log_last="$(awk -v h="${LOG_HEAD}" '$0 == h { s = 1; next } /^## / { s = 0 } s && /^- / { l = $0 } END { print l }' "${plan}")"
+  log_last="$(awk -v h="${LOG_HEAD}" '$0 == h { s = 1; next } /^## / { s = 0 } s && /^- / { t = $0; sub(/^- [0-9-]+ /, "", t); if (t ~ /^(agent|handback|resume|plan-lint|status-check):/) next; l = $0 } END { print l }' "${plan}")"
   last="$(printf '%s\n' "${log_last}" | sed -E 's/^- [0-9]{4}-[0-9]{2}-[0-9]{2} //')"
   case "${pstat}" in
     draft)
@@ -294,7 +440,8 @@ cmd_state() {
       esac ;;
     done)
       case "${last}" in
-        self-review*) echo "stage: handover"; echo "because: last log line is self-review" ;;
+        metrics*) echo "stage: handover"; echo "because: last log line is metrics" ;;
+        self-review*) echo "stage: metrics"; echo "because: last log line is self-review" ;;
         insights*) echo "stage: self-review"; echo "because: last log line is insights" ;;
         docs*) echo "stage: insights"; echo "because: last log line is docs" ;;
         *)
@@ -318,6 +465,14 @@ case "${sub}" in
   follow-up) cmd_follow_up "$@" ;;
   handback-check) cmd_handback_check "$@" ;;
   porcelain) cmd_porcelain "$@" ;;
+  git-state) cmd_git_state "$@" ;;
+  plan-lint) cmd_plan_lint "$@" ;;
+  status-check) cmd_status_check "$@" ;;
+  agent) cmd_agent "$@" ;;
+  agent-flush) cmd_agent_flush "$@" ;;
+  usage-scan) cmd_usage_scan "$@" ;;
+  flags) cmd_flags "$@" ;;
+  stages) cmd_stages ;;
   checkpoint) cmd_checkpoint "$@" ;;
   delta) cmd_delta "$@" ;;
   brief-diff) cmd_brief_diff "$@" ;;

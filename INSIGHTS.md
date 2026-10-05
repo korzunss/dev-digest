@@ -64,6 +64,7 @@ write-up here. That keeps `AGENTS.md` short without losing the reasoning.
 **Cause:** an approved state has to live somewhere addressable that is neither a commit nor the real index.
 **Rule:** `cp .git/index <tmp-outside-worktree>; GIT_INDEX_FILE=<tmp> git add -A; T=$(GIT_INDEX_FILE=<tmp> git write-tree); git update-ref refs/sdd/<NN>/<label> "$T"` — the real index and `git status --porcelain` stay untouched, the tree and its blobs survive `git gc --prune=now`, `fsck` is clean. Compare two checkpoints with `git diff --name-only <t1> <t2>`. Against the *working tree*, `git diff <tree> -- <path>` shows an untracked file as deleted — use `git show <tree>:<path> | diff - <path>` instead. `/sdd` wraps this as `sdd.sh checkpoint` / `delta` / `brief-diff`; clean up with `git update-ref -d`.
 **Evidence:** `.claude/skills/sdd/scripts/sdd.sh` (`make_tree`) · `docs/plans/22-sdd-pipeline-skill.md` → *Verification log* (R3 `brief-diff` empty, rc 0) · throwaway test on git 2.54.0
+**Guard:** `selftest.sh` cases for `sdd.sh checkpoint` / `delta` / `brief-diff` (real index untouched, tree ref survives gc, untracked paths handled) — plans 22, 23.
 
 ## What Doesn't Work
 
@@ -72,6 +73,8 @@ write-up here. That keeps `AGENTS.md` short without losing the reasoning.
 **Cause:** a heredoc ends at the first line equal to its delimiter, nested or not.
 **Rule:** create script files with the Write tool, never through a shell heredoc. If a heredoc is unavoidable, use a unique outer delimiter (`<<'SDD_EOF_OUTER'`). A test script that runs git must `cd` into a `mktemp -d` repo and assert `[ "$(pwd -P)" = "$(git rev-parse --show-toplevel)" ]` before its first git command; the main session reads such a script before running it and diffs `HEAD`/`git status`/refs before and after.
 **Evidence:** `docs/plans/22-sdd-pipeline-skill.md` → *Verification log* (INCIDENT, 2026-10-05) · `.claude/skills/sdd/scripts/selftest.sh:21-25`
+**Extended 2026-10-05 (plan 23):** a prompt line and the template rule did not stop it: G1 edited `sdd.sh` with a python script fed through a shell heredoc, and G3 ran a no-op `cat > /dev/null <<EOF` after the rule was in `implementer.md`. Neither did damage, but the rule alone is not a guard — the main session still diffs `HEAD`/refs/stash (`sdd.sh git-state`) around every implementer run.
+**Guard:** implementer *Hard rules* bullet "never create or rewrite a script file through a shell heredoc" (`.claude/agents/implementer.md`); `selftest.sh` `new_repo()` toplevel guard; `sdd.sh git-state save|check` catches stray commits, refs and stash (plan 23).
 
 ### 2026-09-30 — an untracked plan file makes R3 and delta re-verification unprovable
 **Symptom:** in plans 07, 08 and 09 the plan-verifier reported R3 ("plan changed only in Status/decisions") as not-verifiable every time, and its delta scope checks fell back to file mtimes.
@@ -79,6 +82,7 @@ write-up here. That keeps `AGENTS.md` short without losing the reasoning.
 **Rule:** stage (or commit) the plan file right after the user's approval and again at the end of each implementation wave; the verifier can then diff against the index instead of asking the user to sign off R3.
 **Evidence:** `docs/plans/07-review-diff-base-sha.md`, `08-llm-call-reliability.md`, `09-review-eval-fixture.md` → *Verification log* (R3 rows)
 **Extended 2026-10-04 (plans 20, 21):** staging alone is not enough. The main session re-stages the plan after every appended handoff and log line, and each `git add` replaces the index blob, so by verification time the approved text is gone and R3 is again not-verifiable. Keep R3 provable by committing the plan right after approval (a `docs(plans): approve plan NN` commit on the branch), or by not re-staging it until the verifier has run.
+**Guard:** `sdd.sh checkpoint <NN> plan-approved` at approval + `sdd.sh brief-diff <plan> <tree>` for R3 — `.claude/skills/sdd/scripts/sdd.sh` (plans 22, 23).
 
 ### 2026-09-29 — a skill listed on a step where it has nothing to do can only be closed by a plan change
 **Symptom:** plan 07's plan-verifier kept SK2–SK4 `missing` across two runs although the implementer re-read `zod` in full and recorded S2–S4 under *Not used — reason* ("no Zod schema in this step").
@@ -218,11 +222,19 @@ that path; it's runtime data, and the next resync overwrites it.
 
 ## Tool & Library Notes
 
+### 2026-10-05 — a subagent's real token usage lives in its transcript, not in the task notification
+**Symptom:** the task notification's `subagent_tokens` for plan 23's G1 implementer said ~66k, while its transcript summed to ~580k raw tokens (516k of them cache reads); summing transcript `usage` naively gave ~2.2× too much again.
+**Cause:** the notification figure's scope is undocumented (research 2026-10-05); transcripts (`~/.claude/projects/<project>/<session>/subagents/agent-<id>.jsonl`) carry `usage` per streamed message, so one `message.id` appears on several lines (80 usage lines → 36 ids); cache reads dominate a run's raw tokens (~89%). A `SubagentStop` hook gets no token data either.
+**Rule:** measure from transcripts, deduped by `message.id` (last line wins), split input / output / cache_read / cache_creation, and compare runs in weighted tokens (`input + 1.25·cache_creation + 0.1·cache_read + 5·output`), not raw sums. The agent's type is in the sibling `agent-<id>.meta.json` (`agentType`); never store its `description`. Transcripts are deleted after `cleanupPeriodDays` (default 30) — scan before then. `/sdd` does all of this as `sdd.sh usage-scan` + `flags`.
+**Evidence:** `docs/plans/23-workflow-retro-skill.md` → *Verification log* (pre-approval field check, first real scan) and *Handoffs → G3* · `.claude/skills/sdd/scripts/usage-scan.mjs`, `flags.mjs`
+**Guard:** `selftest.sh` usage-scan cases (duplicate `message.id`, no content/description in `.sdd/usage.jsonl`) and the F1 weighted-median case with its weight break check (plan 23).
+
 ### 2026-10-05 — in zsh, `$VAR:a` (and `:h`, `:t`, `:r`, `:e`) is a path modifier, not text
 **Symptom:** a Bash-tool one-liner `git rev-parse $T:a.txt` (tree sha + `:path`) failed with `ambiguous argument '/…/scratchpad/<sha>.txt'` — the sha had become an absolute path.
 **Cause:** the Bash tool's shell is zsh here; `$T:a` applies zsh's "absolute path" modifier to `$T`, then `.txt` is appended.
 **Rule:** brace every variable followed by `:` — `"${T}:a.txt"` — in inline commands; scripts start with `#!/usr/bin/env bash` and still use `${VAR}` braces (the `/sdd` scripts do).
 **Evidence:** plan 22 research, EXT3 throwaway test (main session, 2026-10-04)
+**Guard:** the scripts lint in `.claude/skills/sdd/scripts/selftest.sh` fails on an unbraced `$NAME:` in the skill's scripts (plan 23).
 
 ### 2026-10-04 — `grep -w <name>` cannot find leftovers of a rename to a hyphenated name
 **Symptom:** while planning the `planner` → `implementation-planner` rename (plan 21), a "no bare `planner` left" check written as `grep -rnw planner` would match every *new* `implementation-planner` too, so it can never come back empty.
@@ -261,6 +273,7 @@ implementer run: 100 tool uses · `.claude/agents/plan-verifier.md`, `AGENTS.md`
 made the implementer add a second mention just to pass (S4, S5); the verifier
 then had to read the lines to tell content from padding. Prefer a per-token
 `grep -n` loop or a heading loop that checks the required content itself.
+**Guard:** `sdd.sh plan-lint <plan>` flags `grep -c` and multi-word greps on `.md` files in Done-whens; implementation-planner runs it (Method step 6, Red-flags check) — plan 23.
 
 ### 2026-09-27 — `rg` edge checks catch comments and prose, and `rg` is not a binary here
 **Symptom:** a plan Done-when "`rg -n "_components|FindingCard|FindingRecord"
@@ -359,6 +372,7 @@ tree looks right in exactly the case the index is wrong.
 **Rule:** treat a hand-back without a step table as "unknown", never as done: read `git diff` (or `git diff` against the index when the wave is staged) yourself and re-run the step's Done-when before logging it. When the plan needs the handoff or the `## Skills` table (next group, `SK` items), resume the same implementer with SendMessage and ask for the report — it then writes a normal one.
 **Evidence:** `docs/plans/20-spec-creator-agent.md` → *Verification log* (AC8a line) and *Handoffs → G2* · resumed G1 run: "I called the hand-back before writing the report"
 **Extended 2026-10-04 (plan 21):** a sharper prompt line did work twice: ending the implementer prompt with "Write your full Implementation Report — step table with each Done-when command and its actual output, Handoff, ## Skills — before you hand back; a one-word hand-back will be treated as 'not done'" gave full reports for G1 and G2. Keep checking the diff anyway.
+**Guard:** `sdd.sh handback-check` (with `--log` it writes `handback: unknown`) rejects a hand-back without a step table — `.claude/skills/sdd/scripts/sdd.sh`; `/sdd` runs it after every implementer run (plan 23).
 
 ### 2026-09-17 — `TS2719: Two different types with this name exist` after adding a contract field
 

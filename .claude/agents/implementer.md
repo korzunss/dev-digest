@@ -321,3 +321,4 @@ Steps already done: <ids and files, or "none — nothing was edited">
   more would fit.
 - **Do not write `INSIGHTS.md`** — return *Insight candidates*; the main session
   runs `engineering-insights` at wrap-up.
+- **Never** create or rewrite a script file through a shell heredoc — use the Write tool. A test that runs git does it in a `mktemp -d` repo, after asserting that `pwd -P` equals `git rev-parse --show-toplevel` (root `INSIGHTS.md` 2026-10-05).

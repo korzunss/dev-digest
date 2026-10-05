@@ -233,6 +233,7 @@ decision.
    not skill names, not quotes. *Known gotchas* are the items from
    `insights/gotchas.md` (or `INSIGHTS.md` entries) that this step can trip on,
    each with its link — only the ones that apply to *this* step.
+   A *Done when* never uses `grep -c` thresholds, and a grep on a Markdown file uses a one-token pattern or the `tr '\n' ' '` form; `sdd.sh plan-lint <plan>` checks it.
 7. **Separate fact from assumption.** Every statement about the current code is
    a fact you opened (`path:line`). Every default you choose yourself — a model
    id, a cap, a file name, a behaviour on error — is an **assumption**: mark it
@@ -390,6 +391,7 @@ was not used in any step>
 - [ ] Pass 1: only the pass-1 sections, ≤ ~6,000 characters, ends with "Steps: pending decisions"
 - [ ] Execution mode recommended per the D4 rule (or single pass: single-agent)
 - [ ] Every step's *Skills to apply* is complete (the implementer reads only those)
+- [ ] `bash .claude/skills/sdd/scripts/sdd.sh plan-lint <plan>` prints `plan-lint: ok`
 ```
 
 ---

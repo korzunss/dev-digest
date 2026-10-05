@@ -114,3 +114,4 @@ result to the verifier.
 | [20-spec-creator-agent](20-spec-creator-agent.md) | done | none | `.claude/agents`, spec folders (`specs/`, `<pkg>/specs/`, new `mcp-server/specs/`), repo docs |
 | [21-implementation-planner](21-implementation-planner.md) | done | none | `.claude/agents` (rename to `implementation-planner`, implementer, plan-verifier), repo docs |
 | [22-sdd-pipeline-skill](22-sdd-pipeline-skill.md) | done | none | `.claude/skills/sdd` (new: SKILL.md, references, scripts), root `AGENTS.md`, `.claude/skills/README.md` |
+| [23-workflow-retro-skill](23-workflow-retro-skill.md) | done | none | `.claude/skills/sdd` (guards, `usage-scan`, `flags`, `metrics` stage), `.claude/agents` (implementer, implementation-planner), `.gitignore`, root `INSIGHTS.md` (`Guard:` lines) |

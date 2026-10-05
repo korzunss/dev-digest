@@ -65,3 +65,4 @@ why, in one or two lines.
 | [04-count-failed-llm-attempt-usage](04-count-failed-llm-attempt-usage.md) | chosen | go (Opt3) | [plan 13](../plans/13-count-failed-llm-attempt-usage.md) |
 | [05-truncated-chunk-runaways](05-truncated-chunk-runaways.md) | chosen | go (Opt1) | [plan 08](../plans/08-llm-call-reliability.md) Amendment A1 |
 | [06-fewer-false-criticals](06-fewer-false-criticals.md) | chosen | go (Opt2) + Opt1 | [plan 10](../plans/10-agent-precision.md) |
+| [07-workflow-retro](07-workflow-retro.md) | chosen | go (Opt4) + Opt1 | [plan 23](../plans/23-workflow-retro-skill.md) |

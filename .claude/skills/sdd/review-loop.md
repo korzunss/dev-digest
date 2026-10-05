@@ -4,10 +4,10 @@ Stages `review` and `fix-loop` of [SKILL.md](SKILL.md). `S` stands for `bash .cl
 
 ## The wave
 Reviewers: `plan-verifier` ∥ `architecture-reviewer` ∥ `security-reviewer` (the last only when a trust boundary is touched), in parallel, each in working-tree mode (nothing is committed, so a `<base>...HEAD` diff would be empty).
-1. `S porcelain save <file>` before the wave.
+1. `S porcelain save <file>` before the wave (it also snapshots HEAD, refs and the stash).
 2. Path list: `S delta <prev-tree>` (first wave: the newest `wave-<n>` or `plan-approved` tree). Hand each reviewer the plan path and that list, not pasted diffs.
 3. The verifier also gets the R3 result: `S brief-diff <plan> <plan-approved tree>` (exit 0 identical; 1 prints the differing lines). `Status:` and `Execution:` lines are ignored; any other brief change is a plan change.
-4. `S porcelain check <file>` after the wave; a difference means a reviewer wrote to the tree — stop and show it.
+4. `S porcelain check <file>` after the wave (HEAD, refs and stash included); a difference means a reviewer wrote to the tree — stop and show it.
 Never checkpoint or edit the tree while the wave runs.
 
 ## Triage

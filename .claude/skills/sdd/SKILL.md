@@ -36,26 +36,27 @@ One row per stage, in order. Gate = what stops the run for the user (AskUserQues
 | Stage id | Owner | User gate | Artefact / status change | `sdd.sh` call | Checkpoint |
 |---|---|---|---|---|---|
 | `intake` | main session | AskUserQuestion only if arguments are ambiguous | read gotchas/insights headings; validate `--designs`, `figma:`, `--ref-repo` | — | — |
-| `spec-p1` | `spec-creator` | none | `specs/NNN-*.md` draft + index row | — | — |
+| `spec-p1` | `spec-creator` | none | `specs/NNN-*.md` draft + index row | `agent` | — |
 | `spec-answers` | main session | AskUserQuestion per open question | answers written into the spec | — | — |
-| `spec-p2` | `spec-creator` | none | spec finalised, *Open questions* empty | — | — |
+| `spec-p2` | `spec-creator` | none | spec finalised, *Open questions* empty | `agent` | — |
 | `spec-approve` | main session | AskUserQuestion: approve? | spec `approved` | `set-status spec` | `spec-approved` |
-| `research` | `researcher` | AskUserQuestion: run it? (default yes) | answers to ≤8 questions | — | — |
-| `plan-p1` | `implementation-planner` | none | plan `draft (decisions)` | `set-status plan` | — |
+| `research` | `researcher` | AskUserQuestion: run it? (default yes) | answers to ≤8 questions | `agent` | — |
+| `plan-p1` | `implementation-planner` | none | plan `draft (decisions)` | `set-status plan`, `agent`, `agent-flush` | — |
 | `plan-decisions` | main session | AskUserQuestion per decision | *Decisions recorded* written into the plan | `log` | — |
-| `ext-research` | `researcher` | none | external facts for the risks pass 1 lists | — | — |
-| `plan-p2` | `implementation-planner` | none | full plan, `Status: draft` | `set-status plan` | — |
-| `plan-approve` | main session | AskUserQuestion: approve? | plan `approved` | `set-status plan`, `log` | `plan-approved` (again after every re-approval) |
-| `implement` | `implementer` | none | plan `in-progress`, handoff in the plan | `set-status plan`, `handback-check`, `handoff`, `log` | `wave-<n>` |
-| `tests` | `test-writer` (multi-agent only) | none | tests beside the code | `log` | — |
+| `ext-research` | `researcher` | none | external facts for the risks pass 1 lists | `agent` | — |
+| `plan-p2` | `implementation-planner` | none | full plan, `Status: draft` | `set-status plan`, `agent` | — |
+| `plan-approve` | main session | AskUserQuestion: approve? | plan `approved` | `plan-lint`, `status-check`, `set-status plan`, `log` | `plan-approved` (again after every re-approval) |
+| `implement` | `implementer` | none | plan `in-progress`, handoff in the plan | `set-status plan`, `agent`, `git-state`, `handback-check --log`, `handoff`, `log` | `wave-<n>` |
+| `tests` | `test-writer` (multi-agent only) | none | tests beside the code | `agent`, `log` | — |
 | `it-suite` | main session | none | full `.it` suite once | `log` | — |
-| `review` | `plan-verifier` ∥ `architecture-reviewer` ∥ `security-reviewer` | none | findings triaged | `porcelain`, `delta`, `brief-diff`, `log` | `review-<i>` |
-| `fix-loop` | `implementer` (fix mode) | none; stops after 3 iterations | gaps closed | `checkpoint`, `follow-up`, `log` | `review-<i>` |
+| `review` | `plan-verifier` ∥ `architecture-reviewer` ∥ `security-reviewer` | none | findings triaged | `agent`, `porcelain`, `delta`, `brief-diff`, `log` | `review-<i>` |
+| `fix-loop` | `implementer` (fix mode) | none; stops after 3 iterations | gaps closed | `agent`, `git-state`, `checkpoint`, `follow-up`, `log` | `review-<i>` |
 | `sign-off` | main session | AskUserQuestion: accept the listed items? | *Needs manual check* / *Needs sign-off* accepted | `log` | — |
-| `close` | main session | none | plan `done`, spec `implemented` + Changelog line | `set-status plan`, `set-status spec` | — |
-| `docs` | `doc-writer` (spec plans only) | none | docs updated | `log` | — |
+| `close` | main session | none | plan `done`, spec `implemented` + Changelog line | `set-status plan`, `set-status spec`, `status-check` | — |
+| `docs` | `doc-writer` (spec plans only) | none | docs updated | `agent`, `log` | — |
 | `insights` | main session | none | `engineering-insights` wrap-up | `log` | — |
 | `self-review` | main session | none | `/pr-self-review` result | `log` | — |
+| `metrics` | main session | none | usage rows and flags (no model call) | `usage-scan`, `flags`, `log` | — |
 | `handover` | main session | none | final message (below) | — | — |
 
 Checkpoint labels: `spec-approved`, `plan-approved`, `wave-<n>`, `review-<i>` — all via `sdd.sh checkpoint <NN> <label>`, `NN` is the plan number.
@@ -68,7 +69,12 @@ Checkpoint labels: `spec-approved`, `plan-approved`, `wave-<n>`, `review-<i>` �
 - A correction is not an approval: wait for an explicit yes at every gate.
 - Never paste more than ~10 lines of one agent's report into another prompt: cite ids and paths; agents get a plan or spec **path**.
 - A hand-back with no step table is "unknown" (`handback-check`): read the diff before believing it.
+- After every subagent run returns, log it: `sdd.sh agent <plan|-> <stage> <agentId> <agentType>` (`-` before the plan exists; `agent-flush` moves those lines into the plan). A resumed agent gets a new line per stage, so `usage-scan` can split its tokens.
 
 ## 4. Hand-over
 
-The final message gives: a commit message (Conventional Commits, in the style of `git log`), a PR title and body, the plan's `## Follow-ups`, the session's required attribution lines, and a note that the local `refs/sdd/*` pins can be dropped with `git update-ref -d <ref>` after the PR. The user runs git.
+The final message gives: a commit message (Conventional Commits, in the style of `git log`), a PR title and body, the plan's `## Follow-ups`, the flags the `metrics` stage printed, the session's required attribution lines, and a note that the local `refs/sdd/*` pins can be dropped with `git update-ref -d <ref>` after the PR. The user runs git.
+
+## 5. Repeated flags
+
+When `flags` printed a `repeat:` line, the hand-over lists it and asks (AskUserQuestion) whether to run `brainstormer` with the flag ids and the plan paths; its brief is saved as `AGENTS.md` says. No `repeat:` line means no model review.
