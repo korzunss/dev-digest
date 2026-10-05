@@ -237,8 +237,18 @@ describe("Onboarding Tour page", () => {
     renderPage();
     await screen.findByText("Fastify API plus a Next studio.");
     expect(screen.getAllByText(onboarding.unavailable.language_not_indexed)).toHaveLength(2);
+    expect(onboarding.unavailable.language_not_indexed).toMatch(/not available for this language/i);
     expect(screen.getByText("pnpm install")).toBeInTheDocument();
     expect(screen.getByText("server/")).toBeInTheDocument();
+  });
+
+  // AC-24/AC-15: a never-generated skeleton has First tasks unavailable with no cause — say to generate
+  it("AC-24: a never-generated tour shows the 'Generate the tour to get first tasks' copy", async () => {
+    const view = makeView({ stored: false });
+    view.tour.first_tasks = { availability: { available: false, cause: null, reason: null }, tasks: [] };
+    serve(view);
+    renderPage();
+    expect(await screen.findByText(onboarding.tasks.generateFirst)).toBeInTheDocument();
   });
 
   // AC-8 + AC-37: empty graph from a failed index — not available, with the reason and a re-sync step

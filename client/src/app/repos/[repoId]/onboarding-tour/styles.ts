@@ -11,5 +11,6 @@ export const s = {
     alignItems: "start",
   } satisfies CSSProperties,
   sections: { display: "flex", flexDirection: "column", gap: 14, minWidth: 0 } satisfies CSSProperties,
+  note: { margin: 0, fontSize: 13, color: "var(--text-secondary)" } satisfies CSSProperties,
   aside: { position: "sticky", top: 16 } satisfies CSSProperties,
 } as const;

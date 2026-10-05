@@ -21,6 +21,12 @@ _Nothing yet._
 
 ## What Doesn't Work
 
+### 2026-10-05 — stripping Markdown images with regexes is bypassable; disallow `img` in the renderer
+**Symptom:** plan 26 security review (SF2): server and client regexes removed `![x](url)` and reference images, yet a shortcut image `![x]` with its definition on the next line (`[x]:\nhttps://t/p.png`) or inside a `>` quote still rendered a remote `<img>` (tracking pixel) through the vendored `Markdown`.
+**Cause:** CommonMark reference definitions are global and have several valid layouts; the vendored `Markdown` primitive accepts only `children`, so nothing at render time blocked `img`.
+**Rule:** for model/untrusted Markdown, render through a wrapper over `react-markdown` with `disallowedElements={["img"]}` and `skipHtml` (no `rehype-raw`); keep text strippers only as an extra layer.
+**Evidence:** `client/src/app/repos/[repoId]/onboarding-tour/_components/SafeMarkdown/` · commit d3fe61f
+
 ### 2026-10-05 — a list editor backed by a replace-all PUT, rendered before its data loads, wipes the stored list on the first click
 **Symptom:** plan 24: the agent and skill Context tabs rendered `ContextDocPicker` while `useAgentContext` / `useSkillContext` was still loading, so `attached` was `[]`; the first checkbox toggle sent `PUT …/context {paths: [that one path]}` and silently replaced every stored link.
 **Cause:** `PUT /agents/:id/context` and `/skills/:id/context` replace the whole ordered list, and the picker computes the next list from what it was given — an unloaded query looks exactly like "nothing attached".
@@ -74,6 +80,12 @@ swallow clicks meant for the row underneath.
 `src/components/findings-preview/FindingsPreview.tsx`
 
 ## Tool & Library Notes
+
+### 2026-10-05 — `pnpm build` while `next dev` runs breaks the dev server (500 on every page)
+**Symptom:** after a Done-when ran `cd client && pnpm build`, the already-running dev server on :3000 answered 500 for `/`; the API was fine.
+**Cause:** `next build` rewrites `.next/` underneath the running `next dev`.
+**Rule:** don't run `pnpm build` against a tree where `next dev` is running; if it happened, restart the dev server (`rm -rf client/.next` if it still 500s).
+**Evidence:** plan 26 sign-off (2026-10-05)
 
 ### 2026-10-05 — a vitest path filter containing `[repoId]` matches no files, even escaped
 **Symptom:** plan 24's S19 Done-when `pnpm exec vitest run 'src/app/repos/\[repoId\]/context'` printed "No test files found, exiting with code 1"; the same tests ran under `pnpm exec vitest run context/`.

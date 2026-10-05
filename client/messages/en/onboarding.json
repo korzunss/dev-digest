@@ -60,7 +60,7 @@
     "provider_error": "The model provider returned an error"
   },
   "unavailable": {
-    "language_not_indexed": "Not available — this repository's languages are not indexed, so there is no file graph to build it from",
+    "language_not_indexed": "Not available for this language — this repository's languages are not indexed, so there is no file graph to build it from",
     "index_failed": "Not available — the index failed",
     "model_failed": "Not available — the model could not produce this section"
   },

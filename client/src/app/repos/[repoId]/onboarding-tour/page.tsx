@@ -35,12 +35,15 @@ function SectionBody({
   tour,
   repoId,
   repo,
+  stored,
 }: {
   sectionKey: TourSectionKey;
   tour: OnboardingTour;
   repoId: string;
   repo: ForgeRepoRef | null;
+  stored: boolean;
 }) {
+  const t = useTranslations("onboarding");
   const { architecture, critical_paths, run_locally, reading_path, first_tasks } = tour;
   const sha = tour.built_sha;
   switch (sectionKey) {
@@ -69,6 +72,10 @@ function SectionBody({
         <UnavailableNote availability={reading_path.availability} repoId={repoId} />
       );
     case "firstTasks":
+      // Never generated: tasks come only from the model, so the skeleton has no cause to show.
+      if (!first_tasks.availability.available && !first_tasks.availability.cause && !stored) {
+        return <p style={s.note}>{t("tasks.generateFirst")}</p>;
+      }
       return first_tasks.availability.available ? (
         <FirstTasks tasks={first_tasks.tasks} />
       ) : (
@@ -135,7 +142,7 @@ export default function OnboardingTourPage() {
               <div style={s.sections}>
                 {sections.map((sec) => (
                   <TourSection key={sec.id} id={sec.id} icon={sec.icon} title={sec.title}>
-                    <SectionBody sectionKey={sec.key} tour={view.tour} repoId={repoId} repo={repo} />
+                    <SectionBody sectionKey={sec.key} tour={view.tour} repoId={repoId} repo={repo} stored={view.stored} />
                   </TourSection>
                 ))}
               </div>

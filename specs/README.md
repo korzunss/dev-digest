@@ -94,4 +94,4 @@ migrated.
 | [006 — Intent layer](006-intent-layer.md) | draft | shared, reviewer-core, server, client |
 | [007 — Smart Diff](007-smart-diff.md) | done | shared, reviewer-core, server, client |
 | [008 — Project Context](008-project-context.md) | implemented | shared, reviewer-core, server, client |
-| [009 — Onboarding Generator](009-onboarding-generator.md) | approved | shared, server, client |
+| [009 — Onboarding Generator](009-onboarding-generator.md) | implemented | shared, server, client |

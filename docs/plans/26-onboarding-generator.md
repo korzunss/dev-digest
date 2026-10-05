@@ -1,5 +1,5 @@
 # Development Plan: Onboarding Tour generator
-Status: in-progress
+Status: done
 Save as: docs/plans/26-onboarding-generator.md
 Spec: specs/009-onboarding-generator.md
 Execution: multi-agent
@@ -54,6 +54,8 @@ None open — see *Decisions recorded*.
 - TQ1–TQ5 defaults accepted (TQ5: designs copied to `docs/plans/assets/26/onboarding-tour-{1,2}.png`).
 - D1–D11: recommended options (D1 A, D2 A, D3 A, D4 A, D5 A, D6 A, D7 A, D8 A, D9 B, D10 A, D11 A). D12: multi-agent.
 - GAP1: a failed clone offers Re-clone via `POST /repos/:id/refresh`. GAP2: coverage M = source files of indexed languages (JS/TS universe); a partial caused by parse/graph errors shows its reason. GAP3: First tasks shows the 1–2 tasks that survived grounding with a note "only N tasks could be tied to files"; zero → "not available" with cause (AC-37). GAP4: skeleton reading-path / critical-path rows show a deterministic reason computed from the graph (rank, importer count, chain). → spec-creator, SPEC-09 re-approved before pass 2.
+- 2026-10-05: apply all cross-model review findings (must, should, LOW; `docs/plans/assets/26/cross-model-review.md`); X2 = POST always 200 with the view; X4/X15 tightened SPEC-09 AC-16/AC-34.
+- 2026-10-05 review 1: F1 (cross-module edges to `settings/feature-models`, `repos/constants`) accepted as known drift, not fixed; SF1, SF2, M1, M2, M3, F2–F4 fixed in F1x; SF3 (leading `-` in package-dir names) and F5 (`db/**` and SDK deny-set in the invariant test) fixed in commit 8b24026.
 
 ## Prerequisites
 - SPEC-09 as amended 2026-10-05 (AC-5, 6, 11, 15, 16, 21, 23, 34). Designs: `docs/plans/assets/26/onboarding-tour-{1,2}.png`. Review: `docs/plans/assets/26/cross-model-review.md` (all items applied).
@@ -71,7 +73,7 @@ Sequential. Each group's commit gate: typecheck + unit suite (`--exclude '**/*.i
 | G5 | S13–S16 | client data, shell, page | T1 | hooks, page frame, i18n | `feat(client): onboarding tour page, hooks and sidebar entry` |
 | G6 | S17–S19 | client sections | G5 | section components | `feat(client): onboarding tour sections` |
 | T2 | test-writer | client tests | G6 | TC1–TC10 | `test(client): onboarding tour acceptance tests from SPEC-09` |
-| F1x | S20–S23 | fix mode (review 1): server facts/grounding/service, invariant test, client `SafeMarkdown` | T2 | gap ids SF1, SF2, M1, M2, M3, F2–F4; tests written in fix mode beside each fix | `fix(onboarding): harden commands, images, error text and invariants (review 1)` |
+| F1x | S20–S23 | fix mode (review 1): server facts/grounding/service, invariant test, client `SafeMarkdown` | T2 | gap ids SF1, SF2, M1, M2, M3, F2–F4 (+ SF3, F5 in 8b24026); tests written in fix mode beside each fix. A final fix commit closes the verifier's open rows: R1, AC-7 copy, SK12, First-tasks empty-skeleton UX | `fix(onboarding): harden commands, images, error text and invariants (review 1)` |
 
 ## Steps
 Server `M/` = `server/src/modules/onboarding/`; client `P/` = `client/src/app/repos/[repoId]/onboarding-tour/`.
@@ -270,7 +272,7 @@ Server `M/` = `server/src/modules/onboarding/`; client `P/` = `client/src/app/re
 - **ACs:** AC-4, 16, 33, 34
 - **Files:** `M/constants.ts`, `M/facts.ts`, `M/grounding.ts` (modify) · `server/test/onboarding-facts.test.ts`, `server/test/onboarding-grounding.test.ts` (modify)
 - **Change:**
-  - SF1: add `PACKAGE_DIR_RE = /^[A-Za-z0-9_-][A-Za-z0-9._-]*$/` (the review's `[A-Za-z0-9._-]+`, also refusing a leading `.` so `..` cannot pass). `collectCloneFacts` keeps a first-level dir as a package dir only if its name matches. `isAllowedCommand`'s `cd` branch (grounding.ts:113-117) also requires the match, not just membership in `ctx.packageDirs`.
+  - SF1 (+ SF3, commit 8b24026): add `PACKAGE_DIR_RE = /^[A-Za-z0-9_][A-Za-z0-9._-]*$/` (the review's `[A-Za-z0-9._-]+`, refusing a leading `.`, so `..` cannot pass, and a leading `-`, so `cd -` cannot jump to the previous dir). `collectCloneFacts` keeps a first-level dir as a package dir only if its name matches. `isAllowedCommand`'s `cd` branch (grounding.ts:113-117) also requires the match, not just membership in `ctx.packageDirs`.
   - M1: add `TWO_TOKEN_SCRIPTS = ['start', 'test']`. The 2-token `<pm> <script>` form passes only when the script is in that set **and** in the dir's scripts; every other script needs `<pm> run <script>`. This applies to every package manager, because pnpm, yarn and bun also resolve builtins such as `publish`, `link` and `add` first. `PM_BUILTINS` (`install|i|ci`) is unchanged. `deterministicCommands` (helpers.ts:191-207) already emits `run`, and a test pins that.
   - SF2 server: `stripImages` (grounding.ts:62-68) also removes shortcut images `![…]` not followed by `(` or `[`.
 - **Layer / why here:** pure grounding plus the clone reader.
@@ -315,6 +317,7 @@ Server `M/` = `server/src/modules/onboarding/`; client `P/` = `client/src/app/re
   2. `@devdigest/reviewer-core` may be imported only through named imports from `{LlmDeadlineError, LlmConnectionError, LlmOutputInvalidError, LlmOutputTruncatedError, wrapUntrusted}`, never as a namespace or default import.
   3. `fs`, `node:fs`, `fs/promises`, `node:fs/promises`, `child_process`, `node:child_process` are allowed only in `facts.ts`.
   4. The existing rules stay: no adapters; drizzle/`db/schema` only in `repository.ts`; no `repo-intel/pipeline|repository`; no LLM SDK; fastify only in `routes.ts`.
+  5. (F5, commit 8b24026) No `db/**` import outside `repository.ts`; a type-only `db/client` import is allowed there. An SDK deny-set for every file: `simple-git`, `@octokit/*`, `postgres`, `@ast-grep/napi`.
 - **Layer / why here:** unit test (D10 A).
 - **Skills to apply:** `onion-architecture`, `typescript-expert`
 - **Practices:** one planted-violation case per rule. Feed `violationsOf` an in-memory source that breaks exactly that rule and expect a non-empty result:
@@ -512,6 +515,7 @@ TQ1 `maxRetries: 0`; TQ2 `generated_at`; TQ3 `lastIndexedSha` else HEAD; TQ4 Eng
 - **Assumptions**: 90 s timeout, 4,000 max tokens, `language_not_indexed` ⇔ zero JS/TS files.
 - **Doc vs code**: `onboarding.system.md` and `messages/en/onboarding.json` describe an older section list; S9 and S15 rewrite both.
 - **F1 (review 1, accepted, not fixed):** onboarding adds runtime cross-module edges to `settings/feature-models` and `repos/constants`. This is known warn-level drift, and the S22 test pins exactly these two edges. A possible follow-up is a `container.featureModels` facade and moving `CLONE_JOB_KIND` to `_shared` (see *Follow-ups*).
+- **Verifier open rows:** R1, the AC-7 copy, SK12 and the First-tasks empty-skeleton UX are still open; a final fix commit closes them.
 - **F1x scope:**
   - **M1** makes the allowlist stricter than SPEC-09 AC-16's wording: `<pm> <script>` passes only for `start`/`test`. Every command it drops is still valid under AC-16, so this is narrowing, not a spec change.
   - **SF2** adds a second Markdown renderer (`SafeMarkdown`) beside the vendored one. A vendor refresh does not touch it, but a later restyle of the vendored primitive will not reach it.
@@ -683,6 +687,20 @@ TQ1 `maxRetries: 0`; TQ2 `generated_at`; TQ3 `lastIndexedSha` else HEAD; TQ4 Eng
 | react-best-practices | on demand | S23 | |
 | react-testing-library | on demand | S23 | |
 
+## Handoffs → fix-2
+
+### Fix mode 2 — verifier open rows (R1, AC-7, UX AC-24/AC-15, SK12)
+- R1: clipboard cleanup via `Reflect.deleteProperty(navigator, "clipboard")` in TourHeader/RunCommands tests; no ts-suppressions left.
+- AC-7: `unavailable.language_not_indexed` = "Not available for this language — …"; page test asserts the phrase.
+- UX: `page.tsx` `SectionBody` renders `tasks.generateFirst` when First tasks is unavailable, cause null and no stored tour; new AC-24 page test.
+- SK12: `routes.ts` re-checked against `zod` (IdParams + OnboardingTourView response schema, no handler `.parse`) — no change.
+
+### Skills
+| Skill | Loaded | Applied in | Not used — reason |
+|---|---|---|---|
+| zod | on demand (SKILL.md) | S12 (re-check of routes.ts) | references/ rule files not opened |
+| onion-architecture | preload | S12 (routes transport-only) | |
+
 ## Verification log
 - 2026-10-05 agent: spec-p1 ab3c02452b7a30152 spec-creator 2026-10-05T13:44:31Z
 - 2026-10-05 agent: spec-p2 ab3c02452b7a30152 spec-creator 2026-10-05T13:49:39Z
@@ -745,3 +763,16 @@ TQ1 `maxRetries: 0`; TQ2 `generated_at`; TQ3 `lastIndexedSha` else HEAD; TQ4 Eng
 - 2026-10-05 user: fix SF3 + F5 now (small fix commit; files already in S20/S22)
 - 2026-10-05 agent: fix-loop a5b51f79c0b54fc69 implementer 2026-10-05T17:05:31Z
 - 2026-10-05 fix SF3 + F5 done: PACKAGE_DIR_RE /^[A-Za-z0-9_][A-Za-z0-9._-]*$/; invariant test bans db/** outside repository.ts (type-only db/client allowed there) + SDK deny-set; server unit 776; main-session rerun 140 passed
+- 2026-10-05 SF3+F5 committed by user: 8b24026
+- 2026-10-05 pre-verification full run: server  Test Files  82 passed (82)       Tests  1005 passed (1005)  (ryuk disabled)
+- 2026-10-05 agent: review a2709c29b2fd60726 plan-verifier 2026-10-05T17:13:31Z
+- 2026-10-05 plan-verifier: contradicted (R1 two @ts-expect-error in TourHeader/RunCommands tests); open AC-7 copy wording, SK12 zod for S12; sign-off D33 (main session ran client pnpm build: compiled, onboarding-tour 6.56 kB → closed), R4, e2e/visual; handoff: never-generated skeleton First tasks renders empty (generateFirst copy unreachable)
+- 2026-10-05 user: fix all open rows in one commit — R1, AC-7 copy, SK12, UX first-tasks empty skeleton (+test), S20/S22 text, SPEC-09 Changelog for M1
+- 2026-10-05 agent: plan-p2 a58215717b9fa11e8 implementation-planner 2026-10-05T17:15:11Z
+- 2026-10-05 agent: fix-loop a39a7ea01b8ed488e implementer 2026-10-05T17:15:51Z
+- 2026-10-05 final fix: R1 (Reflect.deleteProperty, 0 ts-suppressions), AC-7 copy contains 'Not available for this language', UX never-generated First tasks shows tasks.generateFirst (+AC-24 test), SK12 zod re-check (no change); client 488, build ok
+- 2026-10-05 agent: review a85bcc93f5def4121 plan-verifier 2026-10-05T17:18:07Z
+- 2026-10-05 verifier delta: R1, AC-7, AC-15, AC-24 met; SK12 closed by Handoffs → fix-2 Skills table; follow-up 'AC-24/AC-37 cause-null skeleton' answered by page.tsx (generateFirst)
+- 2026-10-05 sign-off: user checked the page in the browser (all sections, Generate, On this page, collapse, Copy/Open/Share, nav highlight) — 'все працює'; D33, R4, e2e/visual accepted
+- 2026-10-05 insights: server (dir-name allowlist, ryuk reaper, AST boundary tests), client (SafeMarkdown img, build vs dev); gotchas updated
+- 2026-10-05 metrics: flags: 1 flag(s), 1 repeat(s)

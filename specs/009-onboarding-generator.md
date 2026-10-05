@@ -1,6 +1,6 @@
 # Spec: Onboarding Generator
 Spec ID: SPEC-09
-Status: approved
+Status: implemented
 Supersedes: none
 
 ## Problem & user
@@ -319,3 +319,5 @@ _None._
 2026-10-05 · all · approved (B1–B8 recommended options; SG1–6, SG8, SG9 accepted, SG7 rejected; AC-13/16/17/19 confirmed) · user approval after pass 2 · user
 2026-10-05 · AC-5, AC-6, AC-11, AC-15, AC-21, AC-23, Module interactions, Edge cases · Re-clone via /refresh; coverage denominator = indexed-language source files; surviving tasks shown with a note; deterministic skeleton reasons · plan 26 GAP1–4 · user
 2026-10-05 · AC-16, AC-34, Edge cases, Untrusted inputs · run-command allowlist; strip Markdown images from LLM text · plan 26 cross-model review X4/X15, user-approved · user
+2026-10-05 · AC-16 (implementation note, no wording change) · the two-token `<pm> <script>` form is kept only for `start`/`test`; other scripts must use `<pm> run <script>`, and package dirs must match `^[A-Za-z0-9_][A-Za-z0-9._-]*$` — narrower than the allowed-forms list, so a script named like a package-manager builtin or an option-like dir can never be suggested · plan 26 review 1 (M1, SF1, SF3), user-approved · user
+2026-10-05 · all · implemented via plan 26 (G1–G6, T1, T2, review-1 fixes F1x + SF3/F5, verifier fixes) · plan verification complete, user browser sign-off · user

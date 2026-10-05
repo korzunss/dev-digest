@@ -69,8 +69,8 @@ afterEach(() => {
   onGenerate.mockReset();
   toast.success.mockReset();
   toast.error.mockReset();
-  // @ts-expect-error restore jsdom's lack of clipboard
-  delete navigator.clipboard;
+  // restore jsdom's lack of clipboard
+  Reflect.deleteProperty(navigator, "clipboard");
 });
 
 describe("TourHeader", () => {
