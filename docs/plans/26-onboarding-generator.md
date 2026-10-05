@@ -1,5 +1,5 @@
 # Development Plan: Onboarding Tour generator
-Status: approved
+Status: in-progress
 Save as: docs/plans/26-onboarding-generator.md
 Spec: specs/009-onboarding-generator.md
 Execution: multi-agent
@@ -450,6 +450,23 @@ TQ1 `maxRetries: 0`; TQ2 `generated_at`; TQ3 `lastIndexedSha` else HEAD; TQ4 Eng
 - [x] Every step's *Skills to apply* is complete
 - [x] `bash .claude/skills/sdd/scripts/sdd.sh plan-lint <plan>` prints `plan-lint: ok`
 
+## Handoffs → G1
+
+### Handoff to the next group
+- New exports from `@devdigest/shared` (server + client): `OnboardingUnavailableCause`, `OnboardingAvailability`, `OnboardingFileRow`, `OnboardingCommand`, `OnboardingTask`, `OnboardingModel`, `OnboardingTour`, `OnboardingTourView` (schema + type each), fenced by `// ---- Onboarding tour ----` … `// ---- end Onboarding tour ----` after `Provider`.
+- Removed `Onboarding`, `OnboardingSection`, `OnboardingLink` (no other users).
+- `contracts.test.ts` case renamed `Conformance / OnboardingTour / EvalRun / MemoryItem`.
+- Deviation (trivial): `server/src/vendor/shared/index.ts:7` header comment still says "Onboarding" (vendor path, not in S1 Files).
+- Review note: `last_failure.message` and `clone.error` are plain strings — S11 must cap and sanitise.
+
+### Skills
+| Skill | Loaded | Applied in | Not used — reason |
+|---|---|---|---|
+| onion-architecture | preload | S1 | |
+| zod | full | S1 | |
+| typescript-expert | full | S1 | |
+| engineering-insights | preload | Step 0 | no insight |
+
 ## Verification log
 - 2026-10-05 agent: spec-p1 ab3c02452b7a30152 spec-creator 2026-10-05T13:44:31Z
 - 2026-10-05 agent: spec-p2 ab3c02452b7a30152 spec-creator 2026-10-05T13:49:39Z
@@ -467,3 +484,6 @@ TQ1 `maxRetries: 0`; TQ2 `generated_at`; TQ3 `lastIndexedSha` else HEAD; TQ4 Eng
 - 2026-10-05 SPEC-09 AC-16/AC-34 tightened (X4/X15) and re-approved per the user's 'apply all' decision
 - 2026-10-05 agent: plan-p2 a58215717b9fa11e8 implementation-planner 2026-10-05T14:59:49Z
 - 2026-10-05 plan approved by user (cross-model review applied)
+- 2026-10-05 plan-stage commit 0cfeffe (by user); spec-stage commit 6e0cfce
+- 2026-10-05 agent: implement a5448f7b6cfbe1c37 implementer 2026-10-05T15:08:53Z
+- 2026-10-05 implement G1: done (S1; server+client typecheck ok; contracts 9 passed; blocks identical; server unit 583, client 410)

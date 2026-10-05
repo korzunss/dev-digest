@@ -25,27 +25,6 @@ export const Conformance = z.object({
 });
 export type Conformance = z.infer<typeof Conformance>;
 
-// ---- Onboarding ----
-export const OnboardingLink = z.object({
-  label: z.string(),
-  path: z.string(),
-});
-export type OnboardingLink = z.infer<typeof OnboardingLink>;
-
-export const OnboardingSection = z.object({
-  kind: z.string(),
-  title: z.string(),
-  body: z.string(), // markdown
-  diagram: z.string().nullish(), // mermaid
-  links: z.array(OnboardingLink),
-});
-export type OnboardingSection = z.infer<typeof OnboardingSection>;
-
-export const Onboarding = z.object({
-  sections: z.array(OnboardingSection),
-});
-export type Onboarding = z.infer<typeof Onboarding>;
-
 // ---- Eval ----
 export const EvalPerTrace = z.object({
   name: z.string(),
@@ -366,6 +345,109 @@ export type ConventionSkillPreview = z.infer<typeof ConventionSkillPreview>;
 // ---- Agents ----
 export const Provider = z.enum(['openai', 'anthropic', 'openrouter']);
 export type Provider = z.infer<typeof Provider>;
+
+// ---- Onboarding tour ----
+export const OnboardingUnavailableCause = z.enum(['language_not_indexed', 'index_failed', 'model_failed']);
+export type OnboardingUnavailableCause = z.infer<typeof OnboardingUnavailableCause>;
+
+/** Per-section availability. `reason` is a code the client maps to i18n copy. */
+export const OnboardingAvailability = z.object({
+  available: z.boolean(),
+  cause: OnboardingUnavailableCause.nullable(),
+  reason: z.string().nullable(),
+});
+export type OnboardingAvailability = z.infer<typeof OnboardingAvailability>;
+
+export const OnboardingFileRow = z.object({
+  path: z.string(),
+  reason: z.string().nullable(),
+  rank_position: z.number().int().nullable(),
+  importers: z.number().int().nullable(),
+  chain: z.array(z.string()),
+});
+export type OnboardingFileRow = z.infer<typeof OnboardingFileRow>;
+
+export const OnboardingCommand = z.object({
+  command: z.string(),
+  note: z.string().nullable(),
+});
+export type OnboardingCommand = z.infer<typeof OnboardingCommand>;
+
+export const OnboardingTask = z.object({
+  title: z.string(),
+  body: z.string(), // markdown
+  files: z.array(z.string()),
+});
+export type OnboardingTask = z.infer<typeof OnboardingTask>;
+
+export const OnboardingModel = z.object({
+  provider: Provider,
+  model: z.string(),
+});
+export type OnboardingModel = z.infer<typeof OnboardingModel>;
+
+export const OnboardingTour = z.object({
+  source: z.enum(['llm', 'skeleton']),
+  built_sha: z.string().nullable(),
+  generated_at: z.string().nullable(),
+  index_files: z.number().int(),
+  model: OnboardingModel.nullable(),
+  architecture: z.object({
+    availability: OnboardingAvailability,
+    body: z.string(), // markdown
+    diagram: z.string().nullable(), // mermaid — only the architecture section has one
+    stack: z.array(z.string()),
+    structure: z.array(z.string()),
+  }),
+  critical_paths: z.object({
+    availability: OnboardingAvailability,
+    rows: z.array(OnboardingFileRow),
+  }),
+  run_locally: z.object({
+    availability: OnboardingAvailability,
+    commands: z.array(OnboardingCommand),
+  }),
+  reading_path: z.object({
+    availability: OnboardingAvailability,
+    steps: z.array(OnboardingFileRow),
+  }),
+  first_tasks: z.object({
+    availability: OnboardingAvailability,
+    tasks: z.array(OnboardingTask),
+  }),
+});
+export type OnboardingTour = z.infer<typeof OnboardingTour>;
+
+export const OnboardingTourView = z.object({
+  repo_id: z.string(),
+  clone: z.object({
+    state: z.enum(['none', 'cloning', 'ready', 'failed']),
+    error: z.string().nullable(),
+  }),
+  index: z.object({
+    status: z.enum(['full', 'partial', 'degraded', 'failed']),
+    reason: z.string().nullable(),
+    files_indexed: z.number().int(),
+    source_files_total: z.number().int().nullable(),
+    coverage_partial: z.boolean(),
+    partial_cause: z.enum(['file_cap', 'parse_errors', 'graph_failed', 'soft_budget']).nullable(),
+    last_indexed_sha: z.string(),
+  }),
+  model: OnboardingModel,
+  generating: z.boolean(),
+  stale: z.boolean(),
+  last_failure: z
+    .object({
+      reason: z.enum(['no_key', 'no_model', 'timeout', 'invalid_output', 'provider_error']),
+      message: z.string(),
+      at: z.string(),
+    })
+    .nullable(),
+  stored: z.boolean(),
+  tour: OnboardingTour,
+});
+export type OnboardingTourView = z.infer<typeof OnboardingTourView>;
+// ---- end Onboarding tour ----
 
 // Review execution strategy (matches @devdigest/reviewer-core's ReviewStrategy):
 //  - single-pass: send the WHOLE diff in ONE model call (default)
