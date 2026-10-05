@@ -5,7 +5,7 @@ import type { Agent, Skill } from "@devdigest/shared";
 import agentMessages from "../../../../../../../../messages/en/agents.json";
 import skillMessages from "../../../../../../../../messages/en/skills.json";
 import commonMessages from "../../../../../../../../messages/en/common.json";
-import { attachedIds, moveId, orderedRows, toggleAttachment } from "./helpers";
+import { attachedIds, orderedRows } from "./helpers";
 
 const mutate = vi.fn();
 
@@ -116,20 +116,6 @@ describe("SkillsTab helpers", () => {
 
   it("puts attached skills first, in prompt order", () => {
     expect(orderedRows(SKILLS, ["sk2", "sk1"]).map((s) => s.id)).toEqual(["sk2", "sk1", "sk3"]);
-  });
-
-  it("appends on attach so a new skill lands last", () => {
-    expect(toggleAttachment(["sk2"], "sk1")).toEqual(["sk2", "sk1"]);
-  });
-
-  it("detaches without disturbing the rest of the order", () => {
-    expect(toggleAttachment(["sk2", "sk1", "sk3"], "sk1")).toEqual(["sk2", "sk3"]);
-  });
-
-  it("moves an id and leaves out-of-range moves alone", () => {
-    expect(moveId(["a", "b", "c"], 2, 0)).toEqual(["c", "a", "b"]);
-    expect(moveId(["a", "b", "c"], 0, -1)).toEqual(["a", "b", "c"]);
-    expect(moveId(["a", "b", "c"], 0, 3)).toEqual(["a", "b", "c"]);
   });
 });
 

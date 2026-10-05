@@ -273,4 +273,44 @@ export class AgentsRepository {
       .insert(t.agentSkills)
       .values(skillIds.map((skillId, i) => ({ agentId, skillId, order: i })));
   }
+
+  // ---- agent_context_docs (project-context documents attached to an agent) ----
+
+  /** Documents attached directly to the agent, in prompt order. */
+  async listContextDocs(agentId: string): Promise<{ path: string; order: number }[]> {
+    return this.db
+      .select({ path: t.agentContextDocs.path, order: t.agentContextDocs.order })
+      .from(t.agentContextDocs)
+      .where(eq(t.agentContextDocs.agentId, agentId))
+      .orderBy(asc(t.agentContextDocs.order));
+  }
+
+  /** Replace the attached set; order = index. Caller passes deduped paths. */
+  async setContextDocs(agentId: string, paths: string[]): Promise<void> {
+    await this.db.delete(t.agentContextDocs).where(eq(t.agentContextDocs.agentId, agentId));
+    if (paths.length === 0) return;
+    await this.db
+      .insert(t.agentContextDocs)
+      .values(paths.map((path, i) => ({ agentId, path, order: i })));
+  }
+
+  /**
+   * Documents the agent receives through its ENABLED skills — skill link order,
+   * then the skill's own doc order. One query.
+   */
+  async inheritedContextDocs(
+    agentId: string,
+  ): Promise<{ path: string; skillId: string; skillName: string }[]> {
+    return this.db
+      .select({
+        path: t.skillContextDocs.path,
+        skillId: t.skills.id,
+        skillName: t.skills.name,
+      })
+      .from(t.agentSkills)
+      .innerJoin(t.skills, eq(t.skills.id, t.agentSkills.skillId))
+      .innerJoin(t.skillContextDocs, eq(t.skillContextDocs.skillId, t.skills.id))
+      .where(and(eq(t.agentSkills.agentId, agentId), eq(t.skills.enabled, true)))
+      .orderBy(asc(t.agentSkills.order), asc(t.skillContextDocs.order));
+  }
 }

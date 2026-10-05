@@ -38,6 +38,7 @@ import { SmartDiffService } from '../modules/smart-diff/service.js';
 import { SmartDiffRepository } from '../modules/smart-diff/repository.js';
 import { BlastService } from '../modules/blast/service.js';
 import { BlastRepository } from '../modules/blast/repository.js';
+import { ContextService } from '../modules/context/service.js';
 import { resolveFeatureModel } from '../modules/settings/feature-models.js';
 import { type DepGraph, DepCruiseGraph } from '../adapters/depgraph/index.js';
 import { type Tokenizer, TiktokenTokenizer } from '../adapters/tokenizer/index.js';
@@ -98,6 +99,7 @@ export class Container {
   private _intent?: IntentService;
   private _smartDiff?: SmartDiffService;
   private _blast?: BlastService;
+  private _context?: ContextService;
 
   constructor(config: AppConfig, db: Db, private overrides: ContainerOverrides = {}) {
     this.config = config;
@@ -190,6 +192,15 @@ export class Container {
       repo: new BlastRepository(this.db),
       repoIntel: this.repoIntel,
       forge: (ref) => this.forge(ref),
+    }));
+  }
+
+  /** Project-context documents (spec 008) — the one safe reader for HTTP and review runs. */
+  get context(): ContextService {
+    return (this._context ??= new ContextService({
+      db: this.db,
+      git: this.git,
+      tokenizer: this.tokenizer,
     }));
   }
 

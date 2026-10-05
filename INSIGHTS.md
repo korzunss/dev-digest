@@ -222,6 +222,18 @@ that path; it's runtime data, and the next resync overwrites it.
 
 ## Tool & Library Notes
 
+### 2026-10-05 — the root `.gitignore` rule `clones/` silently hides any `clones/` folder, including e2e fixtures
+**Symptom:** plan 24's G7 put fixture docs in `e2e/fixtures/clones/acme/payments-api/specs/*.md`; `./scripts/e2e.sh` passed locally, but `git status` never listed the files, so CI would have run flow 12 without them.
+**Cause:** `.gitignore:20` is the unanchored `clones/` (meant for `server/clones/`), which matches a `clones/` directory at any depth.
+**Rule:** never name a committed folder `clones/`; fixture clone roots live in `e2e/fixtures/repos/`. After adding fixtures, check `git check-ignore -v <file>` prints nothing.
+**Evidence:** `git check-ignore -v e2e/fixtures/clones/acme/payments-api/specs/alpha.md` → `.gitignore:20:clones/` · plan 24 Verification log (G7-IGN)
+
+### 2026-10-05 — a reviewer-core input-type change breaks server tests that `pnpm typecheck` never sees
+**Symptom:** plan 24 changed `PromptParts.specs` from `string[]` to `{path, body}[]`; `cd server && pnpm typecheck` was clean, yet 5 server unit tests (`prompt-callers.test.ts`, `prompt-structured.test.ts`) failed on string fixtures.
+**Cause:** `server/tsconfig.json` has `"include": ["src/**/*.ts"]`, so `server/test/**` is never typechecked; only vitest exercises it.
+**Rule:** after changing any reviewer-core or `shared` input type, run the server unit suite (`pnpm exec vitest run --exclude '**/*.it.test.ts'`), not just typecheck.
+**Evidence:** `server/tsconfig.json:28` · plan 24 Handoffs → G4 (deviation)
+
 ### 2026-10-05 — a subagent's real token usage lives in its transcript, not in the task notification
 **Symptom:** the task notification's `subagent_tokens` for plan 23's G1 implementer said ~66k, while its transcript summed to ~580k raw tokens (516k of them cache reads); summing transcript `usage` naively gave ~2.2× too much again.
 **Cause:** the notification figure's scope is undocumented (research 2026-10-05); transcripts (`~/.claude/projects/<project>/<session>/subagents/agent-<id>.jsonl`) carry `usage` per streamed message, so one `message.id` appears on several lines (80 usage lines → 36 ids); cache reads dominate a run's raw tokens (~89%). A `SubagentStop` hook gets no token data either.

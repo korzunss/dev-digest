@@ -207,13 +207,10 @@
     }
   },
   "context": {
-    "title": "Project context to use",
+    "loadError": "Could not load this skill's context documents.",
     "hint": "Any agent using this skill inherits these documents.",
-    "attached": "{count} attached",
-    "filterPlaceholder": "Filter documents…",
+    "usedBy": "{count, plural, one {Used by # agent} other {Used by # agents}}",
     "serializesAs": "SERIALIZES AS",
-    "previewTitle": "{path}",
-    "loadError": "Could not load project context.",
     "empty": {
       "title": "No context attached",
       "body": "Attach a spec, a style guide or an ADR and every agent running this skill reads it alongside the rule."
@@ -221,10 +218,6 @@
     "noRepo": {
       "title": "No repository selected",
       "body": "Context documents live in a repository. Pick one from the switcher above to see what this skill can carry."
-    },
-    "noDocs": {
-      "title": "No context documents in this repo",
-      "body": "Add markdown under specs/, docs/ or insights/ and it shows up here, ready to attach."
     }
   },
   "stats": {

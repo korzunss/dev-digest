@@ -501,7 +501,7 @@ d('/skills', () => {
       payload: { paths: ['docs/architecture.md', 'specs/public-api.md', 'docs/architecture.md'] },
     });
     expect(set.statusCode).toBe(200);
-    expect(set.json().map((l: { path: string }) => l.path)).toEqual([
+    expect(set.json().links.map((l: { path: string }) => l.path)).toEqual([
       'docs/architecture.md',
       'specs/public-api.md',
     ]);
@@ -509,7 +509,8 @@ d('/skills', () => {
     const read = (
       await app.inject({ method: 'GET', url: `/skills/${created.id}/context` })
     ).json();
-    expect(read.map((l: { order: number }) => l.order)).toEqual([0, 1]);
+    expect(read.links.map((l: { order: number }) => l.order)).toEqual([0, 1]);
+    expect(read.used_by_agents).toBe(0);
 
     // Replacing with an empty set detaches everything.
     await app.inject({
@@ -519,7 +520,84 @@ d('/skills', () => {
     });
     expect(
       (await app.inject({ method: 'GET', url: `/skills/${created.id}/context` })).json(),
-    ).toEqual([]);
+    ).toEqual({ links: [], used_by_agents: 0 });
+    await app.close();
+  });
+
+  it('stores canonical context paths: ./ and // collapse, duplicates drop', async () => {
+    const app = await makeApp();
+    const created = await createSkill(app, { ...createBody, name: 'canonical-skill' });
+    const set = await app.inject({
+      method: 'PUT',
+      url: `/skills/${created.id}/context`,
+      payload: { paths: ['./specs/a.md', 'specs/a.md', 'docs//b.md'] },
+    });
+    expect(set.statusCode).toBe(200);
+    expect(set.json().links.map((l: { path: string }) => l.path)).toEqual([
+      'specs/a.md',
+      'docs/b.md',
+    ]);
+    await app.close();
+  });
+
+  it('context used_by_agents counts a disabled agent; links never bump the skill version', async () => {
+    const app = await makeApp();
+    const skill = await createSkill(app, { ...createBody, name: 'used-by-skill' });
+    const agent = (
+      await app.inject({
+        method: 'POST',
+        url: '/agents',
+        payload: {
+          name: 'Disabled Owner',
+          provider: 'openai',
+          model: 'gpt-4o-mini',
+          system_prompt: 'Review the diff.',
+          enabled: false,
+        },
+      })
+    ).json();
+    await app.inject({
+      method: 'POST',
+      url: `/agents/${agent.id}/skills`,
+      payload: { skill_ids: [skill.id] },
+    });
+
+    const put = await app.inject({
+      method: 'PUT',
+      url: `/skills/${skill.id}/context`,
+      payload: { paths: ['docs/a.md'] },
+    });
+    expect(put.json().used_by_agents).toBe(1);
+    const after = (await app.inject({ method: 'GET', url: `/skills/${skill.id}` })).json();
+    expect(after.version).toBe(skill.version);
+    await app.close();
+  });
+
+  it('rejects a traversal path in the context body', async () => {
+    const app = await makeApp();
+    const skill = await createSkill(app, { ...createBody, name: 'bad-path-skill' });
+    const res = await app.inject({
+      method: 'PUT',
+      url: `/skills/${skill.id}/context`,
+      payload: { paths: ['../a.md'] },
+    });
+    expect(res.statusCode).toBeGreaterThanOrEqual(400);
+    expect(res.statusCode).toBeLessThan(500);
+    await app.close();
+  });
+
+  // `C:/a.md` passes the body schema, so only the service's normalisePath can refuse it
+  it('a path the schema lets through but normalisePath refuses is a 422 and stores nothing', async () => {
+    const app = await makeApp();
+    const skill = await createSkill(app, { ...createBody, name: 'normalise-reject-skill' });
+    const url = `/skills/${skill.id}/context`;
+    const ok = await app.inject({ method: 'PUT', url, payload: { paths: ['specs/keep.md'] } });
+    expect(ok.statusCode).toBe(200);
+
+    const res = await app.inject({ method: 'PUT', url, payload: { paths: ['docs/fine.md', 'C:/a.md'] } });
+    expect(res.statusCode).toBe(422);
+    const read = (await app.inject({ method: 'GET', url })).json();
+    expect(read.links.map((l: { path: string }) => l.path)).toEqual(['specs/keep.md']);
     await app.close();
   });
 

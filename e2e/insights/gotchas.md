@@ -1,6 +1,6 @@
 # e2e — current gotchas
 
-Last reconciled with ../INSIGHTS.md: 2026-09-30
+Last reconciled with ../INSIGHTS.md: 2026-10-05
 
 This is a curated index of rules still in force. Full write-ups live in
 [`../INSIGHTS.md`](../INSIGHTS.md) (append-only log). A rule that stops holding
@@ -12,6 +12,8 @@ is edited or removed here. Items are added or updated by the
 - **No `click --text`: click with `find text|role … click` (`--exact` for substring clashes) or `click xpath=//…`; assert text as *rendered* (CSS uppercase included); wait for the click target before `find … click`** — spot it: `✗ Element not found: --text`, or a `wait --text` timeout while the text is visibly on screen. The real cause is in the `— stderr:` part of the failed step's line (the runner prints it since plan 15). — [INSIGHTS: 2026-09-30 — correction: the runner now prints agent-browser's stderr](../INSIGHTS.md#2026-09-30--correction-the-runner-now-prints-agent-browsers-stderr-on-a-failed-step-plan-15) (original: [agent-browser 0.38 locator grammar](../INSIGHTS.md#2026-09-30--agent-browser-038-locator-grammar-no-click---text-xpath-prefix-wait---text-sees-css-uppercased-text))
 
 - **A CI-only bare `✗ Element not found` on `find role … click` (while a real miss says `N elements have role …, but none match`) → click by CSS selector (`click "a[href$='/x']"`) after a `wait --fn` guard** — spot it: the flow passes locally on dev and prod builds but fails on GitHub CI at the same step. — [INSIGHTS: 2026-09-30 — on CI, `find role link click` can fail with a bare "Element not found"](../INSIGHTS.md#2026-09-30--on-ci-find-role-link-click---name--can-fail-with-a-bare-element-not-found-that-never-reproduces-locally-click-by-css-selector)
+
+- **HTML5 drag-and-drop: use native `drag <src> <dst>` with CSS selectors — it fires React's drag handlers; no synthetic `DragEvent` fallback needed. Locate picker rows by the `Reorder <path>` handle.** — spot it: a plan proposing an `eval` DragEvent dispatch or a keyboard reorder as a stand-in for a drag test. — [INSIGHTS: 2026-10-05 — `agent-browser drag` drives React HTML5 drag-and-drop](../INSIGHTS.md#2026-10-05--agent-browser-drag-src-dst-drives-react-html5-drag-and-drop-no-synthetic-dragevent-fallback-needed)
 
 ## Local runs and seed data
 

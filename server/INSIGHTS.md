@@ -25,6 +25,12 @@ the section guide and the promotion rule (a standing rule becomes one line under
 
 ## What Doesn't Work
 
+### 2026-10-05 — a realpath "inside the clone" check still lets a committed symlink read `.git/config` (the forge PAT)
+**Symptom:** plan 24's security review (SF1, HIGH): a repo committing `docs/x.md -> ../.git/config` passed every guard of the context reader — the requested name matched the roots glob and `.md`, and `realpath(target)` was inside the clone — so `GET /repos/:id/context/doc?path=docs/x.md` (and a review run with that path attached) returned `.git/config`.
+**Cause:** the lexical allowlist (roots, extension) was checked on the *requested* name only; the realpath step checked only containment. The clone's `.git/config` holds the forge token in `remote.origin.url` (`repos/service.ts` `withForgeToken` → `simple-git.ts` `clone(url, …)`), so "inside the clone" is not "safe to read".
+**Rule:** for any reader of cloned-repo files, re-apply the full allowlist (roots glob, extension, no dot-directory segment) to the repo-relative form of the **realpath'd** target, after the containment check — not just to the requested path.
+**Evidence:** `server/src/modules/context/service.ts` `readSafely` (realRel check after `isInsideDir`) · `server/test/context.it.test.ts` "SF1: refuses an in-clone symlink to .git/config…"
+
 ### 2026-09-29 — a review diff by base *branch name* reviews unrelated commits, silently
 **Symptom:** a reviewer run on PR #8 of korzunss/dev-digest (74 files, +8 693) logged `Diff ready — 343 changed file(s)`, sent ~606k input tokens in one call, and returned 0 findings / score 100; the only candidate finding cited a file not in the PR and was dropped by grounding. Looks like a clean PR or a weak model.
 **Cause:** `loadDiff` ran `git diff ${pull.base}...${headSha}` where `pull.base` is the branch name (`octokit.ts` stores `pr.base.ref`). In the shallow clone the local `main` was stale (`c6af1e4`, while `origin/main` was current), so the merge-base was weeks old and the diff swept in every PR since. A non-empty diff never reaches the `pr_files` fallback.
@@ -189,6 +195,18 @@ callback at all · `specs/001-run-cost-badge.md` → "Postgres indexes the colum
 foreign key POINTS AT"
 
 ## Tool & Library Notes
+
+### 2026-10-05 — correction: the PSR1 glob caps were bypassed three more ways; the shape rules that hold, and how to prove them
+**Symptom:** plan 25's reviews found accepted root globs that still took seconds per path once the walk lost its depth limit (4 KB paths): `*a*/**/*a*/**/x.md` ~790 ms; `'**/*/**/'+'*/'×122+'*.md'` 1,068 ms on `'a/'×2046+'.x.md'`; `**/*/**/{**,x}.md` 2,775 ms on `'a/'×2046+'b.MD'`. Also `./!docs/**/*.md` slipped past a `startsWith('!')` negation check.
+**Cause:** cost is driven by (a) two or more segments holding ≥ 2 wildcards, (b) many segments after a second `**`, which is quadratic in the path's *segment count* — invisible when timing tests use a few long segments — and (c) a `**` inside braces or a segment (`{**,x}`, `a**b`), which picomatch 4 compiles to a slash-crossing globstar that whole-segment counting never sees. picomatch strips one leading `./` before detecting `!`.
+**Rule:** `validateRootGlob` must refuse: `scan(g).negated` (not just `startsWith('!')`); any `**` that is not a whole segment; more than one segment with ≥ 2 wildcards; and, with two `**`, anything but the file name after the second. Prove it with a fuzz, not hand-picked globs: random globs over brace/class/extglob/negation atoms, each accepted one matched against many-short-segment paths (`'a/'×2046+'b.MD'`, `'docs/'×818+'.x.md'`) as well as long-segment ones. After these rules: 600,222 accepted globs, worst 57.6 ms per 4 KB path.
+**Evidence:** `server/src/modules/context/helpers.ts` `globShapeProblem` · `server/test/context-helpers.test.ts` SEC1b/SEC2b/SEC2c blocks · plan 25 Verification log (review 1–3 triage)
+
+### 2026-10-05 — a user glob that `picomatch.makeRe` compiles fine can still hang the API for minutes when matched
+**Symptom:** plan 24's pr-self-review (PSR1, CRITICAL): the root glob `'**/' + '*a'.repeat(20) + '*b.md'` passed `validateRootGlob` (length, `.md`, no `..`, compiles), then matching it against `'a'.repeat(40) + '.md'` ran for more than 40 s (killed). After a per-segment wildcard cap, four `**` segments still took ~2 s on one 245-char path. The roots route is LAN-reachable with no auth, so one PUT plus one GET blocks the single-process API.
+**Cause:** picomatch compiles each `*` to a lazy `[^/]*?` and each `**` to a cross-segment group; the backtracking cost grows exponentially with wildcards per segment and polynomially (path length ^ `**` count) across segments. Compiling costs nothing — matching is where it blows up. The `security-reviewer` filtered ReDoS out by its NR rule; the pr-self-review catalog caught it as injection.
+**Rule:** validate a user-supplied glob's *shape*, not just its length: ≤ 2 `*`/`?` per segment, ≤ 2 `**` segments, no extglobs, nested braces, ranges or `/` inside braces — and keep a timing test that every accepted glob matches a 255-char name in < 50 ms.
+**Evidence:** `server/src/modules/context/helpers.ts` `globShapeProblem` · `server/src/modules/context/constants.ts` `MAX_SEGMENT_WILDCARDS`, `MAX_DOUBLE_STARS` · `server/test/context-helpers.test.ts` PSR1 block
 
 ### 2026-09-30 — a data migration goes into a `pnpm db:generate --custom` stub, generated *before* the schema edit
 **Symptom:** a new unique index needed existing duplicate rows cleaned first. drizzle-kit only emits DDL, and `migrations/**` is "generated only", so there seemed to be no legitimate place for the cleanup SQL. The custom migration's snapshot then showed hundreds of changed lines in a plain `diff`, which looked like schema drift.

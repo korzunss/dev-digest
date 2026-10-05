@@ -1,4 +1,5 @@
 # `@devdigest/e2e` — browser end-to-end suite
+<!-- verified against f75b0f9 + working tree on 2026-10-05 · sources: e2e/specs/12-project-context.flow.json -->
 
 Deterministic UI flows for the web app, driven by
 [Vercel **agent-browser**](https://github.com/vercel-labs/agent-browser) — a
@@ -20,8 +21,9 @@ adds a substring check on top. `wait --text` matches case-sensitively against th
 stable and key-free. Full format reference, why the `NN-` prefix is run order,
 and the flow-by-flow catalogue: [`docs/flows.md`](docs/flows.md).
 
-Flows target **read-only seeded data** (the demo repo `acme/payments-api`, PR
-#482, the seeded agents), so nothing triggers a model call.
+Flows target seeded data (the demo repo `acme/payments-api`, PR #482, the seeded
+agents), so nothing triggers a model call. Flows `10` and `12` write to it
+(see [`docs/flows.md`](docs/flows.md)).
 
 > **Precondition: a freshly-seeded DB.** Flow `02` follows the home redirect to
 > the *first* repo, so it assumes the seeded demo repo is the only one. CI
@@ -92,5 +94,6 @@ a CI artifact by `.github/workflows/e2e-web.yml`).
 | `09-skills` | `/skills` → open a seeded skill → walk Config/Context/Preview/Versions/Stats/Evals; agent editor → Skills tab lists its attached skills |
 | `10-conventions` | Sidebar → conventions screen → reject one candidate, bulk-accept the rest → create a skill from them → it appears in the Skills Lab |
 | `11-gitlab-affordances` | Settings → API Keys shows the GitLab PAT row + scope hint; onboarding copy accepts a GitLab URL (no live import) |
+| `12-project-context` | agent Context tab → attach two fixture documents → drag-and-drop reorder → order persists after reopening (needs the fixture clone from `e2e/fixtures/repos`) |
 
-Full catalogue with each flow's seed-data assumptions: [`docs/flows.md`](docs/flows.md#3-the-11-flows-today).
+Full catalogue with each flow's seed-data assumptions: [`docs/flows.md`](docs/flows.md#3-the-12-flows-today).

@@ -21,7 +21,11 @@ _Nothing yet._
 
 ## What Doesn't Work
 
-_Nothing yet._
+### 2026-10-05 — a list editor backed by a replace-all PUT, rendered before its data loads, wipes the stored list on the first click
+**Symptom:** plan 24: the agent and skill Context tabs rendered `ContextDocPicker` while `useAgentContext` / `useSkillContext` was still loading, so `attached` was `[]`; the first checkbox toggle sent `PUT …/context {paths: [that one path]}` and silently replaced every stored link.
+**Cause:** `PUT /agents/:id/context` and `/skills/:id/context` replace the whole ordered list, and the picker computes the next list from what it was given — an unloaded query looks exactly like "nothing attached".
+**Rule:** any editor that sends the whole list back must not render its controls until the stored list has loaded: early-return a `Skeleton` on `isLoading` and an `ErrorState` with `onRetry` on `isError`.
+**Evidence:** `client/src/app/agents/[id]/_components/AgentEditor/_components/ContextTab/ContextTab.tsx` and `client/src/app/skills/[id]/_components/SkillEditor/_components/ContextTab/ContextTab.tsx` (loading/error guards) · their `ContextTab.test.tsx` "no checkboxes while loading or failed"
 
 ## Codebase Patterns
 
@@ -70,6 +74,12 @@ swallow clicks meant for the row underneath.
 `src/components/findings-preview/FindingsPreview.tsx`
 
 ## Tool & Library Notes
+
+### 2026-10-05 — a vitest path filter containing `[repoId]` matches no files, even escaped
+**Symptom:** plan 24's S19 Done-when `pnpm exec vitest run 'src/app/repos/\[repoId\]/context'` printed "No test files found, exiting with code 1"; the same tests ran under `pnpm exec vitest run context/`.
+**Cause:** vitest 2.1.9 treats the filter as a pattern; the bracketed Next.js route segment never matches the literal path, with or without backslashes.
+**Rule:** filter client tests on a bracket-free substring of the path (`context/`, `RunTraceDrawer`), and write plan Done-when commands the same way.
+**Evidence:** plan 24 Verification log (D32) · `client/src/app/repos/[repoId]/context/`
 
 ### 2026-09-27 — `SeverityBadge compact` renders the icon only, never the severity word
 **Symptom:** plan 02 asked the inline finding card and its collapsed stub for

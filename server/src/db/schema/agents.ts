@@ -76,3 +76,22 @@ export const agentSkills = pgTable(
     skillIdx: index('agent_skills_skill_idx').on(t.skillId),
   }),
 );
+
+/**
+ * Project-context documents attached directly to an agent, in prompt order.
+ * Links a repo-relative PATH, not an id (docs are files in the clone). The PK
+ * leads with agent_id, so no separate FK index.
+ */
+export const agentContextDocs = pgTable(
+  'agent_context_docs',
+  {
+    agentId: uuid('agent_id')
+      .notNull()
+      .references(() => agents.id, { onDelete: 'cascade' }),
+    path: text('path').notNull(),
+    order: integer('order').notNull().default(0),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.agentId, t.path] }),
+  }),
+);

@@ -18,6 +18,7 @@ export {
   INJECTION_GUARD,
   REPO_RULES_GUARD,
   type PromptParts,
+  type ContextDoc,
   type AssembledPrompt,
 } from './prompt.js';
 

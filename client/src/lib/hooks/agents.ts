@@ -3,7 +3,8 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
-import type { Agent, ModelInfo, Provider, ReviewStrategy } from "@devdigest/shared";
+import { changedPaths, invalidateContextDocs } from "./context";
+import type { Agent, AgentContext, ModelInfo, Provider, ReviewStrategy } from "@devdigest/shared";
 
 export function useAgents() {
   return useQuery({
@@ -87,5 +88,61 @@ export function useProviderModels(provider: Provider | null | undefined) {
     queryFn: () => api.get<ModelInfo[]>(`/providers/${provider}/models`),
     enabled: !!provider,
     staleTime: 5 * 60_000,
+  });
+}
+
+// ---- Project context -------------------------------------------------------
+
+/**
+ * The project-context documents an agent carries: its own links in prompt
+ * order, plus the read-only `inherited` ones that arrive through its enabled
+ * skills.
+ */
+export function useAgentContext(id: string | null | undefined) {
+  return useQuery({
+    queryKey: ["agent-context", id],
+    queryFn: () => api.get<AgentContext>(`/agents/${id}/context`),
+    enabled: !!id,
+  });
+}
+
+/**
+ * Replace an agent's own context links wholesale — the whole ordered path list
+ * is sent, since order is the order the documents reach the model. Same
+ * optimistic pattern as `useSetSkillContext`: reordering is repeated keypresses
+ * and each one recomputes from the cache. `inherited` is not touched by this
+ * request, so it is kept as cached until the response replaces it.
+ */
+export function useSetAgentContext() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, paths }: { id: string; paths: string[] }) =>
+      api.put<AgentContext>(`/agents/${id}/context`, { paths }),
+    onMutate: async ({ id, paths }) => {
+      await qc.cancelQueries({ queryKey: ["agent-context", id] });
+      const previous = qc.getQueryData<AgentContext>(["agent-context", id]);
+      qc.setQueryData<AgentContext | undefined>(["agent-context", id], (prev) =>
+        prev
+          ? { ...prev, links: paths.map((path, order) => ({ agent_id: id, path, order })) }
+          : prev,
+      );
+      return { previous };
+    },
+    onError: (_err, { id }, context) => {
+      if (context?.previous) qc.setQueryData(["agent-context", id], context.previous);
+    },
+    onSuccess: (data, { id }, context) => {
+      qc.setQueryData(["agent-context", id], data);
+      // "Used by N agents" on the page changed, for the added/removed paths only.
+      // A skill's own count is not touched by an agent's own links.
+      const before = context?.previous?.links.map((l) => l.path);
+      invalidateContextDocs(
+        qc,
+        changedPaths(
+          before,
+          data.links.map((l) => l.path),
+        ),
+      );
+    },
   });
 }

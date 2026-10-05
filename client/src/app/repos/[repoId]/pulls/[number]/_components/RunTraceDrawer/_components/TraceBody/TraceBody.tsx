@@ -19,6 +19,8 @@ import { Row, Stat } from "../atoms";
 export function TraceBody({ trace, findings }: { trace: RunTrace; findings: FindingRecord[] }) {
   const t = useTranslations("runs");
   const stats = trace.stats;
+  // Nullish on traces written before skips were recorded: renders nothing.
+  const skipped = trace.specs_skipped ?? [];
   return (
     <>
       <TraceSection icon="Settings" title={t("trace.configuration")}>
@@ -38,15 +40,20 @@ export function TraceBody({ trace, findings }: { trace: RunTrace; findings: Find
           </Row>
           <Row label={t("trace.config.specsRead")}>
             <div style={s.specsWrap}>
-              {trace.specs_read.length === 0 ? (
+              {trace.specs_read.length === 0 && skipped.length === 0 ? (
                 <span style={s.specsNone}>{t("trace.config.none")}</span>
               ) : (
-                trace.specs_read.map((sp, i) => (
-                  <span key={i} className="mono" style={s.spec}>
+                trace.specs_read.map((sp) => (
+                  <span key={sp} className="mono" style={s.spec}>
                     {sp}
                   </span>
                 ))
               )}
+              {skipped.map((sp) => (
+                <span key={`skipped-${sp.path}`} className="mono" style={s.spec}>
+                  {t("trace.config.skipped", { path: sp.path, reason: t(`trace.config.skipReason.${sp.reason}`) })}
+                </span>
+              ))}
             </div>
           </Row>
         </div>

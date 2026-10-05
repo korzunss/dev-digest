@@ -281,13 +281,57 @@ export const PrCommentInput = z.object({
 export type PrCommentInput = z.infer<typeof PrCommentInput>;
 
 // ---- Project Context ----
+/**
+ * Default search roots for project-context documents. Mirrored by the
+ * `repos.context_globs` column default in server/src/db/schema/repos.ts.
+ */
+export const DEFAULT_CONTEXT_ROOTS = ['**/{specs,docs,insights}/**/*.md'] as const;
+
+export const ContextDocType = z.enum(['specs', 'docs', 'insights', 'other']);
+export type ContextDocType = z.infer<typeof ContextDocType>;
+
 export const SpecFile = z.object({
   path: z.string(),
   content: z.string().nullish(),
   size: z.number().int().nullish(),
   updated_at: z.string().nullish(),
+  /** Nearest ancestor folder kind; nullish so older payloads still parse. */
+  type: ContextDocType.nullish(),
+  tokens: z.number().int().nullish(),
+  used_by_agents: z.number().int().nullish(),
 });
 export type SpecFile = z.infer<typeof SpecFile>;
+
+export const ContextListing = z.object({
+  docs: z.array(SpecFile),
+  truncated: z.boolean(),
+});
+export type ContextListing = z.infer<typeof ContextListing>;
+
+export const ContextRoots = z.object({
+  globs: z.array(z.string()),
+  is_default: z.boolean(),
+});
+export type ContextRoots = z.infer<typeof ContextRoots>;
+
+export const SetContextRootsBody = z.object({ globs: z.array(z.string().max(1024)).min(1).max(100) });
+export type SetContextRootsBody = z.infer<typeof SetContextRootsBody>;
+
+/** A repo-relative `.md` path: no NUL, not absolute, no `..` segment. */
+export const ContextDocPath = z
+  .string()
+  .min(1)
+  .max(512)
+  .refine((p) => {
+    if (p.includes('\0')) return false;
+    if (p.startsWith('/') || p.startsWith('\\')) return false;
+    if (p.split(/[\\/]/).includes('..')) return false;
+    return p.toLowerCase().endsWith('.md');
+  }, 'must be a repo-relative .md path');
+export type ContextDocPath = z.infer<typeof ContextDocPath>;
+
+export const ContextPathsBody = z.object({ paths: z.array(ContextDocPath).max(200) });
+export type ContextPathsBody = z.infer<typeof ContextPathsBody>;
 
 export const IndexStatus = z.object({
   status: z.enum(['idle', 'cloning', 'parsing', 'embedding', 'done', 'error']),

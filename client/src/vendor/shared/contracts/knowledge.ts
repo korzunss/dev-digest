@@ -181,6 +181,34 @@ export const SkillContextLink = z.object({
 });
 export type SkillContextLink = z.infer<typeof SkillContextLink>;
 
+/** A project-context document attached to an agent, in prompt order. */
+export const AgentContextLink = z.object({
+  agent_id: z.string(),
+  path: z.string(),
+  order: z.number().int(),
+});
+export type AgentContextLink = z.infer<typeof AgentContextLink>;
+
+/** A document an agent receives through one of its enabled skills. */
+export const InheritedContextDoc = z.object({
+  path: z.string(),
+  skill_id: z.string(),
+  skill_name: z.string(),
+});
+export type InheritedContextDoc = z.infer<typeof InheritedContextDoc>;
+
+export const AgentContext = z.object({
+  links: z.array(AgentContextLink),
+  inherited: z.array(InheritedContextDoc),
+});
+export type AgentContext = z.infer<typeof AgentContext>;
+
+export const SkillContext = z.object({
+  links: z.array(SkillContextLink),
+  used_by_agents: z.number().int(),
+});
+export type SkillContext = z.infer<typeof SkillContext>;
+
 /** One agent that has this skill attached — the Stats tab's "used by" list. */
 export const SkillStatsAgent = z.object({ id: z.string(), name: z.string() });
 export type SkillStatsAgent = z.infer<typeof SkillStatsAgent>;

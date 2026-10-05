@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { eq } from 'drizzle-orm';
@@ -46,6 +46,7 @@ d('skills reach the prompt', () => {
   let pg: PgFixture;
   let workspaceId: string;
   let cloneDir: string;
+  let outsideDir: string;
   let prSeq = 0;
 
   beforeAll(async () => {
@@ -66,10 +67,19 @@ d('skills reach the prompt', () => {
       path.join(cloneDir, 'docs', 'architecture.md'),
       '# Architecture\n\nOne module per feature.',
     );
+    // Fixtures for the skip reasons: an oversized doc, a doc outside the search
+    // roots, and an in-root symlink pointing at a file outside the clone.
+    await mkdir(path.join(cloneDir, 'src'), { recursive: true });
+    await writeFile(path.join(cloneDir, 'specs', 'big.md'), 'x'.repeat(512 * 1024 + 1));
+    await writeFile(path.join(cloneDir, 'src', 'notes.md'), '# not a root');
+    outsideDir = await mkdtemp(path.join(tmpdir(), 'devdigest-outside-'));
+    await writeFile(path.join(outsideDir, 'secret.md'), 'TOP SECRET');
+    await symlink(path.join(outsideDir, 'secret.md'), path.join(cloneDir, 'specs', 'escape.md'));
   });
   afterAll(async () => {
     await pg?.stop();
     if (cloneDir) await rm(cloneDir, { recursive: true, force: true });
+    if (outsideDir) await rm(outsideDir, { recursive: true, force: true });
   });
 
   /**
@@ -363,7 +373,7 @@ d('skills reach the prompt', () => {
     expect(trace.prompt_assembly.specs).toContain('One module per feature.');
     // The engine wraps each document as untrusted data — unlike a skill body,
     // a spec is not an instruction.
-    expect(trace.prompt_assembly.specs).toContain('<untrusted source="spec-0">');
+    expect(trace.prompt_assembly.specs).toContain('<untrusted source="specs/public-api.md">');
     expect(trace.prompt_assembly.user).toContain('## Project context');
     expect(trace.prompt_assembly.specs_tokens).toBeGreaterThan(0);
     expect(trace.specs_read).toEqual(['specs/public-api.md', 'docs/architecture.md']);
@@ -390,7 +400,59 @@ d('skills reach the prompt', () => {
     // The run completed with what it could read.
     expect(trace.specs_read).toEqual(['specs/public-api.md']);
     const log = JSON.stringify(trace.log);
-    expect(log).toContain('specs/not-in-this-repo.md');
+    expect(log).toContain('specs/not-in-this-repo.md (missing)');
+    expect(trace.specs_skipped).toEqual([{ path: 'specs/not-in-this-repo.md', reason: 'missing' }]);
+    await app.close();
+  });
+
+  it('an agent own documents come before the ones inherited from a skill', async () => {
+    const app = await makeApp({ withClone: true });
+    const agent = await makeAgent(app, 'Own Docs Reviewer');
+    const skill = await makeSkill(app, 'inherited-carrier', '# rule');
+    await app.inject({
+      method: 'POST',
+      url: `/agents/${agent.id}/skills`,
+      payload: { skill_ids: [skill.id] },
+    });
+    await app.inject({
+      method: 'PUT',
+      url: `/skills/${skill.id}/context`,
+      payload: { paths: ['docs/architecture.md', 'specs/public-api.md'] },
+    });
+    await app.inject({
+      method: 'PUT',
+      url: `/agents/${agent.id}/context`,
+      payload: { paths: ['specs/public-api.md'] },
+    });
+
+    const trace = await runAndReadTrace(app, (await setupPr()).id, agent.id);
+    // Own first; the duplicate (also on the skill) appears once.
+    expect(trace.specs_read).toEqual(['specs/public-api.md', 'docs/architecture.md']);
+    await app.close();
+  });
+
+  it('skips outside-roots, symlink-escape and oversized documents with their reasons', async () => {
+    const app = await makeApp({ withClone: true });
+    const agent = await makeAgent(app, 'Skipping Reviewer');
+    await app.inject({
+      method: 'PUT',
+      url: `/agents/${agent.id}/context`,
+      payload: {
+        paths: ['specs/public-api.md', 'src/notes.md', 'specs/escape.md', 'specs/big.md'],
+      },
+    });
+
+    const trace = await runAndReadTrace(app, (await setupPr()).id, agent.id);
+    expect(trace.specs_read).toEqual(['specs/public-api.md']);
+    expect(trace.specs_skipped).toEqual([
+      { path: 'src/notes.md', reason: 'outside_search_roots' },
+      { path: 'specs/escape.md', reason: 'outside_clone' },
+      { path: 'specs/big.md', reason: 'too_large' },
+    ]);
+    const log = JSON.stringify(trace.log);
+    expect(log).toContain('src/notes.md (outside_search_roots)');
+    expect(log).not.toContain('TOP SECRET');
+    expect(trace.prompt_assembly.specs).not.toContain('TOP SECRET');
     await app.close();
   });
 
@@ -403,16 +465,18 @@ d('skills reach the prompt', () => {
       url: `/agents/${agent.id}/skills`,
       payload: { skill_ids: [skill.id] },
     });
-    // A path is a request that was stored — it gets the same guard on the way
-    // out as it would on the way in.
-    await app.inject({
-      method: 'PUT',
-      url: `/skills/${skill.id}/context`,
-      payload: { paths: ['../../../etc/passwd'] },
-    });
+    // PUT now rejects such a path, so plant a row as an older release might
+    // have stored it: the read-time guard must still refuse it.
+    await pg.handle.db
+      .insert(t.skillContextDocs)
+      .values({ skillId: skill.id, path: '../../../etc/passwd', order: 0 });
 
     const trace = await runAndReadTrace(app, (await setupPr()).id, agent.id);
     expect(trace.specs_read).toEqual([]);
+    expect(trace.specs_skipped).toEqual([
+      { path: '../../../etc/passwd', reason: 'outside_clone' },
+    ]);
+    expect(trace.prompt_assembly.user).not.toContain('## Project context');
     expect(trace.prompt_assembly.specs ?? null).toBeNull();
     await app.close();
   });
