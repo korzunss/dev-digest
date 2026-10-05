@@ -1,5 +1,6 @@
 {
   "title": "Onboarding for {repo}",
+  "crumb": "Onboarding Tour",
   "onThisPage": "On this page",
   "sections": {
     "architecture": "Architecture",

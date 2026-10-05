@@ -46,3 +46,17 @@ export function reasonKey<T extends string>(
 ): T | "other" {
   return known.find((k) => k === code) ?? fallback;
 }
+
+/**
+ * Remove every way Markdown/HTML can ask the browser to load an image from
+ * model-written text: inline `![alt](url)`, reference `![alt][id]` (and its
+ * `[id]: url` definition) and raw `<img>`. Defense in depth over the server's
+ * stripping (AC-34) — the alt text is dropped with the image.
+ */
+export function stripMarkdownImages(md: string): string {
+  return md
+    .replace(/<img\b[^>]*>/gi, "")
+    .replace(/!\[[^\]]*\]\((?:[^()]|\([^()]*\))*\)/g, "")
+    .replace(/!\[[^\]]*\]\s*\[[^\]]*\]/g, "")
+    .replace(/^[ \t]{0,3}\[[^\]]+\]:[ \t]*\S+.*$/gm, "");
+}

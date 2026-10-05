@@ -6,6 +6,7 @@ import React from "react";
 import { useTranslations } from "next-intl";
 import { Badge, Markdown } from "@devdigest/ui";
 import type { OnboardingTask } from "@devdigest/shared";
+import { stripMarkdownImages } from "../../helpers";
 
 const styles = {
   wrap: { display: "flex", flexDirection: "column", gap: 12 } satisfies React.CSSProperties,
@@ -32,7 +33,7 @@ export function FirstTasks({ tasks }: { tasks: OnboardingTask[] }) {
       {tasks.map((task, i) => (
         <article key={`${i}-${task.title}`} style={styles.task}>
           <h3 style={styles.title}>{task.title}</h3>
-          <Markdown>{task.body}</Markdown>
+          <Markdown>{stripMarkdownImages(task.body)}</Markdown>
           {task.files.length > 0 && (
             <div style={styles.files}>
               {task.files.map((f) => (

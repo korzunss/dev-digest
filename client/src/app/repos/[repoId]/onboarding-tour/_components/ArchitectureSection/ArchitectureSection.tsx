@@ -8,6 +8,7 @@ import React from "react";
 import { Badge, Markdown } from "@devdigest/ui";
 import type { OnboardingTour } from "@devdigest/shared";
 import { MermaidDiagram } from "@/components/mermaid-diagram";
+import { stripMarkdownImages } from "../../helpers";
 
 const styles = {
   wrap: { display: "flex", flexDirection: "column", gap: 14 } satisfies React.CSSProperties,
@@ -27,7 +28,7 @@ export function ArchitectureSection({ architecture }: { architecture: Onboarding
   const { body, stack, structure, diagram } = architecture;
   return (
     <div style={styles.wrap}>
-      <Markdown>{body}</Markdown>
+      <Markdown>{stripMarkdownImages(body)}</Markdown>
       {stack.length > 0 && (
         <div style={styles.chips}>
           {stack.map((item) => (

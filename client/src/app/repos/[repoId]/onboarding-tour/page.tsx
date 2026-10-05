@@ -90,7 +90,7 @@ export default function OnboardingTourPage() {
   const tour = useOnboardingTour(repoId);
   const generate = useGenerateOnboardingTour();
 
-  const crumb = [{ label: repoName }, { label: t("title", { repo: repoName }) }];
+  const crumb = [{ label: repoName }, { label: t("crumb") }];
 
   // A stale :repoId is a wrong link, not a failure — same treatment as the PR list.
   if (repoNotFound) {

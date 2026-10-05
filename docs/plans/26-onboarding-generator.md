@@ -528,6 +528,7 @@ TQ1 `maxRetries: 0`; TQ2 `generated_at`; TQ3 `lastIndexedSha` else HEAD; TQ4 Eng
 ## Follow-ups
 - 2026-10-05 rank_position counts all ranked files incl. tests — a reading-path row can read 'rank #2' when the top-ranked file is a test; consider ranking within reading-path candidates
 - 2026-10-05 AC-24/AC-37: first_tasks in a never-generated skeleton has cause null (client shows 'Generate the tour to get first tasks'); confirm this is the intended non-'not available' state
+- 2026-10-05 stripMarkdownImages also removes non-image reference-link definitions ([x]: url), so reference-style links lose their target
 
 ## Handoffs → G5
 
@@ -607,3 +608,8 @@ TQ1 `maxRetries: 0`; TQ2 `generated_at`; TQ3 `lastIndexedSha` else HEAD; TQ4 Eng
 - 2026-10-05 G5 committed by user: d77f328
 - 2026-10-05 agent: implement a35629817e9f1ea19 implementer 2026-10-05T16:36:16Z
 - 2026-10-05 implement G6: done (S17-S19; client typecheck ok, 410 tests, pnpm build ok)
+- 2026-10-05 G6 committed by user: f087a31
+- 2026-10-05 agent: tests a625bf62dd859b193 test-writer 2026-10-05T16:42:57Z
+- 2026-10-05 T2 (test-writer): TC1-TC10, 66 tests — 63 pass, 3 fail on real defects: D1 AC-3 breadcrumb uses t('title',{repo}) → 'Onboarding for …' instead of 'Onboarding Tour'; D2 AC-34 vendored Markdown renders <img> for model text (server strips; client defense-in-depth missing). User: strip images on the client too.
+- 2026-10-05 agent: fix-loop a184779765a71921f implementer 2026-10-05T16:45:52Z
+- 2026-10-05 fix D1 (crumb key onboarding.crumb) + D2 (stripMarkdownImages before Markdown in ArchitectureSection/FirstTasks, helpers.test.ts): onboarding-tour + app-shell 71 passed; client 481 passed; typecheck ok
