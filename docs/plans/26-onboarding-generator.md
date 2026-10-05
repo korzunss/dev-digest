@@ -525,6 +525,10 @@ TQ1 `maxRetries: 0`; TQ2 `generated_at`; TQ3 `lastIndexedSha` else HEAD; TQ4 Eng
 | mermaid-diagram | full | S9 | |
 | fastify-best-practices | full | S12 | |
 
+## Follow-ups
+- 2026-10-05 rank_position counts all ranked files incl. tests — a reading-path row can read 'rank #2' when the top-ranked file is a test; consider ranking within reading-path candidates
+- 2026-10-05 AC-24/AC-37: first_tasks in a never-generated skeleton has cause null (client shows 'Generate the tour to get first tasks'); confirm this is the intended non-'not available' state
+
 ## Verification log
 - 2026-10-05 agent: spec-p1 ab3c02452b7a30152 spec-creator 2026-10-05T13:44:31Z
 - 2026-10-05 agent: spec-p2 ab3c02452b7a30152 spec-creator 2026-10-05T13:49:39Z
@@ -554,3 +558,7 @@ TQ1 `maxRetries: 0`; TQ2 `generated_at`; TQ3 `lastIndexedSha` else HEAD; TQ4 Eng
 - 2026-10-05 G3 committed by user: 3a28f73
 - 2026-10-05 agent: implement a0f2b9f76bae5195e implementer 2026-10-05T16:02:16Z
 - 2026-10-05 implement G4: done (S9-S12; typecheck ok; server unit 590; main-session read isAllowedCommand — exact-token match, ';' '|' newline forms rejected by token mismatch)
+- 2026-10-05 G4 committed by user: 757e3a9
+- 2026-10-05 agent: tests a082882a21caedd14 test-writer 2026-10-05T16:15:42Z
+- 2026-10-05 T1 (test-writer): TS2-TS6 + helpers llm-stubs.ts, temp-clone.ts; unit 716, onboarding.it 43; no production defects; prod files unchanged vs HEAD
+- 2026-10-05 env note: testcontainers ryuk 'Expected Reaper to map exposed port 8080' made every .it file skip (also context.it) — Docker env issue, not code; with TESTCONTAINERS_RYUK_DISABLED=true onboarding.it 43 + context.it 19 = 62 passed
