@@ -129,6 +129,24 @@ export interface FileRankRow {
   percentile: number;
 }
 
+/** Graph position of a file: rank, 1-based position among all ranked files, and importer count. */
+export interface FileGraphStat {
+  path: string;
+  rank: number;
+  rankPosition: number;
+  importers: number;
+}
+
+/** Why an index is `partial` (onboarding header); null when nothing is degraded. */
+export type IndexPartialCause = 'file_cap' | 'parse_errors' | 'graph_failed' | 'soft_budget';
+
+export interface IndexCoverage {
+  /** Source files of the indexed languages (JS/TS universe); null when unknown. */
+  sourceFilesTotal: number | null;
+  partialCause: IndexPartialCause | null;
+  edgeCount: number;
+}
+
 export interface RepoMapResult {
   text: string;
   tokens: number;
@@ -177,4 +195,12 @@ export interface RepoIntel {
     opts?: { exclude?: string[] },
   ): Promise<string[]>;
   getCriticalPaths(repoId: string): Promise<string[][]>;
+
+  // --- Onboarding tour reads (never throw; flag off => []/nulls) ----------
+  /** Rank, rank position and importer count for the given paths (unranked paths are omitted). */
+  getFileGraphStats(repoId: string, paths: string[]): Promise<FileGraphStat[]>;
+  /** Files with HTTP endpoints ("METHOD /path"), ordered by path. */
+  getEndpoints(repoId: string, limit: number): Promise<Array<{ path: string; endpoints: string[] }>>;
+  /** Coverage of the persisted index: universe size, partial cause, edge count. */
+  getIndexCoverage(repoId: string): Promise<IndexCoverage>;
 }

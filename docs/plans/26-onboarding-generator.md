@@ -467,6 +467,23 @@ TQ1 `maxRetries: 0`; TQ2 `generated_at`; TQ3 `lastIndexedSha` else HEAD; TQ4 Eng
 | typescript-expert | full | S1 | |
 | engineering-insights | preload | Step 0 | no insight |
 
+## Handoffs → G2
+
+### Handoff to the next group
+- `RepoIntel` facade gains: `getFileGraphStats(repoId, paths)` → `{path, rank, rankPosition (1-based, tie-break by path), importers}[]` (unranked omitted); `getEndpoints(repoId, limit)` → `{path, endpoints[]}[]`; `getIndexCoverage(repoId)` → `{sourceFilesTotal|null, partialCause, edgeCount}`. All return []/nulls with the flag off, never throw. Types `FileGraphStat`, `IndexPartialCause`, `IndexCoverage` in `repo-intel/types.ts`.
+- Repository: `countImporters`, `countEdges`, `getEndpointFacts`, `getIndexStats`; `getRankedPaths` adds `asc(filePath)` tie-break.
+- `getIndexCoverage`: persisted `stats.totalCandidates` unless the last run was incremental, else `walkClone(clonePath)`; partialCause order file_cap → graph_failed → parse_errors → soft_budget.
+- `getCriticalPaths` filters junk roots before picking `CRITICAL_PATH_ROOTS`; JUNK_PATH_PATTERNS still misses root `test/` and generated dirs — S6 keeps its own filter.
+- Architecture: service imports `./pipeline/walk.js` (the one sanctioned pipeline import).
+
+### Skills
+| Skill | Loaded | Applied in | Not used — reason |
+|---|---|---|---|
+| onion-architecture | preload | S2, S3 | |
+| drizzle-orm-patterns | full | S2 | |
+| postgresql-table-design | full | S2 | no schema change |
+| typescript-expert | full | S2, S3 | |
+
 ## Verification log
 - 2026-10-05 agent: spec-p1 ab3c02452b7a30152 spec-creator 2026-10-05T13:44:31Z
 - 2026-10-05 agent: spec-p2 ab3c02452b7a30152 spec-creator 2026-10-05T13:49:39Z
@@ -487,3 +504,6 @@ TQ1 `maxRetries: 0`; TQ2 `generated_at`; TQ3 `lastIndexedSha` else HEAD; TQ4 Eng
 - 2026-10-05 plan-stage commit 0cfeffe (by user); spec-stage commit 6e0cfce
 - 2026-10-05 agent: implement a5448f7b6cfbe1c37 implementer 2026-10-05T15:08:53Z
 - 2026-10-05 implement G1: done (S1; server+client typecheck ok; contracts 9 passed; blocks identical; server unit 583, client 410)
+- 2026-10-05 G1 committed by user: 6388fc9
+- 2026-10-05 agent: implement ac502db00f6aaa371 implementer 2026-10-05T15:12:15Z
+- 2026-10-05 implement G2: done (S2-S3; typecheck ok; repo-intel/indexer 56; server unit 583)
