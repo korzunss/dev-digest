@@ -504,6 +504,27 @@ TQ1 `maxRetries: 0`; TQ2 `generated_at`; TQ3 `lastIndexedSha` else HEAD; TQ4 Eng
 | drizzle-orm-patterns | on demand (start only) | S7 | |
 | postgresql-table-design | on demand (start only) | S7 | no schema change |
 
+## Handoffs → G4
+
+### Handoff to the next group (T1)
+- Routes: `GET /repos/:id/onboarding` → `OnboardingTourView` (404 unknown repo); `POST /repos/:id/onboarding/generate` → 200 with the view always, rate limit 10/min, no LLM call when `clonePath` is null. Both declare `response: {200: OnboardingTourView}`.
+- `OnboardingService.getView(ws, id)` / `generate(ws, id, log?)`; in-memory `generating` set + `lastFailure` map; stored row re-parsed with safeParse, `generated_at` from the DB column.
+- One LLM call: `maxRetries: 0`, `temperature: 0`, `requireParameters: true`, `maxTokens`, `timeoutMs`, `schemaName: 'onboarding_tour'`, `signal: AbortSignal.timeout(90_000)`.
+- `grounding.ts`: `groundTour`, `isAllowedCommand` (exact-token allowlist per AC-16), `groundDiagram`, `stripImages`, `scriptsByDirOf`. `prompt.ts`: `buildOnboardingMessages(facts)`, `boundedFacts(facts)`.
+- Failure mapping for TS6: key resolution in `container.llm` → `no_key`; 404 → `no_model`; `LlmDeadlineError`/`TimeoutError`/`AbortError` → `timeout`; `LlmOutputInvalidError` → `invalid_output`; else `provider_error`; a failure keeps the stored row.
+- First tasks keep only files with a `repoIntel.getFileRank` row — seed `file_rank`.
+- Deviations (trivial): module-local `OnboardingLogger` type (S8 forbids importing `reviews/run-executor` Logger); `groundTour` returns a `GroundedTour` merged onto the skeleton; zero surviving tasks → `availability.reason: null`.
+
+### Skills
+| Skill | Loaded | Applied in | Not used — reason |
+|---|---|---|---|
+| onion-architecture | preload | S9–S12 | |
+| security | full | S9–S11 | |
+| zod | full | S11 | |
+| typescript-expert | full | S9–S12 | |
+| mermaid-diagram | full | S9 | |
+| fastify-best-practices | full | S12 | |
+
 ## Verification log
 - 2026-10-05 agent: spec-p1 ab3c02452b7a30152 spec-creator 2026-10-05T13:44:31Z
 - 2026-10-05 agent: spec-p2 ab3c02452b7a30152 spec-creator 2026-10-05T13:49:39Z
@@ -530,3 +551,6 @@ TQ1 `maxRetries: 0`; TQ2 `generated_at`; TQ3 `lastIndexedSha` else HEAD; TQ4 Eng
 - 2026-10-05 G2 committed by user: 1c81974
 - 2026-10-05 agent: implement a338b1776fc348e92 implementer 2026-10-05T15:17:46Z
 - 2026-10-05 implement G3: done (S4-S8; typecheck ok; server unit 590; onboarding-architecture 7)
+- 2026-10-05 G3 committed by user: 3a28f73
+- 2026-10-05 agent: implement a0f2b9f76bae5195e implementer 2026-10-05T16:02:16Z
+- 2026-10-05 implement G4: done (S9-S12; typecheck ok; server unit 590; main-session read isAllowedCommand — exact-token match, ';' '|' newline forms rejected by token mismatch)
