@@ -20,6 +20,7 @@ Reusable AI skills that provide specialized knowledge and workflows. Canonical l
 | [mermaid-diagram](mermaid-diagram/SKILL.md) | Shared | Mermaid diagrams in markdown (flowcharts, sequence, ERD, …) |
 | [engineering-insights](engineering-insights/SKILL.md) | Meta | Captures session learnings into the per-package `INSIGHTS.md` files (the log) and keeps `insights/gotchas.md` (the rules in force) in step |
 | [pr-self-review](pr-self-review/SKILL.md) | Review | Pre-PR gate — runs cheap deterministic checks (tsc, lint, dependency-cruiser, tests), routes the diff through architecture/quality skills per file bucket, and blocks the push on any verified CRITICAL |
+| [sdd](sdd/SKILL.md) | Meta | Main-session pipeline `/sdd` — drives a feature from spec through plan, implementation and review to a handed-over commit message, stopping at every user gate and never committing |
 | [devdigest-appsec](devdigest-appsec/SKILL.md) | Review | DevDigest-specific trust boundaries and security checks (X1–X11) for reviewing this repo's own code — used by the `security-reviewer` subagent, not a generic OWASP primer |
 
 ## What Are Skills?

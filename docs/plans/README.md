@@ -113,3 +113,4 @@ result to the verifier.
 | [19-mentor-review-followups](19-mentor-review-followups.md) | done | none | mcp-server (`get_findings` PR picture), server (blast decl-file rule in the repo-intel facade only) |
 | [20-spec-creator-agent](20-spec-creator-agent.md) | done | none | `.claude/agents`, spec folders (`specs/`, `<pkg>/specs/`, new `mcp-server/specs/`), repo docs |
 | [21-implementation-planner](21-implementation-planner.md) | done | none | `.claude/agents` (rename to `implementation-planner`, implementer, plan-verifier), repo docs |
+| [22-sdd-pipeline-skill](22-sdd-pipeline-skill.md) | done | none | `.claude/skills/sdd` (new: SKILL.md, references, scripts), root `AGENTS.md`, `.claude/skills/README.md` |

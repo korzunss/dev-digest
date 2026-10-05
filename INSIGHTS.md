@@ -59,9 +59,19 @@ write-up here. That keeps `AGENTS.md` short without losing the reasoning.
 
 ## What Works
 
-_Nothing yet._
+### 2026-10-05 — checkpoint the working tree without a commit: temp index + `write-tree` + a tree ref
+**Symptom:** R3 and delta reviews need a baseline, but the user does not want commits during a pipeline run, and `git add` on the real index re-stages over the approved text (2026-09-30 entry) and changes `git status`, which reviewers use as their read-only proof.
+**Cause:** an approved state has to live somewhere addressable that is neither a commit nor the real index.
+**Rule:** `cp .git/index <tmp-outside-worktree>; GIT_INDEX_FILE=<tmp> git add -A; T=$(GIT_INDEX_FILE=<tmp> git write-tree); git update-ref refs/sdd/<NN>/<label> "$T"` — the real index and `git status --porcelain` stay untouched, the tree and its blobs survive `git gc --prune=now`, `fsck` is clean. Compare two checkpoints with `git diff --name-only <t1> <t2>`. Against the *working tree*, `git diff <tree> -- <path>` shows an untracked file as deleted — use `git show <tree>:<path> | diff - <path>` instead. `/sdd` wraps this as `sdd.sh checkpoint` / `delta` / `brief-diff`; clean up with `git update-ref -d`.
+**Evidence:** `.claude/skills/sdd/scripts/sdd.sh` (`make_tree`) · `docs/plans/22-sdd-pipeline-skill.md` → *Verification log* (R3 `brief-diff` empty, rc 0) · throwaway test on git 2.54.0
 
 ## What Doesn't Work
+
+### 2026-10-05 — writing a script through a heredoc that itself contains `EOF` heredocs ran its body in the real repo
+**Symptom:** while writing `selftest.sh` (plan 22) the implementer's outer `cat > file <<EOF` closed at the first inner `EOF`; the rest of the would-be script — `git init`, fixture writes, `git add -A && git commit` — executed in the current shell, i.e. in this repo on branch L05: two stray commits (`fixtures`, `more`), `specs/README.md` overwritten, fixture files created. Not pushed; the user recovered with `git reset --mixed 12d454d`.
+**Cause:** a heredoc ends at the first line equal to its delimiter, nested or not.
+**Rule:** create script files with the Write tool, never through a shell heredoc. If a heredoc is unavoidable, use a unique outer delimiter (`<<'SDD_EOF_OUTER'`). A test script that runs git must `cd` into a `mktemp -d` repo and assert `[ "$(pwd -P)" = "$(git rev-parse --show-toplevel)" ]` before its first git command; the main session reads such a script before running it and diffs `HEAD`/`git status`/refs before and after.
+**Evidence:** `docs/plans/22-sdd-pipeline-skill.md` → *Verification log* (INCIDENT, 2026-10-05) · `.claude/skills/sdd/scripts/selftest.sh:21-25`
 
 ### 2026-09-30 — an untracked plan file makes R3 and delta re-verification unprovable
 **Symptom:** in plans 07, 08 and 09 the plan-verifier reported R3 ("plan changed only in Status/decisions") as not-verifiable every time, and its delta scope checks fell back to file mtimes.
@@ -207,6 +217,12 @@ that path; it's runtime data, and the next resync overwrites it.
 **Evidence:** `CLAUDE.md` → "Do not touch"; `.gitignore` → `clones/`
 
 ## Tool & Library Notes
+
+### 2026-10-05 — in zsh, `$VAR:a` (and `:h`, `:t`, `:r`, `:e`) is a path modifier, not text
+**Symptom:** a Bash-tool one-liner `git rev-parse $T:a.txt` (tree sha + `:path`) failed with `ambiguous argument '/…/scratchpad/<sha>.txt'` — the sha had become an absolute path.
+**Cause:** the Bash tool's shell is zsh here; `$T:a` applies zsh's "absolute path" modifier to `$T`, then `.txt` is appended.
+**Rule:** brace every variable followed by `:` — `"${T}:a.txt"` — in inline commands; scripts start with `#!/usr/bin/env bash` and still use `${VAR}` braces (the `/sdd` scripts do).
+**Evidence:** plan 22 research, EXT3 throwaway test (main session, 2026-10-04)
 
 ### 2026-10-04 — `grep -w <name>` cannot find leftovers of a rename to a hyphenated name
 **Symptom:** while planning the `planner` → `implementation-planner` rename (plan 21), a "no bare `planner` left" check written as `grep -rnw planner` would match every *new* `implementation-planner` too, so it can never come back empty.
