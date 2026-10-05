@@ -1,14 +1,15 @@
 /* ArchitectureSection — the model's (or skeleton's) architecture read: a
    Markdown body, stack chips, the top-level structure and, only when the tour
-   carries one, a Mermaid diagram. Text from the model goes through `Markdown`
-   or a plain text node — never raw HTML (AC-34). */
+   carries one, a Mermaid diagram. Text from the model goes through `SafeMarkdown`
+   (no images) or a plain text node — never raw HTML (AC-34). */
 "use client";
 
 import React from "react";
-import { Badge, Markdown } from "@devdigest/ui";
+import { Badge } from "@devdigest/ui";
 import type { OnboardingTour } from "@devdigest/shared";
 import { MermaidDiagram } from "@/components/mermaid-diagram";
 import { stripMarkdownImages } from "../../helpers";
+import { SafeMarkdown } from "../SafeMarkdown";
 
 const styles = {
   wrap: { display: "flex", flexDirection: "column", gap: 14 } satisfies React.CSSProperties,
@@ -28,7 +29,7 @@ export function ArchitectureSection({ architecture }: { architecture: Onboarding
   const { body, stack, structure, diagram } = architecture;
   return (
     <div style={styles.wrap}>
-      <Markdown>{stripMarkdownImages(body)}</Markdown>
+      <SafeMarkdown>{stripMarkdownImages(body)}</SafeMarkdown>
       {stack.length > 0 && (
         <div style={styles.chips}>
           {stack.map((item) => (

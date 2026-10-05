@@ -4,7 +4,7 @@ import {
   type OnboardingUnavailableCause,
 } from '@devdigest/shared';
 import type { Container } from '../../platform/container.js';
-import { resolveFeatureModel } from '../settings/feature-models.js';
+import { defaultFeatureModel, resolveFeatureModel } from '../settings/feature-models.js';
 import type { IndexCoverage } from '../repo-intel/types.js';
 import {
   ENDPOINTS_MAX,
@@ -27,7 +27,7 @@ import {
   isReadingPathCandidate,
   normalisePath,
   pickReadingPath,
-  sanitizeJobError,
+  sanitizeErrorText,
   type GenerationFailureReason,
 } from './helpers.js';
 import { buildOnboardingMessages } from './prompt.js';
@@ -108,8 +108,14 @@ export class OnboardingService {
     const repo = await this.repo.getRepo(workspaceId, repoId);
     if (!repo) return undefined;
 
-    const model = await resolveFeatureModel(this.container, workspaceId, 'onboarding');
-    const clone = await this.cloneView(repo);
+    // A GET never 500s on a side read: each one keeps its own typed fallback. Only
+    // `getRepo` above may fail (a 404 or a genuine DB outage).
+    const model = await resolveFeatureModel(this.container, workspaceId, 'onboarding').catch(() =>
+      defaultFeatureModel('onboarding'),
+    );
+    const clone = await this.cloneView(repo).catch(
+      (): CloneView => ({ state: 'none', error: null }),
+    );
     const collected = await this.collect(repo, clone.state === 'ready').catch(
       (): Collected => ({
         facts: emptyFacts(),
@@ -123,7 +129,7 @@ export class OnboardingService {
     );
 
     const failure = this.lastFailure.get(repoId) ?? null;
-    const stored = await this.storedTour(repoId);
+    const stored = await this.storedTour(repoId).catch(() => null);
     const tour =
       stored ??
       buildSkeleton({
@@ -283,7 +289,8 @@ export class OnboardingService {
       );
     } catch (err) {
       const reason = classifyGenerationError(err);
-      const message = sanitizeJobError(err instanceof Error ? err.message : String(err));
+      // Same masking as the clone error in `cloneView`: one function for both texts.
+      const message = sanitizeErrorText(err instanceof Error ? err.message : String(err));
       // A failed run leaves any stored tour untouched (AC-19).
       this.lastFailure.set(repoId, { reason, message, at: new Date().toISOString() });
       log?.warn(`onboarding: generation failed (${reason})`);
@@ -300,7 +307,7 @@ export class OnboardingService {
       return { state: 'cloning', error: null };
     }
     if (job?.status === 'failed') {
-      return { state: 'failed', error: sanitizeJobError(job.error ?? 'clone failed') };
+      return { state: 'failed', error: sanitizeErrorText(job.error ?? 'clone failed') };
     }
     return { state: 'none', error: null };
   }

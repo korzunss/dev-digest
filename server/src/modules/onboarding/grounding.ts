@@ -13,7 +13,13 @@ import type {
   OnboardingTask,
   OnboardingUnavailableCause,
 } from '@devdigest/shared';
-import { FIRST_TASKS_MAX, PACKAGE_MANAGERS, PM_BUILTINS } from './constants.js';
+import {
+  FIRST_TASKS_MAX,
+  PACKAGE_DIR_RE,
+  PACKAGE_MANAGERS,
+  PM_BUILTINS,
+  TWO_TOKEN_SCRIPTS,
+} from './constants.js';
 import { normalisePath } from './helpers.js';
 import type { OnboardingLlmOutput, ScriptFact } from './types.js';
 
@@ -60,11 +66,17 @@ export function scriptsByDirOf(scripts: ScriptFact[]): Map<string, Set<string>> 
 
 // `![alt](url)` and `![alt][ref]`, tolerating one level of brackets in the alt text (AC-34).
 const INLINE_OR_REF_IMAGE_RE = /!\[(?:[^[\]]|\[[^\]]*\])*\](?:\([^)]*\)|\[[^\]]*\])/g;
+// Shortcut `![alt]` (its definition `[alt]: url` may sit on another line, even in a quote):
+// any `![…]` not followed by `(` or `[`. Applied after the two forms above.
+const SHORTCUT_IMAGE_RE = /!\[(?:[^[\]]|\[[^\]]*\])*\](?![([])/g;
 const HTML_IMG_RE = /<img\b[^>]*>?/gi;
 
-/** Remove Markdown images (inline, reference) and `<img>` tags: the tour never loads a remote picture. */
+/** Remove Markdown images (inline, reference, shortcut) and `<img>` tags: the tour never loads a remote picture. */
 export function stripImages(text: string): string {
-  return text.replace(INLINE_OR_REF_IMAGE_RE, '').replace(HTML_IMG_RE, '');
+  return text
+    .replace(INLINE_OR_REF_IMAGE_RE, '')
+    .replace(SHORTCUT_IMAGE_RE, '')
+    .replace(HTML_IMG_RE, '');
 }
 
 function cleanText(text: string, max?: number): string {
@@ -107,7 +119,9 @@ export function isAllowedCommand(command: string, ctx: GroundingContext): boolea
     const tokens = part.split(/ +/);
     const [head, a, b] = tokens;
     if (head === 'cd') {
-      if (tokens.length !== 2 || a === undefined || !ctx.packageDirs.includes(a)) return false;
+      if (tokens.length !== 2 || a === undefined || !PACKAGE_DIR_RE.test(a) || !ctx.packageDirs.includes(a)) {
+        return false;
+      }
       cwd = a;
       continue;
     }
@@ -118,7 +132,8 @@ export function isAllowedCommand(command: string, ctx: GroundingContext): boolea
       const ok =
         (tokens.length === 2 &&
           a !== undefined &&
-          ((PM_BUILTINS as readonly string[]).includes(a) || isScript(a))) ||
+          ((PM_BUILTINS as readonly string[]).includes(a) ||
+            ((TWO_TOKEN_SCRIPTS as readonly string[]).includes(a) && isScript(a)))) ||
         (tokens.length === 3 && a === 'run' && isScript(b));
       if (!ok) return false;
       ranSomething = true;

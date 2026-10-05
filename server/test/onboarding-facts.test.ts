@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { collectCloneFacts } from '../src/modules/onboarding/facts.js';
@@ -190,5 +190,21 @@ describe('collectCloneFacts: an untrusted clone cannot redirect the reader (trus
     const facts = await collectCloneFacts(dir);
     expect(JSON.stringify(facts)).not.toContain('PKG_LINK_SECRET');
     expect(facts.packageDirs).not.toContain('server');
+  });
+});
+
+describe('collectCloneFacts: package directory names are an allowlist (SF1)', () => {
+  // a dir name is copied into `cd <dir> && …`, so a shell metacharacter in it must disqualify the dir
+  it.each(['a;b', 'a|b', 'a$(x)', 'a${IFS}b', 'a`x`b', 'a b'])('does not treat %j as a package dir', async (name) => {
+    const dir = await tmp('badname');
+    await writeOnboardingFixture(dir, {});
+    await mkdir(path.join(dir, name), { recursive: true });
+    await writeFile(path.join(dir, name, 'package.json'), JSON.stringify({ scripts: { evil: 'BAD_DIR_SCRIPT' } }));
+
+    const facts = await collectCloneFacts(dir);
+    expect(facts.packageDirs).not.toContain(name);
+    expect(facts.scripts.some((s) => s.dir === name)).toBe(false);
+    expect(JSON.stringify(facts.scripts)).not.toContain('BAD_DIR_SCRIPT');
+    expect(facts.packageDirs).toContain('server'); // ordinary dirs still count
   });
 });

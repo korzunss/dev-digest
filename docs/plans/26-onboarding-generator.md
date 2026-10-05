@@ -11,7 +11,7 @@ Test ids (TS = server, TC = client) are defined in *Tests*.
 | AC-1 | S14 · TC1 |
 | AC-2 | S14 · TC1 |
 | AC-3 | S14, S16 · TC1, TC2 |
-| AC-4 | S2, S3, S5, S11 · TS3, TS6 |
+| AC-4 | S2, S3, S5, S11, S20 · TS3, TS6 |
 | AC-5 | S3, S6, S10, S18 · TS2, TC6 |
 | AC-6 | S3, S6, S10, S18 · TS2, TC6 |
 | AC-7 | S6, S17 · TS2, TC10 |
@@ -19,19 +19,19 @@ Test ids (TS = server, TC = client) are defined in *Tests*.
 | AC-9 | S9, S11 · TS6 |
 | AC-10 | S4, S5, S9 · TS3, TS5 |
 | AC-11 | S4, S10, S19 · TS4, TC9 |
-| AC-12 | S11, S12, S13 · TS6, TC2 |
+| AC-12 | S11, S12, S13, S21 · TS6, TS7, TC2 |
 | AC-13 | S11, S12, S13, S16 · TS6, TC2 |
 | AC-14 | S10 · TS4 |
 | AC-15 | S6, S10, S19 · TS4, TC9 |
-| AC-16 | S10 · TS4 |
+| AC-16 | S10, S20 · TS3, TS4 |
 | AC-17 | S10, S17 · TS4, TC7 |
-| AC-18 | S6, S11, S16 · TS2, TS6, TC2 |
+| AC-18 | S6, S11, S16, S21 · TS2, TS6, TC2 |
 | AC-19 | S11, S13, S16 · TS6, TC2 |
 | AC-20 | S7, S11, S16 · TS6, TC2 |
-| AC-21 | S6, S7, S11, S16 · TS2, TS6, TC2 |
+| AC-21 | S6, S7, S11, S16, S21 · TS2, TS6, TC2 |
 | AC-22 | S6, S11, S16 · TS2, TS6, TC2 |
 | AC-23 | S2, S3, S6, S16 · TS2, TS6, TC3 |
-| AC-24 | S6, S11, S16 · TS6, TC2 |
+| AC-24 | S6, S11, S16, S21 · TS6, TS7, TC2 |
 | AC-25 | S7, S11 · TS6 |
 | AC-26 | S11, S16 · TS6, TC3 |
 | AC-27 | S11, S16 · TS6, TC2 |
@@ -40,10 +40,10 @@ Test ids (TS = server, TC = client) are defined in *Tests*.
 | AC-30 | S19 · TC8 |
 | AC-31 | S6, S18 · TC6 |
 | AC-32 | S16 · TC3 |
-| AC-33 | S5, S9 · TS5 |
-| AC-34 | S10, S17, S19 · TS4, TC7, TC9 |
+| AC-33 | S5, S9, S20 · TS3, TS5 |
+| AC-34 | S10, S17, S19, S20, S23 · TS4, TC7, TC9, TC11 |
 | AC-35 | S1, S9, S17 · TS4, TC7 |
-| AC-36 | S11, S16 · TS6, TC3 |
+| AC-36 | S11, S16, S21 · TS6, TS7, TC3 |
 | AC-37 | S6, S15, S17 · TS2, TC10 |
 
 ## Decisions needed
@@ -71,6 +71,7 @@ Sequential. Each group's commit gate: typecheck + unit suite (`--exclude '**/*.i
 | G5 | S13–S16 | client data, shell, page | T1 | hooks, page frame, i18n | `feat(client): onboarding tour page, hooks and sidebar entry` |
 | G6 | S17–S19 | client sections | G5 | section components | `feat(client): onboarding tour sections` |
 | T2 | test-writer | client tests | G6 | TC1–TC10 | `test(client): onboarding tour acceptance tests from SPEC-09` |
+| F1x | S20–S23 | fix mode (review 1): server facts/grounding/service, invariant test, client `SafeMarkdown` | T2 | gap ids SF1, SF2, M1, M2, M3, F2–F4; tests written in fix mode beside each fix | `fix(onboarding): harden commands, images, error text and invariants (review 1)` |
 
 ## Steps
 Server `M/` = `server/src/modules/onboarding/`; client `P/` = `client/src/app/repos/[repoId]/onboarding-tour/`.
@@ -265,6 +266,87 @@ Server `M/` = `server/src/modules/onboarding/`; client `P/` = `client/src/app/re
 - **Known gotchas:** none.
 - **Done when:** `cd client && pnpm typecheck` · `cd client && pnpm test` · `cd client && pnpm build`.
 
+### S20 — Facts and grounding hardening: package-dir names, 2-token scripts, shortcut images (F1x: SF1, M1, SF2 server)
+- **ACs:** AC-4, 16, 33, 34
+- **Files:** `M/constants.ts`, `M/facts.ts`, `M/grounding.ts` (modify) · `server/test/onboarding-facts.test.ts`, `server/test/onboarding-grounding.test.ts` (modify)
+- **Change:**
+  - SF1: add `PACKAGE_DIR_RE = /^[A-Za-z0-9_-][A-Za-z0-9._-]*$/` (the review's `[A-Za-z0-9._-]+`, also refusing a leading `.` so `..` cannot pass). `collectCloneFacts` keeps a first-level dir as a package dir only if its name matches. `isAllowedCommand`'s `cd` branch (grounding.ts:113-117) also requires the match, not just membership in `ctx.packageDirs`.
+  - M1: add `TWO_TOKEN_SCRIPTS = ['start', 'test']`. The 2-token `<pm> <script>` form passes only when the script is in that set **and** in the dir's scripts; every other script needs `<pm> run <script>`. This applies to every package manager, because pnpm, yarn and bun also resolve builtins such as `publish`, `link` and `add` first. `PM_BUILTINS` (`install|i|ci`) is unchanged. `deterministicCommands` (helpers.ts:191-207) already emits `run`, and a test pins that.
+  - SF2 server: `stripImages` (grounding.ts:62-68) also removes shortcut images `![…]` not followed by `(` or `[`.
+- **Layer / why here:** pure grounding plus the clone reader.
+- **Skills to apply:** `onion-architecture`, `security`, `typescript-expert`
+- **Practices:** allowlist by exact pattern, never by escaping; validate in both places (facts and grounding), so a hand-built `ctx` cannot reopen the hole.
+- **Known gotchas:** none.
+- **Tests (fix mode):**
+  - `onboarding-facts.test.ts`: dirs named `a;b`, `a|b`, `a$(x)`, `a${IFS}b`, `` a`x`b `` and `a b` are not package dirs, and their `package.json` scripts are not collected.
+  - `onboarding-grounding.test.ts`:
+    - `cd <each bad name> && npm run dev` is dropped even when the name is in `ctx.packageDirs`;
+    - `npm publish`, `npm link`, `pnpm add x` and `npm dev` are dropped, while `npm test`, `npm start` and `npm run dev` are kept;
+    - `deterministicCommands` emits only `run` forms;
+    - both bypass forms are stripped: `![x]` with `[x]:` and the URL on the next line, and `> ![x]` with `> [x]: url`.
+- **Done when:** `cd server && pnpm typecheck` · `cd server && pnpm exec vitest run onboarding-facts onboarding-grounding`.
+
+### S21 — Credential masking in error text and a GET that never 500s (F1x: M2, M3)
+- **ACs:** AC-12, 18, 21, 24, 36
+- **Files:** `M/helpers.ts`, `M/service.ts` (modify) · `server/test/onboarding-helpers.test.ts` (modify) · `server/test/onboarding-view-resilience.it.test.ts` (create)
+- **Change:**
+  - M2: `sanitizeJobError` (helpers.ts:254-261) also masks, as `***`:
+    - `sk-ant-…`, `sk-or-…` and `sk-…` (≥16 chars of `[A-Za-z0-9_-]`);
+    - `Bearer <token>`;
+    - hex runs of ≥32 chars;
+    - base64/base64url runs of ≥40 chars.
+    
+    Rename it to `sanitizeErrorText` and keep `sanitizeJobError` as an alias. `service.ts:286` already passes LLM failures through it; keep it that way and add a comment that the same function covers clone and LLM errors.
+  - M3: in `getView` (service.ts:106-160), `resolveFeatureModel` falls back to `defaultFeatureModel('onboarding')` (settings/feature-models.ts:26) on any throw. `cloneView` and `storedTour` also degrade (`clone: {state: 'none', error: null}`, `stored: null`) instead of throwing. Only the `getRepo` read may fail, and its failure is a 404 or a genuine DB outage.
+- **Layer / why here:** application plus pure helper.
+- **Skills to apply:** `onion-architecture`, `security`, `typescript-expert`
+- **Practices:** each read keeps its own catch with a typed fallback, not one try around the whole method; nothing is logged with a raw message.
+- **Known gotchas:** `.it` tests must not reach a real key — server gotchas *Tests*.
+- **Tests (fix mode):**
+  - `onboarding-helpers.test.ts`: masking of `sk-…`, `sk-ant-…`, `sk-or-v1-…`, `Authorization: Bearer abc.def`, a 40-hex run and a 48-char base64 run, with a short ordinary message left intact.
+  - `onboarding-view-resilience.it.test.ts`: `vi.mock` of `../src/modules/settings/feature-models.js` with a `resolveFeatureModel` that rejects. `GET /repos/:id/onboarding` returns 200 with `model` = the registry default. It uses `isolatedTestConfig()` and the `dockerAvailable()` skip.
+- **Done when:** `cd server && pnpm typecheck` · `cd server && pnpm exec vitest run onboarding-helpers` · `cd server && pnpm exec vitest run onboarding-view-resilience` (needs Docker).
+
+### S22 — Harden the architecture-invariant test (F1x: F2–F4)
+- **ACs:** none (invariants, D10 A)
+- **Files:** `server/test/onboarding-architecture.test.ts` (modify)
+- **Change:** replace the regex parser (:12-22) with `ts.createSourceFile` from `typescript`, already a server devDependency. Collect `ImportDeclaration`, `ExportDeclaration` with a module specifier, and `import()` calls. Record per edge whether it is type-only: the clause's `isTypeOnly`, or every named specifier `isTypeOnly`. Comments never reach the AST. Expose `violationsOf(relFile, source): string[]` and apply it to every file found by a **recursive** walk of `src/modules/onboarding/`. Rules:
+  1. Each relative specifier resolves to a `src/`-relative path (`.js`→`.ts`). Any `modules/<x>/…` with x ≠ `onboarding` must be in the allow-list: `modules/settings/feature-models`, `modules/repos/constants`, `modules/_shared/*`, and `modules/repo-intel/types` **only as a type-only import**. There is no blanket skip of `../../`.
+  2. `@devdigest/reviewer-core` may be imported only through named imports from `{LlmDeadlineError, LlmConnectionError, LlmOutputInvalidError, LlmOutputTruncatedError, wrapUntrusted}`, never as a namespace or default import.
+  3. `fs`, `node:fs`, `fs/promises`, `node:fs/promises`, `child_process`, `node:child_process` are allowed only in `facts.ts`.
+  4. The existing rules stay: no adapters; drizzle/`db/schema` only in `repository.ts`; no `repo-intel/pipeline|repository`; no LLM SDK; fastify only in `routes.ts`.
+- **Layer / why here:** unit test (D10 A).
+- **Skills to apply:** `onion-architecture`, `typescript-expert`
+- **Practices:** one planted-violation case per rule. Feed `violationsOf` an in-memory source that breaks exactly that rule and expect a non-empty result:
+  - a value import of `../repo-intel/types.js`;
+  - `../agents/service.js`;
+  - `../../modules/agents/helpers.js` (proves the `../../` path is resolved);
+  - `import * as rc from '@devdigest/reviewer-core'`;
+  - `import { runReview } from '@devdigest/reviewer-core'`;
+  - `node:child_process` in `service.ts`;
+  - a file in a nested folder;
+  - an import that appears only inside a `/* … */` comment, which must give **no** violation.
+- **Known gotchas:** `rg`/regex edge checks catch comments — root INSIGHTS 2026-09-27.
+- **Done when:** `cd server && pnpm exec vitest run onboarding-architecture` (real module clean, every planted case caught) · `cd server && pnpm typecheck`.
+
+### S23 — `SafeMarkdown` renderer without images (F1x: SF2 client)
+- **ACs:** AC-34
+- **Files:** `P/_components/SafeMarkdown/SafeMarkdown.tsx`, `P/_components/SafeMarkdown/index.ts`, `P/_components/SafeMarkdown/styles.ts`, `P/_components/SafeMarkdown/SafeMarkdown.test.tsx` (create) · `P/_components/ArchitectureSection/ArchitectureSection.tsx`, `P/_components/FirstTasks/FirstTasks.tsx` (modify)
+- **Change:** `SafeMarkdown({children})` wraps `react-markdown` + `remark-gfm` (already client dependencies) with `disallowedElements={['img']}`, `unwrapDisallowed={false}` and `skipHtml`. Its `components` styles are copied from `vendor/ui/primitives/Markdown.tsx` into `styles.ts`. ArchitectureSection and FirstTasks render `SafeMarkdown` instead of the vendored `Markdown` and still pass the text through `stripMarkdownImages` first (helpers.ts:56), as an extra layer.
+- **Layer / why here:** colocated feature component. `vendor/ui` is not edited.
+- **Skills to apply:** `frontend-architecture`, `react-best-practices`, `typescript-expert`, `security`, `react-testing-library`
+- **Practices:** no `rehype-raw`, no `dangerouslySetInnerHTML`; `satisfies CSSProperties` style literals.
+- **Known gotchas:** TS2742 from spread styles — client gotchas *UI*; `fireEvent` only — client gotchas *Tests*.
+- **Tests (fix mode):** `SafeMarkdown.test.tsx` renders no `img` for:
+  - an inline image;
+  - a reference image;
+  - a shortcut `![x]` with `[x]:` and the URL on the next line;
+  - `> ![x]` with `> [x]: url`;
+  - raw `<img>`.
+  
+  Ordinary text and links still render.
+- **Done when:** `cd client && pnpm typecheck` · `cd client && pnpm exec vitest run SafeMarkdown ArchitectureSection FirstTasks` · `cd client && pnpm test` · `git diff --stat client/src/vendor` prints nothing.
+
 ## Tests
 `test-writer` writes TS2–TS6 (T1) and TC1–TC10 (T2) from SPEC-09's ACs (D9 B); briefs in Design notes → *T1 brief*, *T2 brief*. Unit tier except TS6.
 | Id | Test file | Covers | Step |
@@ -285,7 +367,10 @@ Server `M/` = `server/src/modules/onboarding/`; client `P/` = `client/src/app/re
 | TC8 | `RunCommands.test.tsx` | AC-30 | T2 |
 | TC9 | `FirstTasks.test.tsx` | AC-11, 15, 34 | T2 |
 | TC10 | `UnavailableNote.test.tsx` | AC-7, 8, 37 | T2 |
-TC3–TC10 sit beside their component in `P/_components/<Name>/`. T1 also creates `server/test/helpers/llm-stubs.ts` and `server/test/helpers/temp-clone.ts` (+ fixture writer).
+| TS7 | `server/test/onboarding-view-resilience.it.test.ts` (integration, create) | AC-12, 24, 36 (GET never 500) | S21 (fix mode) |
+| TC11 | `SafeMarkdown.test.tsx` (create) | AC-34 | S23 (fix mode) |
+F1x also extends TS1 (S22), TS2 (S21: masking), TS3 and TS4 (S20: dir names, 2-token scripts, shortcut images). In fix mode the implementer writes these tests itself; this is a review-1 exception to D9 B, approved in the triage.
+TC3–TC11 sit beside their component in `P/_components/<Name>/`. T1 also creates `server/test/helpers/llm-stubs.ts` and `server/test/helpers/temp-clone.ts` (+ fixture writer).
 
 ## Migrations & contracts
 - No migration (D2): everything new lives in `onboarding.json` (`db/schema/context.ts:120-126`, cascade exists).
@@ -391,18 +476,18 @@ TQ1 `maxRetries: 0`; TQ2 `generated_at`; TQ3 `lastIndexedSha` else HEAD; TQ4 Eng
 | Skill | Loaded | Applied in | Not used — reason |
 |---|---|---|---|
 | `engineering-insights` | preload | Context applied | — |
-| `onion-architecture` | preload | S1–S12 | — |
+| `onion-architecture` | preload | S1–S12, S20–S22 | — |
 | `zod` | on demand (S1) | S1, S4, S5, S11, S12 | — |
-| `typescript-expert` | on demand (S1) | S1–S14, S16–S19 | — |
+| `typescript-expert` | on demand (S1) | S1–S14, S16–S23 | — |
 | `drizzle-orm-patterns` | on demand (S2) | S2, S7 | — |
 | `postgresql-table-design` | on demand (S2) | S2, S7 | — |
-| `security` | on demand (S5) | S5, S9, S10, S11, S17, S18 | — |
+| `security` | on demand (S5) | S5, S9, S10, S11, S17, S18, S20, S21, S23 | — |
 | `fastify-best-practices` | on demand (S12) | S12 | — |
 | `mermaid-diagram` | on demand (S9) | S9, S17 | — |
-| `frontend-architecture` | on demand (S13) | S13–S19 | — |
-| `react-best-practices` | on demand (S13) | S13, S16–S19 | — |
+| `frontend-architecture` | on demand (S13) | S13–S19, S23 | — |
+| `react-best-practices` | on demand (S13) | S13, S16–S19, S23 | — |
 | `next-best-practices` | on demand (S13) | S13, S16, S17, S19 | — |
-| `react-testing-library` | on demand (T2) | T2 (test-writer) | binds no implementer step |
+| `react-testing-library` | on demand (T2) | T2 (test-writer), S23 | — |
 
 ## Affected modules
 | Package | Module / path | Layer | New / changed |
@@ -426,6 +511,12 @@ TQ1 `maxRetries: 0`; TQ2 `generated_at`; TQ3 `lastIndexedSha` else HEAD; TQ4 Eng
 - **Clone-job lookup** filters `jobs` by `payload->>'repoId'` without an index.
 - **Assumptions**: 90 s timeout, 4,000 max tokens, `language_not_indexed` ⇔ zero JS/TS files.
 - **Doc vs code**: `onboarding.system.md` and `messages/en/onboarding.json` describe an older section list; S9 and S15 rewrite both.
+- **F1 (review 1, accepted, not fixed):** onboarding adds runtime cross-module edges to `settings/feature-models` and `repos/constants`. This is known warn-level drift, and the S22 test pins exactly these two edges. A possible follow-up is a `container.featureModels` facade and moving `CLONE_JOB_KIND` to `_shared` (see *Follow-ups*).
+- **F1x scope:**
+  - **M1** makes the allowlist stricter than SPEC-09 AC-16's wording: `<pm> <script>` passes only for `start`/`test`. Every command it drops is still valid under AC-16, so this is narrowing, not a spec change.
+  - **SF2** adds a second Markdown renderer (`SafeMarkdown`) beside the vendored one. A vendor refresh does not touch it, but a later restyle of the vendored primitive will not reach it.
+  - **M2's base64 rule** (≥40 chars) can also mask a long harmless token in an error message; that is acceptable for a failure banner.
+  - **F1x mixes server and client** in one commit, which is the user's requirement for one green commit. Its gate is both typechecks, the server unit suite, `onboarding-view-resilience` (Docker) and `cd client && pnpm test`.
 
 ## Handed off
 - architecture-reviewer: S3 facade additions, S6 imports from `@devdigest/reviewer-core`, S7 import of `repos/constants.js`, S11's `resolveFeatureModel`, S8 invariant list.
@@ -529,6 +620,8 @@ TQ1 `maxRetries: 0`; TQ2 `generated_at`; TQ3 `lastIndexedSha` else HEAD; TQ4 Eng
 - 2026-10-05 rank_position counts all ranked files incl. tests — a reading-path row can read 'rank #2' when the top-ranked file is a test; consider ranking within reading-path candidates
 - 2026-10-05 AC-24/AC-37: first_tasks in a never-generated skeleton has cause null (client shows 'Generate the tour to get first tasks'); confirm this is the intended non-'not available' state
 - 2026-10-05 stripMarkdownImages also removes non-image reference-link definitions ([x]: url), so reference-style links lose their target
+- 2026-10-05 F1: onboarding adds runtime cross-module edges settings/feature-models + repos/constants (accepted drift) — consider a container.featureModels facade and moving CLONE_JOB_KIND to _shared; refresh the onion skill baseline
+- 2026-10-05 docs: architecture-reviewer A2 anchor (openrouter fetch now line 193) and devdigest-appsec rate-limit anchor drifted
 
 ## Handoffs → G5
 
@@ -568,6 +661,27 @@ TQ1 `maxRetries: 0`; TQ2 `generated_at`; TQ3 `lastIndexedSha` else HEAD; TQ4 Eng
 | typescript-expert | full | S17–S19 | |
 | security | full | S17–S19 | |
 | mermaid-diagram | full | S17 | |
+
+## Handoffs → fix-1
+
+### Fix mode F1x — SF1, SF2, M1, M2, M3, F2–F4
+- SF1: `PACKAGE_DIR_RE` (`/^[A-Za-z0-9_-][A-Za-z0-9._-]*$/`) enforced in `collectCloneFacts` and the `cd` branch of `isAllowedCommand`.
+- M1: 2-token `<pm> <script>` only for `start`/`test` (`TWO_TOKEN_SCRIPTS`); AC-16 tests moved `pnpm build`, `cd server && pnpm dev` to dropped.
+- SF2: server `stripImages` also removes shortcut images; client `SafeMarkdown` (react-markdown + remark-gfm, `disallowedElements=['img']`, `skipHtml`) used by ArchitectureSection and FirstTasks after `stripMarkdownImages`; vendor untouched.
+- M2: `sanitizeErrorText` (alias `sanitizeJobError`) masks sk-/sk-ant-/sk-or-, Bearer, hex ≥32, base64 ≥40; used for clone and LLM errors.
+- M3: `getView` per-read typed fallbacks (model → registry default); only `getRepo` yields 404; `onboarding-view-resilience.it.test.ts`.
+- F2–F4: `onboarding-architecture.test.ts` uses the TS AST, recursive walk, resolved specifiers, type-only `repo-intel/types`, reviewer-core named allow-list, fs/child_process only in `facts.ts`; 18 planted cases + a real planted file proved.
+- F1 accepted as drift (two edges allowed explicitly).
+
+### Skills
+| Skill | Loaded | Applied in | Not used — reason |
+|---|---|---|---|
+| onion-architecture | preload | S20–S22 | |
+| security | on demand | S20, S21, S23 | |
+| typescript-expert | on demand | S20–S23 | |
+| frontend-architecture | on demand | S23 | |
+| react-best-practices | on demand | S23 | |
+| react-testing-library | on demand | S23 | |
 
 ## Verification log
 - 2026-10-05 agent: spec-p1 ab3c02452b7a30152 spec-creator 2026-10-05T13:44:31Z
@@ -613,3 +727,13 @@ TQ1 `maxRetries: 0`; TQ2 `generated_at`; TQ3 `lastIndexedSha` else HEAD; TQ4 Eng
 - 2026-10-05 T2 (test-writer): TC1-TC10, 66 tests — 63 pass, 3 fail on real defects: D1 AC-3 breadcrumb uses t('title',{repo}) → 'Onboarding for …' instead of 'Onboarding Tour'; D2 AC-34 vendored Markdown renders <img> for model text (server strips; client defense-in-depth missing). User: strip images on the client too.
 - 2026-10-05 agent: fix-loop a184779765a71921f implementer 2026-10-05T16:45:52Z
 - 2026-10-05 fix D1 (crumb key onboarding.crumb) + D2 (stripMarkdownImages before Markdown in ArchitectureSection/FirstTasks, helpers.test.ts): onboarding-tour + app-shell 71 passed; client 481 passed; typecheck ok
+- 2026-10-05 T2 + D1/D2 committed by user: fdae3d6
+- 2026-10-05 it-suite (main session, TESTCONTAINERS_RYUK_DISABLED=true): server 81 files / 944 passed (unit + .it); client 481; reviewer-core 223; typechecks clean
+- 2026-10-05 agent: review a3f0f2e34301f3884 architecture-reviewer 2026-10-05T16:51:04Z
+- 2026-10-05 agent: review a7cf051aa9a76cc80 security-reviewer 2026-10-05T16:52:03Z
+- 2026-10-05 review 1: architecture PASS (F1 HIGH warn-level cross-module drift: settings/feature-models + repos/constants; F2-F4 invariant-test holes); security PASS (SF1 HIGH dir names unvalidated into cd commands → 'cd w;curl…|sh;x' copyable; SF2 HIGH image-strip regex bypass via shortcut ![x] + multi-line/container ref definitions; manual: npm 2-token builtins like 'npm publish', provider err.message may echo sk- keys; GET resolveFeatureModel not wrapped)
+- 2026-10-05 review 1 triage (user-approved plan change): fix SF1, SF2 (new SafeMarkdown wrapper, img disallowed), M1 npm 2-token builtins, M2 mask provider key-like tokens in LLM errors, M3 GET never 500 (resolveFeatureModel), F2-F4 invariant-test hardening; F1 accepted as known cross-module drift
+- 2026-10-05 agent: plan-p2 a58215717b9fa11e8 implementation-planner 2026-10-05T16:55:25Z
+- 2026-10-05 plan re-approved with fix group F1x (S20-S23), scope approved by user
+- 2026-10-05 agent: fix-loop a8fcae2cdc763081d implementer 2026-10-05T16:59:45Z
+- 2026-10-05 F1x done; main-session full run: server 82 files / 992 passed (unit + .it, ryuk disabled), client 487, typechecks clean, vendor untouched

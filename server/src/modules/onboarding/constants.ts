@@ -33,6 +33,17 @@ export const ONBOARDING_LANGUAGE = 'English';
 
 /** Package-manager subcommands that need no `run`. */
 export const PM_BUILTINS = ['install', 'i', 'ci'] as const;
+/**
+ * Scripts that may use the 2-token `<pm> <script>` form. Every other script needs
+ * `<pm> run <script>`: pnpm, yarn and bun resolve their own builtins (`publish`,
+ * `link`, `add`) before a script of the same name.
+ */
+export const TWO_TOKEN_SCRIPTS = ['start', 'test'] as const;
+/**
+ * A first-level directory name that may be a package dir (and so appear in `cd <dir>`).
+ * An exact allowlist: no leading `.` (so `..` fails), no shell metacharacter, no space.
+ */
+export const PACKAGE_DIR_RE = /^[A-Za-z0-9_-][A-Za-z0-9._-]*$/;
 /** Package managers a generated command may use. */
 export const PACKAGE_MANAGERS = ['npm', 'pnpm', 'yarn', 'bun'] as const;
 export type PackageManager = (typeof PACKAGE_MANAGERS)[number];

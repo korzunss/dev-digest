@@ -12,6 +12,7 @@ import {
   flattenCriticalPaths,
   indexAvailability,
   pickReadingPath,
+  sanitizeErrorText,
   sanitizeJobError,
 } from '../src/modules/onboarding/helpers.js';
 import { emptyFacts } from '../src/modules/onboarding/facts.js';
@@ -237,6 +238,35 @@ describe('Clone error text (AC-21)', () => {
   it('AC-21: keeps the first line only and caps the length', () => {
     expect(sanitizeJobError('first line\nsecond line with ghp_leak123')).toBe('first line');
     expect(sanitizeJobError('x'.repeat(5000)).length).toBeLessThanOrEqual(300);
+  });
+});
+
+describe('Error text masks credentials (M2)', () => {
+  // clone and LLM failures share one function: provider keys, bearer tokens and long secret-like runs go too
+  it.each([
+    ['sk-', 'sk-abcdefghijklmnop1234'],
+    ['sk-ant-', 'sk-ant-api03-AbCdEfGhIjKlMnOp'],
+    ['sk-or-v1-', 'sk-or-v1-0123456789abcdef0123'],
+    ['a 40-hex run', 'a'.repeat(20) + '0123456789'.repeat(2)],
+    ['a 48-char base64 run', 'QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIz'.padEnd(48, 'x')],
+  ])('masks %s', (_n, secret) => {
+    const out = sanitizeErrorText(`401 from provider, key ${secret} rejected`);
+    expect(out).not.toContain(secret);
+    expect(out).toContain('***');
+    expect(out).toContain('rejected');
+  });
+
+  it('masks a Bearer header value', () => {
+    const out = sanitizeErrorText('request failed: Authorization: Bearer abc.def-ghi_jkl');
+    expect(out).not.toContain('abc.def');
+    expect(out).toContain('***');
+  });
+
+  it('leaves a short ordinary message intact', () => {
+    expect(sanitizeErrorText('Request timed out after 90000ms (model gpt-4o-mini)')).toBe(
+      'Request timed out after 90000ms (model gpt-4o-mini)',
+    );
+    expect(sanitizeJobError).toBe(sanitizeErrorText);
   });
 });
 

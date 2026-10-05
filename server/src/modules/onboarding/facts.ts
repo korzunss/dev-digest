@@ -20,6 +20,7 @@ import {
   LOCKFILES,
   MANIFEST_MAX_BYTES,
   PACKAGE_DIRS_MAX,
+  PACKAGE_DIR_RE,
   PACKAGE_MANAGERS,
   SCRIPTS_MAX,
   SCRIPT_COMMAND_MAX,
@@ -141,7 +142,7 @@ export async function collectCloneFacts(cloneDir: string): Promise<CloneFacts> {
     manifests.push({ dir: '', pkg: rootPkg });
   }
   for (const e of visible) {
-    if (!e.isDirectory()) continue;
+    if (!e.isDirectory() || !PACKAGE_DIR_RE.test(e.name)) continue;
     if (facts.packageDirs.length >= PACKAGE_DIRS_MAX) break;
     const pkg = await readManifest(root, `${e.name}/package.json`);
     if (!pkg) continue;

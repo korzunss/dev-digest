@@ -253,12 +253,32 @@ export function buildSkeleton(input: SkeletonInput): OnboardingTour {
 
 const TOKEN_RE = /(?:ghp_|gho_|ghs_|github_pat_|glpat-)[A-Za-z0-9_-]+/g;
 const USERINFO_RE = /\/\/[^/\s@]*@/g;
+/** Provider keys: `sk-ant-…`, `sk-or-…`, `sk-…` (16+ chars of the key alphabet). */
+const API_KEY_RE = /\bsk-[A-Za-z0-9_-]{16,}/g;
+const BEARER_RE = /\bBearer\s+[A-Za-z0-9._~+/=-]+/gi;
+const HEX_RUN_RE = /\b[A-Fa-f0-9]{32,}\b/g;
+/** base64 / base64url run: long enough that ordinary words and short paths never match. */
+const BASE64_RUN_RE = /[A-Za-z0-9+/_-]{40,}={0,2}/g;
 
-/** A stored/shown job error: first line, no URL userinfo, no forge tokens, capped (X6). */
-export function sanitizeJobError(text: string): string {
+/**
+ * A stored/shown error text: first line, no URL userinfo, no forge tokens, no
+ * provider keys, bearer tokens or long secret-looking runs, capped (X6).
+ * One function for both clone errors and LLM failures.
+ */
+export function sanitizeErrorText(text: string): string {
   const first = text.split(/\r?\n/)[0] ?? '';
-  return first.replace(USERINFO_RE, '//***@').replace(TOKEN_RE, '***').slice(0, ERROR_TEXT_MAX);
+  return first
+    .replace(USERINFO_RE, '//***@')
+    .replace(TOKEN_RE, '***')
+    .replace(BEARER_RE, '***')
+    .replace(API_KEY_RE, '***')
+    .replace(HEX_RUN_RE, '***')
+    .replace(BASE64_RUN_RE, '***')
+    .slice(0, ERROR_TEXT_MAX);
 }
+
+/** Kept for existing callers. */
+export const sanitizeJobError = sanitizeErrorText;
 
 function errName(err: unknown): string {
   return typeof err === 'object' && err !== null && 'name' in err ? String(err.name) : '';

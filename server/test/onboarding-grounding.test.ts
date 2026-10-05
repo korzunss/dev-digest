@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { OnboardingTour, type OnboardingFileRow } from '@devdigest/shared';
+import { deterministicCommands } from '../src/modules/onboarding/helpers.js';
+import { emptyFacts } from '../src/modules/onboarding/facts.js';
 import { groundTour, type GroundingContext } from '../src/modules/onboarding/grounding.js';
 import type { OnboardingLlmOutput } from '../src/modules/onboarding/types.js';
 
@@ -32,7 +34,7 @@ function ctx(over: Partial<GroundingContext> = {}): GroundingContext {
     readingRows: [row('src/a.ts', 1, 5), row('src/b.ts', 2, 3)],
     criticalRows: [row('src/a.ts', 1, 5, ['src/a.ts', 'src/b.ts'])],
     scriptsByDir: new Map([
-      ['', new Set(['dev', 'build', 'test'])],
+      ['', new Set(['dev', 'build', 'test', 'start'])],
       ['server', new Set(['dev'])],
     ]),
     packageDirs: ['server'],
@@ -162,9 +164,11 @@ describe('run commands: an allowlist, never a denylist (AC-16)', () => {
     'yarn install',
     'bun install',
     'pnpm run build',
-    'pnpm build',
+    'pnpm test',
+    'npm test',
+    'npm start',
+    'npm run dev',
     'cd server && pnpm run dev',
-    'cd server && pnpm dev',
     'cd server && pnpm install',
     'pnpm install && pnpm run build',
     'cp .env.example .env',
@@ -192,6 +196,8 @@ describe('run commands: an allowlist, never a denylist (AC-16)', () => {
     'pnpm exec rm -rf /',
     'pnpm dlx evil-package',
     'pnpm run nonexistent',
+    'pnpm build',
+    'cd server && pnpm dev',
     'pnpm run dev --host 0.0.0.0',
     'npx evil-package',
     'node -e "process.exit(1)"',
@@ -210,6 +216,38 @@ describe('run commands: an allowlist, never a denylist (AC-16)', () => {
     'pnpm install &&',
   ])('AC-16: drops the command %j', (cmd) => {
     expect(survivors([cmd])).toEqual([good]);
+  });
+
+  // SF1: a `cd` target must look like a package dir even when a hand-built ctx lists it
+  it.each(['a;b', 'a|b', 'a$(x)', 'a${IFS}b', '`x`', 'a`x`b', '..', '.hidden'])(
+    'AC-16: drops `cd %s && npm run dev` although the name is in packageDirs',
+    (bad) => {
+      const c = ctx({ packageDirs: ['server', bad], scriptsByDir: new Map([['', new Set(['dev'])], [bad, new Set(['dev'])]]) });
+      expect(survivors([`cd ${bad} && npm run dev`], c)).toEqual([good]);
+    },
+  );
+
+  // M1: a 2-token `<pm> <script>` may shadow a package-manager builtin, so only start/test use it
+  it.each(['npm publish', 'npm link', 'pnpm add x', 'npm dev'])('AC-16: drops the builtin-shadowing form %j', (cmd) => {
+    const c = ctx({ scriptsByDir: new Map([['', new Set(['dev', 'publish', 'link', 'add', 'start', 'test'])]]) });
+    expect(survivors([cmd], c)).toEqual([good]);
+  });
+
+  // M1: the commands built from facts use the `run` form only
+  it('AC-16: deterministicCommands emits only run forms', () => {
+    const facts = {
+      ...emptyFacts(),
+      hasRootManifest: true,
+      packageDirs: ['server', 'web'],
+      scripts: [
+        { dir: '', name: 'dev', command: 'x' },
+        { dir: 'server', name: 'start', command: 'x' },
+        { dir: 'web', name: 'dev', command: 'x' },
+      ],
+    };
+    const cmds = deterministicCommands(facts).map((c) => c.command);
+    expect(cmds).toEqual(expect.arrayContaining(['npm run dev', 'cd server && npm run start', 'cd web && npm run dev']));
+    expect(cmds.filter((c) => /^(cd [^ ]+ && )?(npm|pnpm|yarn|bun) (?!run |install)/.test(c))).toEqual([]);
   });
 
   // AC-16: one bad `&&` part drops the whole command, even when the other parts are fine
@@ -329,5 +367,14 @@ describe('LLM text is Markdown without images (AC-34)', () => {
     const body = groundTour(output({ architecture: { body: 'See [docs](https://example.test) and **bold**.', diagram: '' } }), ctx())
       .architecture.body;
     expect(body).toBe('See [docs](https://example.test) and **bold**.');
+  });
+
+  // SF2: a shortcut image `![x]` takes its URL from a definition elsewhere, even inside a quote
+  it('AC-34: strips shortcut images, including a quoted definition', () => {
+    const plain = groundTour(output({ architecture: { body: `A ![x] B\n\n[x]: ${PIXEL}`, diagram: '' } }), ctx()).architecture.body;
+    expect(plain).not.toMatch(/!\[/);
+    expect(plain).toContain('A');
+    const quoted = groundTour(output({ architecture: { body: `> ![x]\n> [x]: ${PIXEL}`, diagram: '' } }), ctx()).architecture.body;
+    expect(quoted).not.toMatch(/!\[/);
   });
 });
