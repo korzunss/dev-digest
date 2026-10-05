@@ -86,6 +86,7 @@ const REVIEWER_CORE_NAMES = new Set([
   'LlmOutputTruncatedError',
   'wrapUntrusted',
 ]);
+const SDK_DENY: RegExp[] = [/^simple-git(\/|$)/, /^@octokit\//, /^postgres(\/|$)/, /^@ast-grep\/napi(\/|$)/];
 const FS_SPECS = new Set(['fs', 'node:fs', 'fs/promises', 'node:fs/promises', 'child_process', 'node:child_process']);
 
 /** Every violated rule for one file of the module; `relFile` is relative to `src/modules/onboarding/`. */
@@ -107,7 +108,10 @@ export function violationsOf(relFile: string, source: string): string[] {
         if (!ok) out.push(`${tag} (cross-module import outside the allow-list)`);
       }
       if (/^adapters(\/|$)/.test(resolved)) out.push(`${tag} (adapters)`);
-      if (/^db\/schema(\/|$)/.test(resolved) && base !== 'repository.ts') out.push(`${tag} (db/schema outside repository.ts)`);
+      if (/^db(\/|$)/.test(resolved)) {
+        if (base !== 'repository.ts') out.push(`${tag} (db outside repository.ts)`);
+        else if (/^db\/client(\/|$)/.test(resolved) && !e.typeOnly) out.push(`${tag} (db/client must be a type-only import)`);
+      }
       if (/^modules\/repo-intel\/(pipeline|repository)(\/|$)/.test(resolved)) out.push(`${tag} (repo-intel internals)`);
     }
 
@@ -125,6 +129,7 @@ export function violationsOf(relFile: string, source: string): string[] {
       if (base !== 'repository.ts') out.push(`${tag} (drizzle outside repository.ts)`);
     }
     if (spec === 'openai' || spec.startsWith('openai/') || spec.startsWith('@anthropic-ai/sdk')) out.push(`${tag} (LLM SDK)`);
+    if (SDK_DENY.some((re) => re.test(spec))) out.push(`${tag} (infrastructure SDK)`);
     if (spec === 'fastify' || spec.startsWith('fastify/') || spec.startsWith('@fastify/')) {
       if (base !== 'routes.ts') out.push(`${tag} (fastify outside routes.ts)`);
     }
@@ -175,6 +180,13 @@ describe('the invariant rules catch a planted violation', () => {
     ['fs/promises in helpers.ts', 'helpers.ts', "import { readFile } from 'fs/promises';"],
     ['an adapter', 'service.ts', "import { A } from '../../adapters/git/simple-git.js';"],
     ['db/schema outside repository.ts', 'service.ts', "import * as t from '../../db/schema.js';"],
+    ['db/client outside repository.ts', 'service.ts', "import type { Db } from '../../db/client.js';"],
+    ['db/migrations outside repository.ts', 'helpers.ts', "import { m } from '../../db/migrations/x.js';"],
+    ['a value import of db/client in repository.ts', 'repository.ts', "import { createDb } from '../../db/client.js';"],
+    ['simple-git', 'service.ts', "import simpleGit from 'simple-git';"],
+    ['@octokit/rest', 'service.ts', "import { Octokit } from '@octokit/rest';"],
+    ['postgres', 'service.ts', "import postgres from 'postgres';"],
+    ['@ast-grep/napi', 'service.ts', "import { parse } from '@ast-grep/napi';"],
     ['drizzle-orm outside repository.ts', 'helpers.ts', "import { eq } from 'drizzle-orm';"],
     ['repo-intel pipeline', 'service.ts', "import { p } from '../repo-intel/pipeline/run.js';"],
     ['an LLM SDK', 'service.ts', "import OpenAI from 'openai';"],
@@ -196,6 +208,7 @@ describe('the invariant rules catch a planted violation', () => {
       "import { readFile } from 'node:fs/promises';",
       "import { helper } from './helpers.js';",
     ];
+    expect(violationsOf('repository.ts', "import type { Db } from '../../db/client.js';\nimport * as t from '../../db/schema.js';")).toEqual([]);
     expect(violationsOf('facts.ts', ok.join('\n'))).toEqual([]);
   });
 

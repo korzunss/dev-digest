@@ -43,7 +43,7 @@ export const TWO_TOKEN_SCRIPTS = ['start', 'test'] as const;
  * A first-level directory name that may be a package dir (and so appear in `cd <dir>`).
  * An exact allowlist: no leading `.` (so `..` fails), no shell metacharacter, no space.
  */
-export const PACKAGE_DIR_RE = /^[A-Za-z0-9_-][A-Za-z0-9._-]*$/;
+export const PACKAGE_DIR_RE = /^[A-Za-z0-9_][A-Za-z0-9._-]*$/;
 /** Package managers a generated command may use. */
 export const PACKAGE_MANAGERS = ['npm', 'pnpm', 'yarn', 'bun'] as const;
 export type PackageManager = (typeof PACKAGE_MANAGERS)[number];

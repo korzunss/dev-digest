@@ -219,7 +219,7 @@ describe('run commands: an allowlist, never a denylist (AC-16)', () => {
   });
 
   // SF1: a `cd` target must look like a package dir even when a hand-built ctx lists it
-  it.each(['a;b', 'a|b', 'a$(x)', 'a${IFS}b', '`x`', 'a`x`b', '..', '.hidden'])(
+  it.each(['a;b', 'a|b', 'a$(x)', 'a${IFS}b', '`x`', 'a`x`b', '..', '.hidden', '-', '--help', '-P'])(
     'AC-16: drops `cd %s && npm run dev` although the name is in packageDirs',
     (bad) => {
       const c = ctx({ packageDirs: ['server', bad], scriptsByDir: new Map([['', new Set(['dev'])], [bad, new Set(['dev'])]]) });

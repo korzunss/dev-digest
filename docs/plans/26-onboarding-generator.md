@@ -737,3 +737,11 @@ TQ1 `maxRetries: 0`; TQ2 `generated_at`; TQ3 `lastIndexedSha` else HEAD; TQ4 Eng
 - 2026-10-05 plan re-approved with fix group F1x (S20-S23), scope approved by user
 - 2026-10-05 agent: fix-loop a8fcae2cdc763081d implementer 2026-10-05T16:59:45Z
 - 2026-10-05 F1x done; main-session full run: server 82 files / 992 passed (unit + .it, ryuk disabled), client 487, typechecks clean, vendor untouched
+- 2026-10-05 F1x committed by user: d3fe61f
+- 2026-10-05 agent: review a197b08e79cb6ce71 architecture-reviewer 2026-10-05T17:03:43Z
+- 2026-10-05 architecture delta re-review: PASS, F2-F4 closed; new F5 MEDIUM — invariant test bans only db/schema (not db/client) and lists only LLM SDKs (not simple-git/@octokit/postgres/@ast-grep)
+- 2026-10-05 agent: review a91ecd692288665b3 security-reviewer 2026-10-05T17:04:05Z
+- 2026-10-05 security delta re-review: PASS — SF1, SF2 and the manual items closed; new SF3 MEDIUM — PACKAGE_DIR_RE lets a leading '-' through ('cd -' jumps to the previous dir)
+- 2026-10-05 user: fix SF3 + F5 now (small fix commit; files already in S20/S22)
+- 2026-10-05 agent: fix-loop a5b51f79c0b54fc69 implementer 2026-10-05T17:05:31Z
+- 2026-10-05 fix SF3 + F5 done: PACKAGE_DIR_RE /^[A-Za-z0-9_][A-Za-z0-9._-]*$/; invariant test bans db/** outside repository.ts (type-only db/client allowed there) + SDK deny-set; server unit 776; main-session rerun 140 passed

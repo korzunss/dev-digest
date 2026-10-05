@@ -195,7 +195,7 @@ describe('collectCloneFacts: an untrusted clone cannot redirect the reader (trus
 
 describe('collectCloneFacts: package directory names are an allowlist (SF1)', () => {
   // a dir name is copied into `cd <dir> && …`, so a shell metacharacter in it must disqualify the dir
-  it.each(['a;b', 'a|b', 'a$(x)', 'a${IFS}b', 'a`x`b', 'a b'])('does not treat %j as a package dir', async (name) => {
+  it.each(['a;b', 'a|b', 'a$(x)', 'a${IFS}b', 'a`x`b', 'a b', '-', '--help', '-P'])('does not treat %j as a package dir', async (name) => {
     const dir = await tmp('badname');
     await writeOnboardingFixture(dir, {});
     await mkdir(path.join(dir, name), { recursive: true });
