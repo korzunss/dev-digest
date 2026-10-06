@@ -1000,3 +1000,17 @@ Verification: jq 54 ok; PrBriefBlock/OverviewTab/IntentCard/CoverageBlock 33 pas
 - 2026-10-06 G7 done (S21-S24); main session: client typecheck ok, client suite 70 files / 527 passed (server untouched since review-6: unit 824, .it 247)
 - 2026-10-06 agent: review a76e1807ba79bb77a plan-verifier 2026-10-06T17:55:09Z
 - 2026-10-06 review-7 (delta after G7): plan-verifier complete — 46/46 delta items, AC-1..50 met, no gaps, no sign-off
+- 2026-10-06 agent: self-review af320ae269c3df3b1 general-purpose 2026-10-06T18:11:05Z
+- 2026-10-06 agent: self-review a5146dd8f58f84662 general-purpose 2026-10-06T18:11:05Z
+- 2026-10-06 agent: self-review a250de5bc86fd5d37 general-purpose 2026-10-06T18:11:06Z
+- 2026-10-06 agent: self-review a988daa8b8ffed5d4 general-purpose 2026-10-06T18:11:06Z
+- 2026-10-06 agent: self-review a3539d9c3c414068a general-purpose 2026-10-06T18:11:06Z
+- 2026-10-06 agent: self-review a57b004540459fdba general-purpose 2026-10-06T18:11:06Z
+- 2026-10-06 agent: self-review a35742bd40aa5cf02 general-purpose 2026-10-06T18:11:06Z
+- 2026-10-06 closing process gaps (user): test-writer for G5-G7, doc-writer refresh of docs/pr-brief.md, self-review analyzers logged for the cost report
+- 2026-10-06 agent: docs ae98f998acc0a11c2 doc-writer 2026-10-06T18:12:26Z
+- 2026-10-06 docs: docs/pr-brief.md refreshed for G5-G7 (usage, cost lines, coverage block, card layout, binary-search budget, attached-specs setup); docs/README.md row updated
+- 2026-10-06 agent: tests ad1a8064905a4a479 test-writer 2026-10-06T18:13:07Z
+- 2026-10-06 test-writer G5-G7: AC→assertion map for AC-13/22/28/30/32/33/46-50; 7+1+1+2 cases added (PrBriefBlock, VerdictBanner, CoverageBlock helpers, format-cost incl. SR9 regression); Proof: 6 break checks (format-cost rounding + clamp, CoverageBlock isKnown, VerdictBanner summary, CostLines null-only dash, CostLines conditional Brief line) failed their targets and were restored (shasum ok), 3/3 stable
+- 2026-10-06 agent: review aa82150b9427d5bc1 plan-verifier 2026-10-06T18:14:58Z
+- 2026-10-06 review-9 (delta after test-writer + doc-writer): plan-verifier complete — 17/17, only tests/docs changed, AC-13/22/28/30/32/33/46-50 pinned, R4 Proof present. Removed log line: duplicate 'agent: self-review a2d5072aa8eb66a80' (main-session dedupe, intentional)

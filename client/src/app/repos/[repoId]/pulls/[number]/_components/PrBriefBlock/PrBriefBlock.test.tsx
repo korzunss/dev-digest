@@ -4,6 +4,7 @@
  */
 import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import { render, screen, cleanup, fireEvent, within } from "@testing-library/react";
+import { PrBrief } from "@devdigest/shared";
 import { NextIntlClientProvider } from "next-intl";
 import brief from "../../../../../../../../messages/en/brief.json";
 import blast from "../../../../../../../../messages/en/blast.json";
@@ -406,5 +407,107 @@ describe("PrBriefBlock", () => {
     const b = renderBlock();
     expect(b.container.querySelector(".skeleton")).not.toBeNull();
     expect(screen.queryByText("Token handling")).not.toBeInTheDocument();
+  });
+});
+
+describe("PrBriefBlock — AC audit additions (G5–G7)", () => {
+  const REVIEW = {
+    kind: "review",
+    verdict: "request_changes",
+    score: 61,
+    agent_name: "Security",
+    run_id: "run1",
+    findings: [{ severity: "CRITICAL", dismissed_at: null }],
+  };
+
+  // AC-33: no review → summary shown, but neither a verdict nor a score
+  it("shows no verdict and no PR score when the PR has no review, only the summary and the Brief line", () => {
+    state.reviews = [];
+    renderBlock();
+    expect(screen.getByText(/img src=x/)).toBeInTheDocument();
+    expect(screen.queryByText("PR SCORE", { exact: false })).not.toBeInTheDocument();
+    expect(screen.queryByText("Request changes")).not.toBeInTheDocument();
+    expect(screen.queryByText(brief.prBrief.cost.review)).not.toBeInTheDocument();
+    expect(screen.getByText(brief.prBrief.cost.brief).parentElement).toHaveTextContent("8.2K→1.3K");
+  });
+
+  // AC-50: only the null value is a dash; the known values of the same line stay
+  it("replaces only the null value of a present cost source with an em dash", () => {
+    state.reviews = [REVIEW];
+    state.runs = [{ run_id: "run1", tokens_in: 3400, tokens_out: 560, cost_usd: null, cost_source: null }];
+    state.view = makeView({ brief: { ...BRIEF, usage: { tokens_in: null, tokens_out: 1300, cost_usd: 0.014, cost_source: "api" } } });
+    renderBlock();
+    const reviewLine = screen.getByText(brief.prBrief.cost.review).parentElement as HTMLElement;
+    expect(reviewLine).toHaveTextContent("—");
+    expect(reviewLine).toHaveTextContent("3.4K→560");
+    const briefLine = screen.getByText(brief.prBrief.cost.brief).parentElement as HTMLElement;
+    expect(briefLine).toHaveTextContent("$0.014");
+    expect(briefLine).toHaveTextContent("—→1.3K");
+  });
+
+  // AC-49/AC-50: a pre-G5 stored brief still parses; its Brief line is omitted, the Review line stays
+  it("parses a stored brief without usage and shows no Brief line while the Review line stays", () => {
+    const { usage: _usage, ...legacy } = BRIEF;
+    const parsed = PrBrief.safeParse(legacy);
+    expect(parsed.success).toBe(true);
+    expect(parsed.success && parsed.data.usage).toBeUndefined();
+
+    state.reviews = [REVIEW];
+    state.runs = [{ run_id: "run1", tokens_in: 3400, tokens_out: 560, cost_usd: 0.0021, cost_source: "estimate" }];
+    state.view = makeView({ brief: legacy });
+    renderBlock();
+    expect(screen.queryByText(brief.prBrief.cost.brief)).not.toBeInTheDocument();
+    expect(screen.getByText(brief.prBrief.cost.review)).toBeInTheDocument();
+  });
+
+  // AC-28: collapsed card shows title + only the first ref; the rest is behind the chevron
+  it("shows only the first file ref on a collapsed risk card", () => {
+    renderBlock();
+    expect(screen.getByText("Token handling")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "src/a.ts" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "src/b.ts" })).not.toBeInTheDocument();
+  });
+
+  // AC-22: the block carries a one-line explanation under its title
+  it("explains in the coverage block that risks and focus may be incomplete", () => {
+    renderBlock();
+    const block = screen.getByRole("group", { name: brief.prBrief.coverage.title });
+    expect(within(block).getByText(brief.prBrief.coverage.explanation)).toBeInTheDocument();
+  });
+
+  // AC-22 boundary: an unknown reason code is dropped and refs are text, never markup or links
+  it("drops an unknown reason code and renders refs as text only", () => {
+    const evil = "<img src=x onerror=alert(1)>";
+    state.view = makeView({
+      brief: {
+        ...BRIEF,
+        missing_inputs: [
+          { input: "attached_specs", status: "missing", ref: evil, reason: "totally_unknown_code" },
+          { input: "attached_specs", status: "missing", ref: "[l](javascript:alert(1))", reason: "totally_unknown_code" },
+        ],
+      },
+    });
+    const { container } = renderBlock();
+    const block = screen.getByRole("group", { name: brief.prBrief.coverage.title });
+    expect(block).toHaveTextContent("missingattached specs");
+    expect(block).not.toHaveTextContent("totally_unknown_code");
+    expect(block).not.toHaveTextContent("—");
+    fireEvent.click(within(block).getByRole("button", { name: "Show 2 items" }));
+    expect(within(block).getByText(evil)).toBeInTheDocument();
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.querySelector("a")).toBeNull();
+    expect(within(block).queryAllByRole("link")).toHaveLength(0);
+  });
+
+  // AC-13: a truncated row carries the truncated chip, not a missing one
+  it("uses the truncated chip text for a truncated input and no refs toggle without refs", () => {
+    state.view = makeView({
+      brief: { ...BRIEF, missing_inputs: [{ input: "changed_files", status: "truncated", ref: null, reason: null }] },
+    });
+    renderBlock();
+    const block = screen.getByRole("group", { name: brief.prBrief.coverage.title });
+    expect(within(block).getByText(brief.prBrief.coverage.chip.truncated)).toBeInTheDocument();
+    expect(within(block).queryByText(brief.prBrief.coverage.chip.missing)).not.toBeInTheDocument();
+    expect(within(block).queryByRole("button")).not.toBeInTheDocument();
   });
 });

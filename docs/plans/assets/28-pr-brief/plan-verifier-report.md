@@ -16,6 +16,9 @@ Re-checked in the delta:
 
 Checks re-run by the verifier: server `brief-budget`/`brief-prompt`/`brief-service` 31 passed, server + client typecheck clean, `PrBriefBlock.test.tsx` 13 passed, R1 `rg` over the delta: no matches.
 
+## Process gaps closed (review-9)
+test-writer audited G5–G7 (AC → assertion map for AC-13, 22, 28, 30, 32, 33, 46–50; 11 cases added; 6 break checks shasum-restored), doc-writer refreshed `docs/pr-brief.md`. Delta: **complete** — 17/17, only test files and docs changed. Client 70 files / 537 passed.
+
 ## Coverage round G7 (review-7)
 Spec round 3 (AC-13, AC-22, AC-46 reversed, AC-47): coverage block "Brief built without full data" (grouped status-chip rows, refs on demand, hidden when complete); Risk areas as their own full-width card before Review focus, out of the Intent card.
 - review-7 (delta): **complete** — 46/46 delta items, AC-1…AC-50 met, no gaps, no sign-off. Client 70 files / 527 passed; server untouched (unit 824, `.it` 247).

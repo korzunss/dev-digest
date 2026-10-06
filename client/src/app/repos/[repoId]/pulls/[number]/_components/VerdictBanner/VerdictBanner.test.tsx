@@ -27,6 +27,8 @@ describe("VerdictBanner (smoke)", () => {
       />,
     );
     expect(screen.getByText("Request changes")).toBeInTheDocument();
+    // AC-32: the summary is the banner's text, in the same banner as the verdict
+    expect(screen.getByText("Hardcoded secret introduced.").parentElement).toHaveTextContent("Request changes");
     expect(screen.getByText("42")).toBeInTheDocument();
     expect(screen.getByText(/1 findings · 1 blockers/)).toBeInTheDocument();
   });

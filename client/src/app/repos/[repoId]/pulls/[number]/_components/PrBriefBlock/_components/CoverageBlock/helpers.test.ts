@@ -33,4 +33,16 @@ describe("groupCoverage", () => {
     expect(rows[0]?.count).toBe(1);
     expect(groupCoverage([])).toEqual([]);
   });
+
+  // AC-22: the same input with a different status is a different row; refs are deduped
+  it("splits one input by status and dedupes repeated refs", () => {
+    const rows = groupCoverage([
+      m({ ref: "a.md", reason: "missing" }),
+      m({ ref: "a.md", reason: "missing" }),
+      m({ status: "truncated", ref: "b.md" }),
+    ]);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({ status: "missing", refs: ["a.md"], count: 1, reason: "missing" });
+    expect(rows[1]).toMatchObject({ status: "truncated", refs: ["b.md"], reason: null });
+  });
 });
