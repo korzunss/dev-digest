@@ -16,9 +16,10 @@ import {
   type DiffCommentApi,
 } from "../comments";
 import { partitionAnnotations, annotationsForLine, type DiffAnnotationApi, type DiffLineAnnotation } from "../annotations";
-import { s, chevronFor } from "../styles";
+import { s, chevronFor, fileHeaderFor } from "../styles";
 import { CodeLine } from "../CodeLine";
 import { OutdatedComments } from "../OutdatedComments";
+import { TARGET_HIGHLIGHT_MS, type DiffTarget } from "../target";
 
 /** Threads anchored to a given parsed line (RIGHT=new, LEFT=old). */
 function threadsForLine(ln: Line, matched: Map<string, CommentThread[]>): CommentThread[] {
@@ -35,16 +36,44 @@ export function FileCard({
   file,
   commenting,
   annotations,
+  target,
 }: {
   file: PrFile;
   commenting?: DiffCommentApi;
   annotations?: DiffAnnotationApi;
+  /** Navigation request; applied once per nonce when its path is this file. */
+  target?: DiffTarget | null;
 }) {
   const t = useTranslations("shell");
   const [open, setOpen] = React.useState(
     (file.additions ?? 0) + (file.deletions ?? 0) <= AUTO_EXPAND_MAX_LINES
   );
   const lines = React.useMemo(() => parsePatch(file.patch), [file.patch]);
+
+  // Target apply rule: open, then either hand the nonce to the matching row
+  // (CodeLine scrolls) or, with no line / no such row, scroll the header.
+  const headerRef = React.useRef<HTMLDivElement>(null);
+  const applied = React.useRef<number | null>(null);
+  const [headerHighlighted, setHeaderHighlighted] = React.useState(false);
+  const isTarget = target?.path === file.path;
+  const targetLine = isTarget ? target.line : null;
+  const lineMatches =
+    targetLine != null && lines.some((ln) => ln.kind !== "hunk" && ln.newNo === targetLine);
+  const nonce = isTarget ? target.nonce : null;
+  React.useEffect(() => {
+    if (nonce == null || nonce === applied.current) return;
+    applied.current = nonce;
+    setOpen(true);
+    if (!lineMatches) {
+      headerRef.current?.scrollIntoView({ block: "center" });
+      setHeaderHighlighted(true);
+    }
+  }, [nonce, lineMatches]);
+  React.useEffect(() => {
+    if (!headerHighlighted) return;
+    const id = setTimeout(() => setHeaderHighlighted(false), TARGET_HIGHLIGHT_MS);
+    return () => clearTimeout(id);
+  }, [headerHighlighted]);
 
   // Group this file's comments into threads, then split into ones we can anchor
   // to a rendered line vs. "outdated" (GitHub dropped the line / it's not here).
@@ -84,7 +113,7 @@ export function FileCard({
 
   return (
     <div style={s.fileCard}>
-      <div onClick={() => setOpen((o) => !o)} style={s.fileHeader}>
+      <div ref={headerRef} onClick={() => setOpen((o) => !o)} style={fileHeaderFor(headerHighlighted)}>
         <Icon.ChevronRight size={13} style={chevronFor(open)} />
         <Icon.FileText size={14} style={s.fileIcon} />
         {hasMarker && <span style={s.markerDot} aria-label={annotations!.markerLabel} />}
@@ -119,6 +148,7 @@ export function FileCard({
                 markers={annotationsForLine(ln, matchedMarkers)}
                 contents={annotationsForLine(ln, matchedContent)}
                 showAnnotationContent={showContent}
+                targetNonce={lineMatches && ln.kind !== "hunk" && ln.newNo === targetLine ? nonce : null}
               />
             ))
           )}

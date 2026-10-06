@@ -1,6 +1,6 @@
 # Spec: PR Brief (risk brief)
 Spec ID: SPEC-10
-Status: approved
+Status: implemented
 Supersedes: none (builds on [006 — Intent layer](006-intent-layer.md), [007 — Smart Diff](007-smart-diff.md), [008 — Project Context](008-project-context.md) and the Blast Radius feature, [plan 18](../docs/plans/18-blast-radius.md))
 
 ## Problem & user
@@ -63,7 +63,7 @@ picture together alone, every time, before reading any code.
 - AC-10: The system SHALL send the model only the facts listed in *Inputs and provenance*, and SHALL NOT send diff hunk bodies, finding bodies or suggested fixes.
 - AC-11: The system SHALL keep the model input at or below 8,000 tokens, counted with the server's tokenizer. The budget covers the system prompt, the facts and a fixed reserve for the structured-output schema the provider receives, and the reserve is subtracted before the facts are fitted. [user: answer to B6, 2026-10-06] [user: cross-model review X11, 2026-10-06]
 - AC-12: WHEN the assembled input exceeds the budget of AC-11, the system SHALL trim input groups in this order until it fits: attached specs, linked-issue body, PR description, blast-radius callers, blast-radius changed symbols, review findings, changed-file list. [user: answer to B6, 2026-10-06] [user: cross-model review X3, 2026-10-06]
-- AC-13: WHEN an input group is trimmed, the system SHALL record that trim in the brief and show it in the PR Brief block as "truncated: <input>".
+- AC-13: WHEN an input group is trimmed, the system SHALL record that trim in the brief and show it as a `truncated` row for that input in the coverage block of AC-22.
 - AC-44: WHEN the blast-radius facts are collected for the model, the system SHALL cap the number of changed symbols, affected endpoints and affected crons. IF a cap or a trim cuts any blast-radius entry, THEN the system SHALL record it as `truncated: blast_radius`. [user: cross-model review X3, 2026-10-06]
 - AC-45: IF the input still exceeds the budget of AC-11 after every trim of AC-12, THEN the system SHALL make no model call, keep the previously stored brief unchanged (or no brief), and report an "input over budget" failure that is shown differently from a model failure. [user: cross-model review X3, 2026-10-06]
 - AC-14: WHEN a brief is generated, the system SHALL use the stored intent of the PR if one exists and SHALL NOT trigger intent classification. [user: answer to B3, 2026-10-06]
@@ -74,7 +74,7 @@ picture together alone, every time, before reading any code.
 - AC-19: WHERE the PR has a latest review (the newest review of kind `review` from any agent), the system SHALL send that review's non-dismissed findings to the model as file, line, severity and title only. [user: answer to B2, 2026-10-06]
 - AC-20: IF the PR has no review of kind `review`, THEN the system SHALL generate the brief without findings and record "review findings" as missing. [user: answer to B2, 2026-10-06]
 - AC-21: IF the linked issue or an attached spec cannot be read, THEN the system SHALL generate the brief without it and record it as missing.
-- AC-22: WHEN the brief has missing, partial or truncated inputs, the system SHALL list each one explicitly in the PR Brief block.
+- AC-22: WHEN the brief has missing, partial, truncated or stale inputs, the system SHALL show a coverage block under the summary. The block is titled "Brief built without full data", followed by a one-line explanation that the risks and focus below may be incomplete, then one row per input and status. Each row has a status chip (missing / partial / truncated / stale), the input name and, where one is known, a short reason (e.g. blast radius partial → "repo not indexed"). Several refs that share an input and status collapse into one row with a count (e.g. "Attached specs — 3 files not found in this repo"), and their refs are shown on demand. WHILE the brief has no missing, partial, truncated or stale input, the system SHALL hide the coverage block. [user: coverage round, 2026-10-06]
 
 **Output validation**
 - AC-23: WHEN the model returns its output, the system SHALL drop every risk file reference, and every review-focus item, whose file is neither among the PR's changed files nor in the blast-radius map.
@@ -84,12 +84,12 @@ picture together alone, every time, before reading any code.
 - AC-27: IF no risk survives validation, THEN the system SHALL show the "No notable risks flagged" empty state in Risk areas. The same applies to Review focus when no focus item survives, with its own empty-state message.
 
 **Display**
-- AC-28: The system SHALL show each risk with its title, its first file reference and an icon coloured by its severity (high, medium, low).
+- AC-28: The system SHALL show each risk as a compact card with an icon coloured by its severity (high, medium, low), its title, its first file reference in monospace, and an expand chevron. [user: design-conformance round, 2026-10-06]
 - AC-29: WHEN the user expands a risk, the system SHALL show that risk's explanation and all of its file references.
-- AC-30: The system SHALL show Review focus as an ordered list of `file:line — reason` items, under a heading that shows the item count.
+- AC-30: The system SHALL show Review focus as a bulleted list of `file:line — reason` items, in the order of AC-26, under the heading "Review focus — read these first" with a count badge showing the number of items. [user: design-conformance round, 2026-10-06]
 - AC-31: The system SHALL render the brief's summary, risk text and focus reasons as untrusted text that does not render images or raw HTML.
-- AC-32: WHERE the PR has a latest review (the same newest review of kind `review` used in AC-19), the system SHALL show a verdict banner at the top of the PR Brief block with that review's verdict and score, and the brief's summary under it.
-- AC-33: IF the PR has no review of kind `review`, THEN the system SHALL show the brief's summary without a verdict or score.
+- AC-32: WHERE the PR has a latest review (the same newest review of kind `review` used in AC-19), the system SHALL show a verdict banner at the top of the PR Brief block with that review's verdict and score. The brief's summary is the banner's text, inside the banner under the verdict row. [user: design-conformance round, 2026-10-06]
+- AC-33: IF the PR has no review of kind `review`, THEN the system SHALL show the brief's summary at the top of the PR Brief block without a verdict or score, with only the Brief cost line of AC-48 next to it. [user: design-conformance round, 2026-10-06]
 - AC-34: The system SHALL show the existing Intent and Blast radius cards inside the PR Brief layout, with their current live data, whether or not a brief exists.
 - AC-35: The system SHALL take every PR Brief label and message from the `brief` message namespace. The one exception is the reused verdict banner, whose labels stay in its existing review namespace. [user: cross-model review X7, 2026-10-06]
 
@@ -105,6 +105,13 @@ picture together alone, every time, before reading any code.
 - AC-42: WHILE the PR's current head SHA differs from the brief's stored head SHA, the system SHALL show the stored brief marked stale, with a "PR has new commits" note and the Refresh button. [user: answer to B7, 2026-10-06]
 - AC-43: The system SHALL NOT start a brief generation without an explicit Generate or Refresh action from the user. [user: answer to B7, 2026-10-06]
 
+**Layout and costs**
+- AC-46: The system SHALL render Risk areas as their own full-width card below the Intent and Blast radius columns, with a card frame and a heading with an icon and a count badge, styled like the Review focus card. The Risk areas card comes first, then the Review focus card, and the Intent card contains no Risk areas. [user: coverage round, 2026-10-06]
+- AC-47: The system SHALL render Review focus as a separate full-width card below the Risk areas card (AC-46), under the Intent and Blast radius columns. [user: design-conformance round, 2026-10-06] [user: coverage round, 2026-10-06]
+- AC-48: WHERE the verdict banner is shown, the system SHALL show two labelled cost lines under the PR score. "Review" gives the cost in USD and the tokens in→out of the agent run that produced the latest review of AC-32. "Brief" gives the cost in USD and the tokens in→out of the brief's single model call. [user: design-conformance round, 2026-10-06]
+- AC-49: WHEN a generation succeeds, the system SHALL store with the brief its model call's tokens in, tokens out, cost in USD and cost source (`api` or `estimate`), each of which may be null. [user: design-conformance round, 2026-10-06]
+- AC-50: IF a cost line's source exists but a usage value in it is null, THEN the system SHALL show "—" in place of that value. IF the source itself is absent (no review, or no stored brief), THEN the system SHALL omit that line. [user: design-conformance round, 2026-10-06]
+
 ## Edge cases
 
 - **PR with no changed files** (an empty diff or a diff that cannot be read): the brief is still generated from the description and intent. Risk areas and Review focus will probably be empty after validation (AC-23/AC-27).
@@ -116,6 +123,9 @@ picture together alone, every time, before reading any code.
 - **A new commit lands during a generation:** the brief stores the head SHA it was built from, so it shows as stale right away (AC-42).
 - **Two tabs or double-clicks:** one model call (AC-5).
 - **Generation fails after an earlier success:** the old brief stays (AC-7).
+- **No stored intent, but a brief exists:** the Intent card shows its empty state. The Risk areas and Review focus cards render as usual (AC-46/AC-47), and the coverage block lists intent as missing (AC-22).
+- **Many attached specs not found:** they collapse into one "missing" row with a count, and the file names are available on demand (AC-22).
+- **A review whose run has no usage recorded:** the Review cost line shows "—" for each missing value (AC-50).
 - **Several agents reviewed the PR:** only the newest review of kind `review` counts, whichever agent wrote it. Its dismissed findings are not sent. Summary-kind rows are ignored (AC-19/AC-20/AC-32).
 - **Transport retries:** the model adapter may re-send the *identical* request after a transport failure that returned no completion (network error, 429, 5xx). This is still the one model call of AC-3, logged once (AC-9). What is never allowed is a second request with different content, such as a schema re-ask or a correction prompt, or accepting more than one completion per generation.
 - **No enabled agents, or none with attached documents:** "attached specs" is recorded as missing.
@@ -139,6 +149,8 @@ picture together alone, every time, before reading any code.
 - Stored intent (intent, in scope, out of scope, confidence, stale flag) — [llm: stored `review_intent` classification, [006 — Intent layer](006-intent-layer.md)]
 - Latest review's non-dismissed findings (newest review of kind `review`, any agent): file, line, severity, title — [llm: stored review findings] [user: answer to B2, 2026-10-06]
 - That same review's verdict and score (display only, not sent to the model) — [llm: stored review]
+- Cost in USD and tokens in→out of the agent run that produced that review (display only, not sent to the model) — [reused: stored agent-run usage] [user: design-conformance round, 2026-10-06]
+- The brief call's own tokens in, tokens out, cost in USD and cost source (display only, stored with the brief) — [deterministic: LLM port usage for the `risk_brief` call] [user: design-conformance round, 2026-10-06]
 - PR description — [user: PR author, via the forge]
 - Linked issue title and body — [external: forge issue API, resolved as in spec 006]
 - Attached specs: the deduplicated Project Context documents attached to the workspace's enabled agents, directly or through their enabled skills — [reused: [008 — Project Context](008-project-context.md)], with content from the repo clone, treated as `[user: repository authors]` [user: answer to B5, 2026-10-06]
@@ -159,10 +171,10 @@ All of the following are data, never instructions, both to the model and to the 
 
 ## Module interactions
 
-- **`@devdigest/shared` (`contracts/brief.ts`, server copy first, client copy mirrored):** `PrBrief` becomes `{ summary, risks, review_focus: [{ file, line, reason }], missing_inputs[], head_sha, generated_at, model }`. `intent`, `blast` and `history` become optional or nullable. The existing `Risk`/`Risks` shapes are kept. The model's structured-output schema is a contract that the call is validated against. Trims (AC-13) are recorded in the brief. [user: answer to B4, 2026-10-06]
+- **`@devdigest/shared` (`contracts/brief.ts`, server copy first, client copy mirrored):** `PrBrief` becomes `{ summary, risks, review_focus: [{ file, line, reason }], missing_inputs[], head_sha, generated_at, model }`, plus the call's usage: tokens in, tokens out, cost in USD and cost source (`api` | `estimate`), each nullable (AC-49) [user: design-conformance round, 2026-10-06]. `intent`, `blast` and `history` become optional or nullable. The existing `Risk`/`Risks` shapes are kept. The model's structured-output schema is a contract that the call is validated against. Trims (AC-13) are recorded in the brief. [user: answer to B4, 2026-10-06]
 - **server, new brief API:** `GET /pulls/:id/brief` returns the stored brief plus its staleness against the PR's current head SHA, with no model call. `POST /pulls/:id/brief` generates or regenerates it. The brief is stored in the existing `pr_brief {pr_id, json}` table.
 - **server, reads:** pulls (PR row, files, patches), the stored intent (intent module / `pr_intent`), blast radius (blast module), Smart Diff grouping, the newest review of kind `review` and its non-dismissed findings (reviews), Project Context documents attached to enabled agents and skills (spec 008), the linked issue through the forge port, the `risk_brief` model through Settings feature models, the tokenizer adapter for the budget, and the LLM port's structured completion.
-- **client:** the Overview tab gets the PR Brief block: verdict banner, summary, Risk areas, Review focus, missing/stale/truncated notes, and Generate/Refresh. It keeps using the existing Intent and Blast radius cards and the existing review data for the verdict banner. The Files changed tab accepts a target file and line from the Overview and scrolls there. Labels live in `messages/en/brief.json`.
+- **client:** the Overview tab gets the PR Brief block: verdict banner with the summary as its text, Review and Brief cost lines, a coverage block under the summary ("Brief built without full data"), and Generate/Refresh. Below the Intent and Blast radius columns come two full-width cards, Risk areas first and then Review focus. The block keeps using the existing Intent and Blast radius cards, the existing review data for the verdict banner, and the existing agent-run usage for the Review cost line. The Files changed tab accepts a target file and line from the Overview and scrolls there. Labels live in `messages/en/brief.json`.
 - **reviewer-core:** no change expected.
 - **mcp-server:** no change (Non-goal).
 
@@ -175,3 +187,8 @@ None.
 2026-10-06 · all · approved (B1–B8 recommended options) · user approval after pass 2 · user
 2026-10-06 · AC-3, AC-7, AC-9, AC-19, AC-20, AC-32, AC-33, Edge cases, NFR Observability, Inputs, Module interactions · no schema re-ask (transport retries of the identical request allowed); one pino log line per generation; latest review = newest kind=review row, non-dismissed findings · plan 28 GAP1–3 (REC1–3) · user
 2026-10-06 · AC-11, AC-12, AC-35, AC-44 (new), AC-45 (new), Edge cases, NFR Cost, Inputs and provenance · schema reserve inside the 8,000-token budget; blast arrays capped, changed symbols trimmed after callers; over-budget is its own failure; verdict banner keeps review labels · plan 28 cross-model review X3/X7/X11 · user
+2026-10-06 · all · implemented (plan 28 done; plan-verifier complete 158/158) · plan 28 · user
+2026-10-06 · AC-22, AC-28, AC-30, AC-32, AC-33, AC-46..AC-50 (new), Edge cases, Inputs and provenance, Module interactions · design conformance: summary inside the verdict banner; Review + Brief cost lines under PR score (brief stores its call usage); Risk areas inside the Intent card; Review focus full-width card · live check vs designs 22/36/37 · user
+2026-10-06 · all · implemented again (G5/G6 design conformance; plan-verifier complete after fix-3) · plan 28 · user
+2026-10-06 · AC-13, AC-22, AC-46 (reversed), AC-47, Edge cases, Module interactions · coverage block "Brief built without full data" with grouped status-chip rows; Risk areas as their own full-width card before Review focus, out of the Intent card · live check round 3 · user
+2026-10-06 · all · implemented again (G7 coverage block + Risk areas card; plan-verifier complete) · plan 28 · user

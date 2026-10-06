@@ -42,6 +42,12 @@ export const s = {
     gap: 5,
     flexShrink: 0,
   } satisfies CSSProperties,
+  scoreFooter: {
+    alignSelf: "stretch",
+    marginTop: 4,
+    paddingTop: 8,
+    borderTop: "1px solid var(--border)",
+  } satisfies CSSProperties,
   scoreLabel: {
     fontSize: 12,
     color: "var(--text-muted)",

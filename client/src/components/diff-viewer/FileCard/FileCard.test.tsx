@@ -4,12 +4,13 @@
  * with a `ReactNode` content slot, never anything route-specific — the
  * feature that fills the slot lives elsewhere and is opaque here.
  */
-import { describe, it, expect, afterEach } from "vitest";
-import { render, screen, cleanup, within } from "@testing-library/react";
+import { describe, it, expect, afterEach, vi } from "vitest";
+import { render, screen, cleanup, within, fireEvent } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import type { PrFile } from "@/lib/types";
 import shell from "../../../../messages/en/shell.json";
 import type { DiffAnnotationApi, DiffLineAnnotation } from "../annotations";
+import type { DiffTarget } from "../target";
 import { FileCard } from "./FileCard";
 
 afterEach(cleanup);
@@ -200,5 +201,64 @@ describe("FileCard — range annotations (D18-A, S26)", () => {
 
     expect(screen.getByText("Findings outside the shown diff")).toBeInTheDocument();
     expect(screen.getByText("Off-range finding")).toBeInTheDocument();
+  });
+});
+
+describe("FileCard — navigation target", () => {
+  function mount(target: DiffTarget | null, file: PrFile = FILE) {
+    const ui = (t: DiffTarget | null) => (
+      <NextIntlClientProvider locale="en" messages={{ shell }}>
+        <FileCard file={file} target={t} />
+      </NextIntlClientProvider>
+    );
+    const view = render(ui(target));
+    return { rerender: (t: DiffTarget | null) => view.rerender(ui(t)) };
+  }
+
+  function withScrollStub(fn: (scroll: ReturnType<typeof vi.fn>) => void) {
+    const scroll = vi.fn();
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = scroll;
+    try {
+      fn(scroll);
+    } finally {
+      Element.prototype.scrollIntoView = original;
+    }
+  }
+
+  it("opens a collapsed file, scrolls to the target line once per nonce and highlights it", () => {
+    withScrollStub((scroll) => {
+      const big: PrFile = { ...FILE, additions: 500, deletions: 0 };
+      const { rerender } = mount({ path: FILE.path, line: 2, nonce: 1 }, big);
+      expect(screen.getByText("added line")).toBeInTheDocument();
+      expect(scroll).toHaveBeenCalledTimes(1);
+      expect(scroll).toHaveBeenCalledWith({ block: "center" });
+      const row = screen.getByText("added line").parentElement!;
+      expect(row.style.outline).toContain("2px solid");
+
+      rerender({ path: FILE.path, line: 2, nonce: 1 });
+      expect(scroll).toHaveBeenCalledTimes(1);
+
+      rerender({ path: FILE.path, line: 2, nonce: 2 });
+      expect(scroll).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it("scrolls to the header when the target has no line, and ignores other files", () => {
+    withScrollStub((scroll) => {
+      mount({ path: FILE.path, line: null, nonce: 1 });
+      expect(scroll).toHaveBeenCalledTimes(1);
+      cleanup();
+      mount({ path: "other.ts", line: null, nonce: 1 });
+      expect(scroll).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("stays toggleable by the user after a target was applied", () => {
+    withScrollStub(() => {
+      mount({ path: FILE.path, line: null, nonce: 1 });
+      fireEvent.click(screen.getByText(FILE.path));
+      expect(screen.queryByText("added line")).not.toBeInTheDocument();
+    });
   });
 });

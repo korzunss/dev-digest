@@ -3,8 +3,7 @@
 import React from "react";
 import { SectionLabel } from "@devdigest/ui";
 import type { Repo } from "@/lib/types";
-import { IntentCard } from "../IntentCard";
-import { BlastRadiusCard } from "../BlastRadiusCard";
+import { PrBriefBlock } from "../PrBriefBlock";
 import { s } from "./styles";
 
 interface OverviewTabProps {
@@ -12,19 +11,20 @@ interface OverviewTabProps {
   prHeadSha: string | null | undefined;
   prBody: string | null | undefined;
   repo: Repo | null;
+  diffPaths: string[];
+  onOpenInDiff: (path: string, line: number | null) => void;
 }
 
-export function OverviewTab({ prId, prHeadSha, prBody, repo }: OverviewTabProps) {
+export function OverviewTab({ prId, prHeadSha, prBody, repo, diffPaths, onOpenInDiff }: OverviewTabProps) {
   return (
     <>
-      <div style={s.columns}>
-        <section>
-          <IntentCard prId={prId} prHeadSha={prHeadSha} />
-        </section>
-        <section>
-          <BlastRadiusCard prId={prId} headSha={prHeadSha} repo={repo} />
-        </section>
-      </div>
+      <PrBriefBlock
+        prId={prId}
+        prHeadSha={prHeadSha}
+        repo={repo}
+        diffPaths={diffPaths}
+        onOpenInDiff={onOpenInDiff}
+      />
       {prBody && (
         <section>
           <SectionLabel icon="MessageSquare">Description</SectionLabel>

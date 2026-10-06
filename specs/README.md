@@ -95,4 +95,4 @@ migrated.
 | [007 — Smart Diff](007-smart-diff.md) | done | shared, reviewer-core, server, client |
 | [008 — Project Context](008-project-context.md) | implemented | shared, reviewer-core, server, client |
 | [009 — Onboarding Generator](009-onboarding-generator.md) | implemented | shared, server, client |
-| [010 — PR Brief](010-pr-brief.md) | approved | shared, server, client |
+| [010 — PR Brief](010-pr-brief.md) | implemented | shared, server, client |

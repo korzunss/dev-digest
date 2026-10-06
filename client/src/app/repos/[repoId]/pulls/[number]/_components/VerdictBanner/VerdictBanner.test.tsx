@@ -30,4 +30,24 @@ describe("VerdictBanner (smoke)", () => {
     expect(screen.getByText("42")).toBeInTheDocument();
     expect(screen.getByText(/1 findings · 1 blockers/)).toBeInTheDocument();
   });
+
+  it("renders the scoreFooter slot under the score, even without a score", () => {
+    const a = renderWithIntl(
+      <VerdictBanner verdict="approve" summary={null} score={80} findingsCount={0} blockers={0} scoreFooter={<span>cost slot</span>} />,
+    );
+    expect(screen.getByText("cost slot")).toBeInTheDocument();
+    const label = screen.getByText("PR SCORE", { exact: false });
+    const slot = screen.getByText("cost slot");
+    expect(label).toBeInTheDocument();
+    // same score column, footer after the label
+    const col = label.parentElement as HTMLElement;
+    expect(col).toContainElement(slot);
+    expect(label.compareDocumentPosition(slot) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    a.unmount();
+
+    renderWithIntl(
+      <VerdictBanner verdict="approve" summary={null} score={null} findingsCount={0} blockers={0} scoreFooter={<span>cost slot</span>} />,
+    );
+    expect(screen.getByText("cost slot")).toBeInTheDocument();
+  });
 });

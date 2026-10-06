@@ -16,6 +16,7 @@ import { PrDetailHeader } from "./_components/PrDetailHeader";
 import { OverviewTab } from "./_components/OverviewTab";
 import { FindingsTab } from "./_components/FindingsTab";
 import { DiffTab } from "./_components/DiffTab";
+import type { DiffTarget } from "@/components/diff-viewer";
 import RunTraceDrawer from "./_components/RunTraceDrawer";
 import { usePullDetail, usePulls } from "../../../../../lib/hooks";
 import { useQueryClient } from "@tanstack/react-query";
@@ -87,7 +88,18 @@ export default function PRDetailPage() {
     router.replace(`/repos/${repoId}/pulls/${number}${sp.toString() ? `?${sp.toString()}` : ""}`);
   };
   const setParam = (key: string, val: string | null) => setParams({ [key]: val });
+  // Navigation target for the Diff tab (spec 010): the brief asks to open a
+  // file/line; a fresh nonce makes repeating the same target apply again.
+  const [diffTarget, setDiffTarget] = React.useState<DiffTarget | null>(null);
   const setTab = (t: string) => setParam("tab", t);
+  const onSetTab = (t: string) => {
+    setDiffTarget(null);
+    setTab(t);
+  };
+  const openInDiff = (path: string, line: number | null) => {
+    setDiffTarget((prev) => ({ path, line, nonce: (prev?.nonce ?? 0) + 1 }));
+    setTab("diff");
+  };
 
   // Reviews come newest-first; each is its own run (grouped into accordions).
   const runs = reviews ?? [];
@@ -151,13 +163,22 @@ export default function PRDetailPage() {
         findingsCount={findingsCount}
         forgeUrl={repo ? forgePrUrl(repo, pr.number) : null}
         forgeLabel={repo ? FORGE_LABEL[repo.provider] : null}
-        onSetTab={setTab}
+        onSetTab={onSetTab}
         onRunStart={() => setTab("findings")}
         onRunsStarted={() => invalidateActiveRuns()}
       />
 
       <div style={{ padding: "24px 32px 44px", display: "flex", flexDirection: "column", gap: 24, maxWidth: 1080, margin: "0 auto" }}>
-        {tab === "overview" && <OverviewTab prId={prId} prHeadSha={pr.head_sha} prBody={pr.body} repo={repo} />}
+        {tab === "overview" && (
+          <OverviewTab
+            prId={prId}
+            prHeadSha={pr.head_sha}
+            prBody={pr.body}
+            repo={repo}
+            diffPaths={pr.files.map((f) => f.path)}
+            onOpenInDiff={openInDiff}
+          />
+        )}
 
         {tab === "findings" && (
           <FindingsTab
@@ -199,6 +220,7 @@ export default function PRDetailPage() {
             canComment={pr.status === "open"}
             repo={repo}
             headSha={pr.head_sha}
+            target={diffTarget}
           />
         )}
       </div>

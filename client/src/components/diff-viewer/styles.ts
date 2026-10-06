@@ -88,6 +88,18 @@ export const s = {
   } satisfies CSSProperties,
 } as const;
 
+/** File header; a navigation target gets an accent background. */
+export function fileHeaderFor(highlighted: boolean): CSSProperties {
+  return {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    padding: "10px 12px",
+    cursor: "pointer",
+    background: highlighted ? "var(--accent-bg)" : "transparent",
+  };
+}
+
 /** Chevron rotates 90deg when the file card is open. */
 export function chevronFor(open: boolean): CSSProperties {
   return {
@@ -101,7 +113,7 @@ export function chevronFor(open: boolean): CSSProperties {
     optional annotation bar. `boxShadow` (not `border`) carries the bar so it
     never mixes with a border shorthand on this row (client/insights/gotchas.md
     — four-sides longhand only matters for actual `border*` properties). */
-export function lineRowFor(kind: Line["kind"], barColor?: string): CSSProperties {
+export function lineRowFor(kind: Line["kind"], barColor?: string, highlighted = false): CSSProperties {
   const background = kind === "add" ? "var(--code-add)" : kind === "del" ? "var(--code-del)" : "transparent";
   return {
     display: "flex",
@@ -110,6 +122,8 @@ export function lineRowFor(kind: Line["kind"], barColor?: string): CSSProperties
     lineHeight: "20px",
     background,
     boxShadow: barColor ? `inset 3px 0 0 ${barColor}` : "none",
+    outline: highlighted ? "2px solid var(--accent-text)" : "none",
+    outlineOffset: -2,
   };
 }
 

@@ -99,6 +99,12 @@ collapses '..' before the guard can see it" ·
 
 ## Codebase Patterns
 
+### 2026-10-06 — a type-only `import type … from 'db/schema'` in a module's `types.ts` is still a db-outside-repository edge
+**Symptom:** plan 28's G1 put `import type * as t from '../../db/schema.js'` in `brief/types.ts` just to write `typeof t.repos.$inferSelect`; typecheck, unit tests and the plan's own "repository is the only file using `db/schema`" Done-when all passed, and only the architecture-reviewer's import walk flagged it (F1, HIGH).
+**Cause:** the onion rule `db-confined-to-repositories` is defined with `tsPreCompilationDeps: true`, so type-only imports count as edges; "it's only a type" is not an exemption. There is no runnable depcruise config to catch it (root INSIGHTS 2026-09-26), so nothing automatic does.
+**Rule:** a row type derived from `db/schema` lives in the module's `repository.ts` (as `intent/repository.ts` exports `RepoRow`) or in `server/src/db/rows.ts` (next to `PullRow`); `types.ts`/`service.ts` import it type-only from there. Include `import type` lines when doing the manual `rg` edge walk for `db/schema`.
+**Evidence:** `.claude/skills/onion-architecture/enforcement.md:65,97` · fix: `server/src/modules/brief/repository.ts:6` (plan 28 fix-loop 1, F1) · pre-existing case: `server/src/modules/reviews/run-executor.ts:89`
+
 ### 2026-09-27 — correction: `findings.review_id` IS indexed now
 **Symptom:** the 2026-09-18 FK-index entry below still says
 `findings.reviewId` "still has no callback at all". For the Smart Diff

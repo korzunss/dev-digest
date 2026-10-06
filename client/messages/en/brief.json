@@ -5,11 +5,81 @@
     "risks": "Risks",
     "history": "PR history"
   },
+  "prBrief": {
+    "title": "PR Brief",
+    "generate": "Generate brief",
+    "refresh": "Refresh",
+    "error": "Could not generate the brief.",
+    "retry": "Try again",
+    "noKey": "No model or API key is configured for Risk Brief.",
+    "openSettings": "Open model settings",
+    "overBudget": "This PR's inputs are too large for the brief's token budget.",
+    "stale": "PR has new commits",
+    "riskAreas": "Risk areas",
+    "reviewFocus": "Review focus — read these first",
+    "focusCount": "{count} items",
+    "cost": {
+      "review": "Review",
+      "brief": "Brief"
+    },
+    "noFocus": "No review focus items.",
+    "notInDiff": "File not in this PR's diff",
+    "expandRisk": "Show details",
+    "collapseRisk": "Hide details",
+    "severity": {
+      "high": "High severity",
+      "medium": "Medium severity",
+      "low": "Low severity"
+    },
+    "inputs": {
+      "intent": "intent",
+      "blast_radius": "blast radius",
+      "review_findings": "review findings",
+      "linked_issue": "linked issue",
+      "attached_specs": "attached specs",
+      "pr_description": "PR description",
+      "changed_files": "changed-file list"
+    },
+    "status": {
+      "missing": "{input} missing",
+      "partial": "{input} partial",
+      "truncated": "truncated: {input}",
+      "stale": "{input} stale"
+    },
+    "riskCount": "{count, plural, one {# risk} other {# risks}}",
+    "coverage": {
+      "title": "Brief built without full data",
+      "explanation": "Some inputs were missing or cut, so the risks and focus below may be incomplete.",
+      "showRefs": "Show {count, plural, one {# item} other {# items}}",
+      "hideRefs": "Hide",
+      "chip": {
+        "missing": "missing",
+        "partial": "partial",
+        "truncated": "truncated",
+        "stale": "stale"
+      },
+      "reason": {
+        "flag_off": "blast radius disabled",
+        "index_failed": "repo index failed",
+        "index_partial": "repo index incomplete",
+        "repo_too_large": "repo too large to index",
+        "no_data": "repo not indexed",
+        "not_found": "{count, plural, one {# issue} other {# issues}} not found",
+        "unreachable": "forge unreachable",
+        "too_large": "too large to read",
+        "missing": "{count, plural, one {# file} other {# files}} not found in this repo",
+        "outside_search_roots": "outside the context roots",
+        "outside_clone": "outside the repo",
+        "head_moved": "PR has new commits since classification",
+        "description_changed": "description changed since classification"
+      }
+    }
+  },
   "noRisks": "No notable risks flagged.",
   "noHistory": "No prior PRs overlap these files.",
   "overlap": "{count} overlap",
-  "unavailable": "Brief not available yet.",
-  "unavailableHint": "Run a review or open the PR to compute it.",
+  "unavailable": "No brief for this PR yet.",
+  "unavailableHint": "Generate brief makes one model call over the facts DevDigest already has — intent, blast radius, diff stats, description, linked issue, latest review findings and attached specs — and returns a summary, the risk areas and where to start reviewing.",
   "why": {
     "title": "git-why",
     "blame": "blame",

@@ -10,6 +10,7 @@
  */
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
+import type { DiffTarget } from "@/components/diff-viewer";
 import { NextIntlClientProvider } from "next-intl";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { FindingRecord, PrFile, ReviewRecord, SmartDiffResponse } from "@devdigest/shared";
@@ -130,12 +131,12 @@ function review(o: Partial<ReviewRecord> = {}): ReviewRecord {
   };
 }
 
-function renderTab() {
+function renderTab(target?: DiffTarget | null) {
   const qc = new QueryClient();
   return render(
     <QueryClientProvider client={qc}>
       <NextIntlClientProvider locale="en" messages={{ prReview, shell }}>
-        <DiffTab prId="pr1" filesCount={FILES.length} files={FILES} canComment />
+        <DiffTab prId="pr1" filesCount={FILES.length} files={FILES} canComment target={target} />
       </NextIntlClientProvider>
     </QueryClientProvider>,
   );
@@ -267,5 +268,22 @@ describe("DiffTab — 'review not run yet' empty state (D14-A, S23/S24)", () => 
     CURRENT_REVIEWS = [review()];
     renderTab();
     expect(screen.queryByText(prReview.smartDiff.reviewNotRun)).not.toBeInTheDocument();
+  });
+});
+
+describe("DiffTab — navigation target (PR Brief → diff)", () => {
+  it("opens the collapsed docs group and scrolls to the target file's header once", () => {
+    const scroll = vi.fn();
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = scroll;
+    try {
+      renderTab({ path: "README.md", line: null, nonce: 1 });
+      const docs = groupHeaders()[3]!;
+      expect(docs).toHaveAttribute("aria-expanded", "true");
+      expect(screen.getByText("README.md")).toBeInTheDocument();
+      expect(scroll).toHaveBeenCalledTimes(1);
+    } finally {
+      Element.prototype.scrollIntoView = original;
+    }
   });
 });

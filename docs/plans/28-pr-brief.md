@@ -1,5 +1,5 @@
 # Development Plan: PR Brief (risk brief)
-Status: approved
+Status: done
 Save as: docs/plans/28-pr-brief.md
 Execution: multi-agent
 Spec: specs/010-pr-brief.md
@@ -19,7 +19,7 @@ Spec: specs/010-pr-brief.md
 | AC-10 | S3, T2 |
 | AC-11 | S3, T3 |
 | AC-12 | S3, T3 |
-| AC-13 | S3, S13, T3, T10 |
+| AC-13 | S3, S13, S22, S23, T3, T10, T15 |
 | AC-14 | S7, T6 |
 | AC-15 | S7, T6 |
 | AC-16 | S7, T6 |
@@ -28,18 +28,18 @@ Spec: specs/010-pr-brief.md
 | AC-19 | S5, S7, T6, T7 |
 | AC-20 | S7, T6 |
 | AC-21 | S6, S7, T5, T6 |
-| AC-22 | S13, T10 |
+| AC-22 | S13, S20, S21, S22, S23, T10, T15 |
 | AC-23 | S4, T4 |
 | AC-24 | S2, S4, T1, T4 |
 | AC-25 | S4, T4 |
 | AC-26 | S4, T4 |
 | AC-27 | S4, S13, T4, T10 |
-| AC-28 | S13, T10 |
+| AC-28 | S13, S20, T10 |
 | AC-29 | S13, T10 |
-| AC-30 | S13, T10 |
+| AC-30 | S13, S18, S20, T10 |
 | AC-31 | S13, T10 |
-| AC-32 | S13, T10 |
-| AC-33 | S13, T10 |
+| AC-32 | S13, S19, S20, T10, T13 |
+| AC-33 | S13, S20, T10 |
 | AC-34 | S13, S14, T10, T11 |
 | AC-35 | S12, S13 (verdict banner exempt) |
 | AC-36 | S10, S11, S14, T8, T9 |
@@ -52,6 +52,11 @@ Spec: specs/010-pr-brief.md
 | AC-43 | S8, S9, T7, T10 |
 | AC-44 | S3, S7, T3, T6 |
 | AC-45 | S1, S3, S7, S13, T3, T6, T7, T10 |
+| AC-46 | S21, S23, S24, T10, T14 (reversed in G7; S19/S20 placement superseded) |
+| AC-47 | S20, S23, T10 |
+| AC-48 | S17, S18, S19, S20, T12, T13, T10 |
+| AC-49 | S15, S16, T6, T7 |
+| AC-50 | S17, S20, T12, T10 |
 
 ## Decisions needed
 None open — see *Decisions recorded*.
@@ -67,6 +72,7 @@ User answers, 2026-10-06 (main session):
 - Cross-model review: Sonnet 5.5 + Fable 5.1, read-only, before plan approval (plan 26 precedent).
 - Cross-model review (`docs/plans/assets/28-pr-brief/cross-model-review.md`), user 2026-10-06: apply all plan fixes Y1–Y10, Y12, X1, X2, X4–X6, X8–X13, X15 (Y11 no change); Y6/X5 combined — target applies on first render and once per new nonce (per-instance ref). X3: cap blast arrays at collection and add changed symbols to AC-12's trim order after callers, cut recorded as `truncated: blast_radius`, budget failure gets its own log reason [spec]. X7: AC-35 amended to exempt the reused verdict banner [spec]. X11: a fixed schema reserve is subtracted from the 8,000 budget [spec]. X14: Intent/Blast columns render inside the PR Brief block (design 22); AC-34 unchanged.
 - Planner assumptions after the cross-model round (user, 2026-10-06): blast caps 30 changed symbols / 20 endpoints / 20 crons; 800-token schema reserve; PR description cut by binary search on length — accepted.
+- Design conformance (user, 2026-10-06, after a live check vs designs 22/36/37): summary inside the verdict banner; both costs under PR SCORE — "Review" (latest review run) and "Brief" (the brief call, stored as `usage`); Risk areas inside the Intent card; Review focus as a full-width card. Run through the pipeline (spec amendment → G5/G6), not as a direct edit.
 
 ## Prerequisites
 Docker for the `.it` tier. No new dependencies.
@@ -78,8 +84,11 @@ Docker for the `.it` tier. No new dependencies.
 | G2 | S5–S8 | server repository · intent · brief service · routes/DI | G1 | `PrBriefView` as served, `failure` values |
 | G3 | S9–S11 | client hooks · `diff-viewer` · DiffTab | G1 | `usePrBrief`/`useGeneratePrBrief`; `DiffTarget` + `target` props |
 | G4 | S12–S14 | client i18n · PrBriefBlock · OverviewTab + page | G3 | — |
+| G5 | S15–S16 | design conformance: shared contract (+ mirror) · brief service usage | G4 | `BriefUsage`, `PrBrief.usage?` |
+| G6 | S17–S20 | design conformance: client format helper · i18n · banner/card slots · PrBriefBlock layout | G5 | — |
+| G7 | S21–S24 | coverage round (client only): i18n · CoverageBlock · Risk-areas card · IntentCard slot removal | G6 | — |
 
-G2 and G3 share no package or file and may run in parallel after G1. `…` below = `client/src/app/repos/[repoId]/pulls/[number]/_components`.
+G2 and G3 share no package or file and may run in parallel after G1. G5/G6 implement the design-conformance amendment (spec 010 Changelog, designs 22/36/37); G1–G4 are done. `…` below = `client/src/app/repos/[repoId]/pulls/[number]/_components`.
 
 ## Steps
 
@@ -209,6 +218,96 @@ G2 and G3 share no package or file and may run in parallel after G1. `…` below
 - **Known gotchas:** `client/insights/gotchas.md` → Tests (`importActual`).
 - **Done when:** `cd client && pnpm typecheck` · `cd client && pnpm test` passes
 
+### S15 — Store the brief call's usage in the contract  [Contract]
+- **Files:** `server/src/vendor/shared/contracts/brief.ts` (modify) · `client/src/vendor/shared/contracts/brief.ts` (modify, same edit)
+- **Change:** `import { CostSource } from './trace.js'`; add `BriefUsage = z.object({tokens_in: z.number().int().nullable(), tokens_out: z.number().int().nullable(), cost_usd: z.number().nullable(), cost_source: CostSource.nullable()})` + type; `PrBrief` gains `usage: BriefUsage.optional()` (rows stored before G5 have none and must still parse).
+- **Layer / why here:** ports; shared first, targeted mirror.
+- **Skills to apply:** `zod`, `typescript-expert`, `onion-architecture`
+- **Practices:** `.optional()` only for the legacy-row case, `.nullable()` per value (AC-49); no other contract edits.
+- **Known gotchas:** root `INSIGHTS.md` "the two vendored `shared` copies are not actually in sync".
+- **Done when:** `diff server/src/vendor/shared/contracts/brief.ts client/src/vendor/shared/contracts/brief.ts` prints nothing · `cd server && pnpm typecheck` · `cd client && pnpm typecheck`
+
+### S16 — BriefService writes usage
+- **Files:** `server/src/modules/brief/service.ts` (modify) · `server/test/brief-service.test.ts` (modify) · `server/test/brief.it.test.ts` (modify)
+- **Change:** the stored `PrBrief` (`service.ts:180-189`) adds `usage: {tokens_in: result.tokensIn ?? null, tokens_out: result.tokensOut ?? null, cost_usd: result.costUsd ?? null, cost_source: result.costSource ?? null}`.
+- **Layer / why here:** application; the values already arrive from `completeStructured`.
+- **Skills to apply:** `onion-architecture`, `zod`, `typescript-expert`
+- **Practices:** no new reads or calls; the AC-9 log line unchanged.
+- **Known gotchas:** none.
+- **Done when:** `cd server && pnpm typecheck` · `cd server && pnpm exec vitest run test/brief-service.test.ts test/brief.it.test.ts` passes (T6: upsert payload carries `usage`, and a null `costUsd` stays null; T7: GET after POST returns `brief.usage` with numbers; a stored current-shape row without `usage` still returns a non-null brief) · `cd server && pnpm exec vitest run --exclude '**/*.it.test.ts'` passes
+
+### S17 — Compact token-flow formatter
+- **Files:** `client/src/lib/format-cost.ts` (modify) · `client/src/lib/format-cost.test.ts` (modify)
+- **Change:** add `formatTokenFlow(tokensIn, tokensOut): string` → `"8.2K→1.3K"`; each side `<1000` as an integer, `≥1000` one-decimal `K`, `≥1e6` one-decimal `M` (assumption, matches design 22); a null side → `"—"` (AC-50).
+- **Layer / why here:** the one place cost/tokens become strings (`format-cost.ts` header).
+- **Skills to apply:** `typescript-expert`, `frontend-architecture`
+- **Practices:** pure function; `formatCostUsd` reused unchanged for the USD part.
+- **Known gotchas:** `client/insights/gotchas.md` → Tooling (`pnpm exec vitest run <pattern>`).
+- **Done when:** `cd client && pnpm typecheck` · `cd client && pnpm exec vitest run format-cost` passes (T12: `8200,1300`→`8.2K→1.3K`, `950,null`→`950→—`, `1_500_000,20`→`1.5M→20`)
+
+### S18 — Copy for cost lines and the focus card
+- **Files:** `client/messages/en/brief.json` (modify)
+- **Change:** `prBrief.reviewFocus` becomes "Review focus — read these first" (count moves to a badge); add `prBrief.focusCount` "{count} items", `prBrief.cost.review` "Review", `prBrief.cost.brief` "Brief".
+- **Layer / why here:** i18n, `brief` namespace (AC-35).
+- **Skills to apply:** `next-best-practices`, `frontend-architecture`
+- **Practices:** valid JSON; existing keys otherwise untouched.
+- **Known gotchas:** none.
+- **Done when:** `jq -e '([.prBrief | .. | strings] | length) == 32 and .prBrief.cost.brief == "Brief" and .intentCard.title == "PR Brief"' client/messages/en/brief.json`
+
+### S19 — Slots in VerdictBanner and IntentCard
+- **Files:** `…/VerdictBanner/VerdictBanner.tsx` · `…/VerdictBanner/styles.ts` · `…/VerdictBanner/VerdictBanner.test.tsx` · `…/IntentCard/IntentCard.tsx` · `…/IntentCard/styles.ts` · `…/IntentCard/IntentCard.test.tsx` (all modify)
+- **Change:** `VerdictBanner` gains optional `scoreFooter?: React.ReactNode`, rendered under the PR score in the score column (rendered there even when `score` is null). `IntentCard` gains optional `children?: React.ReactNode`, rendered after a divider below the card body (after the scope lists and their metadata, before the Re-classify footer), in every state — Design notes → *Design conformance (G5–G6)*.
+- **Layer / why here:** colocated feature components; slots keep brief logic out of them (composition, not a brief import).
+- **Skills to apply:** `react-best-practices`, `frontend-architecture`, `typescript-expert`, `react-testing-library`
+- **Practices:** props optional — `ReviewRunAccordion` and existing tests unaffected; no divider when no children; `styles.ts` literal entries.
+- **Known gotchas:** `client/insights/gotchas.md` → UI (`styles.ts` literals with `satisfies CSSProperties`), Tests (`fireEvent`).
+- **Done when:** `cd client && pnpm typecheck` · `cd client && pnpm exec vitest run VerdictBanner IntentCard` passes (T13: slot content rendered in the score column; T14: children rendered after a separator, absent → no separator)
+
+### S20 — Recompose PrBriefBlock to the designs
+- **Files:** `…/PrBriefBlock/PrBriefBlock.tsx` · `…/PrBriefBlock/helpers.ts` · `…/PrBriefBlock/styles.ts` · `…/PrBriefBlock/PrBriefBlock.test.tsx` · `…/PrBriefBlock/_components/RiskList/RiskList.tsx` · `…/PrBriefBlock/_components/FocusList/FocusList.tsx` (modify) · `…/PrBriefBlock/_components/CostLines/CostLines.tsx` · `…/PrBriefBlock/_components/CostLines/index.ts` (create)
+- **Change:** layout per Design notes → *Design conformance (G5–G6)*: banner carries `summary={brief.summary}` and `scoreFooter={<CostLines …/>}` (AC-32, AC-48); no review → summary at the top with only the Brief line (AC-33); notes under the summary (AC-22); `RiskList` as compact cards passed as `IntentCard` children (AC-28, AC-46); `FocusList` as a full-width card below the columns with heading + count badge and a bulleted list (AC-30, AC-47). Review usage from `usePrRuns(prId)` matched on `review.run_id`.
+- **Layer / why here:** colocated feature component.
+- **Skills to apply:** `react-best-practices`, `frontend-architecture`, `next-best-practices`, `typescript-expert`, `security`, `react-testing-library`
+- **Practices:** model text stays plain text nodes (AC-31); hooks from `@/lib/hooks/brief` and `@/lib/hooks/reviews`, not the barrel; ≤200 lines per component; chevron button with `aria-expanded` + `aria-label`; no derived state.
+- **Known gotchas:** `client/insights/gotchas.md` → Tests (`importActual`, multiple matches on reused copy), UI (`styles.ts`).
+- **Done when:** `cd client && pnpm typecheck` · `cd client && pnpm exec vitest run PrBriefBlock OverviewTab` passes (T10 cases in Design notes) · `cd client && pnpm test` passes
+
+### S21 — Coverage and risk-card copy
+- **Files:** `client/messages/en/brief.json` (modify)
+- **Change:** add `prBrief.coverage.{title, explanation, showRefs, hideRefs}`, `prBrief.coverage.chip.{missing,partial,truncated,stale}`, `prBrief.coverage.reason.{13 codes}` (ICU with `{count}`) and `prBrief.riskCount` — exact strings in Design notes → *Coverage round (G7)*. Existing keys untouched.
+- **Layer / why here:** i18n, `brief` namespace (AC-35).
+- **Skills to apply:** `next-best-practices`, `frontend-architecture`
+- **Practices:** valid JSON; ICU plurals for counted reasons.
+- **Known gotchas:** none.
+- **Done when:** `jq -e '([.prBrief | .. | strings] | length) == 54 and .prBrief.coverage.title == "Brief built without full data" and .prBrief.coverage.reason.no_data != null' client/messages/en/brief.json`
+
+### S22 — CoverageBlock subcomponent
+- **Files:** `…/PrBriefBlock/_components/CoverageBlock/CoverageBlock.tsx` · `…/CoverageBlock/index.ts` · `…/CoverageBlock/helpers.ts` · `…/CoverageBlock/helpers.test.ts` (all create, under `…/PrBriefBlock/_components/`)
+- **Change:** `groupCoverage(items: BriefMissingInput[]) → CoverageRow[]` and `CoverageBlock({items})` (title, explanation, one row per group: status chip, input name, known reason, refs collapsed behind a toggle; `null` when `items` is empty) — Design notes → *Coverage round (G7)*.
+- **Layer / why here:** colocated sub-component of the block (one consumer); grouping is a pure helper beside it.
+- **Skills to apply:** `react-best-practices`, `frontend-architecture`, `typescript-expert`, `security`, `react-testing-library`
+- **Practices:** pure `groupCoverage`, no derived state in `useState` (only the per-row open flag); refs and reasons as text nodes; unknown reason codes show no reason (never raw strings); toggle is a `<button>` with `aria-expanded`; `styles.ts` literals.
+- **Known gotchas:** `client/insights/gotchas.md` → UI (`styles.ts`), Tooling (`pnpm exec vitest run <pattern>`).
+- **Done when:** `cd client && pnpm typecheck` · `cd client && pnpm exec vitest run CoverageBlock` passes (T15)
+
+### S23 — Risk areas as their own card; coverage under the summary
+- **Files:** `…/PrBriefBlock/PrBriefBlock.tsx` · `…/PrBriefBlock/helpers.ts` · `…/PrBriefBlock/styles.ts` · `…/PrBriefBlock/_components/RiskList/RiskList.tsx` · `…/PrBriefBlock/PrBriefBlock.test.tsx` (all modify)
+- **Change:** replace the `missing_inputs` notes (`PrBriefBlock.tsx:146-155`) with `<CoverageBlock items={brief.missing_inputs} />` under the summary (stale note of AC-42 stays separate); drop `noteKey` and the unused `notes` style. Stop passing `RiskList` as `IntentCard` children; render it after the columns and before `FocusList`. `RiskList` becomes a card in the `FocusList` frame (`s.focusCard`, heading with `AlertTriangle` icon + count `Badge` with `riskCount` label). Update T10 per Design notes.
+- **Layer / why here:** colocated feature component.
+- **Skills to apply:** `react-best-practices`, `frontend-architecture`, `next-best-practices`, `typescript-expert`, `security`, `react-testing-library`
+- **Practices:** model text stays plain text (AC-31); ≤200 lines per component; no new hooks; G4–G6 test cases kept, only their layout queries adjusted.
+- **Known gotchas:** `client/insights/gotchas.md` → Tests (`importActual`, multiple matches on reused copy).
+- **Done when:** `cd client && pnpm typecheck` · `cd client && pnpm exec vitest run PrBriefBlock OverviewTab` passes (T10)
+
+### S24 — Remove the unused IntentCard children slot
+- **Files:** `…/IntentCard/IntentCard.tsx` · `…/IntentCard/styles.ts` · `…/IntentCard/IntentCard.test.tsx` (all modify)
+- **Change:** remove the `children` prop, its divider block (`IntentCard.tsx:127`) and the `slot` style; remove the "children slot" test (`IntentCard.test.tsx:106-120`) and the `children` param of its render helper.
+- **Layer / why here:** after S23 the slot has no consumer; a prop nobody passes is a premature abstraction (react-best-practices) and T14 would keep testing dead API. Re-adding it later is one small edit.
+- **Skills to apply:** `react-best-practices`, `frontend-architecture`, `typescript-expert`, `react-testing-library`
+- **Practices:** no other IntentCard behaviour changes.
+- **Known gotchas:** none.
+- **Done when:** `cd client && pnpm typecheck` · `cd client && pnpm exec vitest run IntentCard` passes · `cd client && pnpm test` passes
+
 ## Tests
 | Id | Test file | Tier | Covers | Step |
 |---|---|---|---|---|
@@ -223,13 +322,19 @@ G2 and G3 share no package or file and may run in parallel after G1. `…` below
 | T9 | `…/DiffTab/DiffTab.test.tsx` | unit (jsdom) | AC-36, 37 | S11 |
 | T10 | `…/PrBriefBlock/PrBriefBlock.test.tsx` | unit (jsdom) | AC-2, 4, 6–8, 13, 22, 27–34, 38, 42, 43, 45 | S13 |
 | T11 | `…/OverviewTab/OverviewTab.test.tsx` | unit (jsdom) | AC-1, 34 | S14 |
+| T12 | `client/src/lib/format-cost.test.ts` | unit | AC-48, 50 (`formatTokenFlow`) | S17 |
+| T13 | `…/VerdictBanner/VerdictBanner.test.tsx` | unit (jsdom) | AC-32, 48 slot | S19 |
+| T14 | `…/IntentCard/IntentCard.test.tsx` | unit (jsdom) | AC-46 slot (S19); slot test removed in S24 | S19, S24 |
+| T15 | `…/PrBriefBlock/_components/CoverageBlock/helpers.test.ts` | unit | AC-13, 22 grouping | S22 |
+
+G5/G6 extend T6, T7 (AC-49; S16) and T10 (AC-22, 28, 30, 32, 33, 46–48, 50; S20). G7 extends T10 (AC-13, 22, 46, 47; S23).
 
 ## Migrations & contracts
-No migration (TQ1). Contract `brief.ts` reshaped in S1, mirrored in the same step.
+No migration (TQ1). Contract `brief.ts` reshaped in S1 and extended in S15 (`usage`), each mirrored in the same step.
 
 ## Out of scope
 - PR history in the brief, MCP tool, auto-regeneration, intent classification during generation.
-- Changes to `reviewer-core`, `mcp-server`, `e2e`, `run-executor.ts` behaviour, the Intent/Blast cards' internals, `pr_files` refresh.
+- Changes to `reviewer-core`, `mcp-server`, `e2e`, `run-executor.ts` behaviour, the Intent/Blast cards' internals beyond the S19 slots and their S24 removal, `RunCostBadge`, `pr_files` refresh.
 - `server/src/db/migrations/**`, other `*/src/vendor/**`, lock files, `.env`.
 - Moving onboarding's `classifyGenerationError`.
 
@@ -390,6 +495,117 @@ No migration (TQ1). Contract `brief.ts` reshaped in S1, mirrored in the same ste
   - the `over_budget` message differs from the `failed` one;
   - the Intent and Blast cards render inside the section when no brief exists.
 
+### Design conformance (G5–G6)
+Source: spec 010 Changelog, 2026-10-06 design-conformance entry (AC-22, 28, 30, 32, 33 changed; AC-46..50 new) and designs 22/36/37 (session images, not in the repo).
+
+**Block structure** (top to bottom), inside the existing "PR Brief" section:
+
+1. **Banner area.**
+   - With a latest review: `VerdictBanner` with `summary={brief.summary}` (AC-32). Its `scoreFooter` is `<CostLines review={…} brief={brief.usage} />` (AC-48).
+   - Without one: a summary card with `brief.summary` and `<CostLines review={null} brief={brief.usage} />` beside it (AC-33).
+   - Below it, inside the brief area: stale note, `missing_inputs` notes (AC-22), alerts, and the not-in-diff `role="status"` line.
+2. **Columns.** `IntentCard` with `<RiskList …/>` as children (AC-46), shown only when a brief exists; `BlastRadiusCard` unchanged.
+3. **`FocusList`.** A full-width card below the columns (AC-47), shown only when a brief exists.
+
+**`CostLines`** (props `review: {cost_usd, cost_source, tokens_in, tokens_out} | null`, `brief: BriefUsage | null | undefined`):
+- One line per present source. Each line: a label (`prBrief.cost.review` / `prBrief.cost.brief`), then `formatCostUsd(cost_usd, cost_source)`, then `formatTokenFlow(tokens_in, tokens_out)`, in `mono tnum`.
+- A missing source omits its line (AC-50):
+  - Review: no latest review → no line. A latest review whose `run_id` matches no `usePrRuns` row → line with "—" values (the source exists, its usage is unknown).
+  - Brief: `brief.usage` absent (a pre-G5 row) → no line. Null values inside it → "—".
+- `helpers.reviewUsage(review, runs)` returns the matching `RunSummary` usage or nulls.
+
+**`RiskList`** (AC-28):
+- Each risk is a compact bordered card: severity icon (colour and shape as today), title, first ref as a monospace button, and a chevron icon button (`aria-expanded`, `aria-label` from `expandRisk`/`collapseRisk`).
+- Expanded: explanation + all refs (AC-29).
+- Heading "Risk areas" with the `AlertTriangle` icon, as in design 22.
+
+**`FocusList`** (AC-30):
+- Heading `prBrief.reviewFocus` plus a count `Badge` (`aria-label` `focusCount`).
+- A `<ul>` of rows: the `file:line` monospace button, then ` — reason` as plain text. The order is unchanged (AC-26).
+
+**`IntentCard` slot placement:** the slot renders after the body (scope lists, confidence/stale badges, sources). That satisfies "after a divider below the in-scope and out-of-scope lists" while keeping intent metadata with the intent.
+
+**T10 additions:**
+- the summary text sits inside the banner (`within` the banner region);
+- the Review and Brief cost lines show `$`, `8.2K→1.3K`-style values;
+- a review whose run has null usage shows "—";
+- no review → only the Brief line;
+- a brief without `usage` → no Brief line;
+- "Risk areas" renders inside the Intent card;
+- the focus card heading has a count badge and a `<ul>` list;
+- the chevron toggles `aria-expanded`.
+
+Mocks: `usePrRuns` from `@/lib/hooks/reviews` with `importActual`.
+
+### Coverage round (G7)
+Source: spec 010 Changelog "coverage round" entry (AC-13, AC-22, AC-46 reversed, AC-47).
+
+**Block order** inside the PR Brief section:
+1. banner area (or summary card), then the stale note (AC-42), then `CoverageBlock` (AC-22), then alerts and the not-in-diff status;
+2. the Intent and Blast columns — the Intent card holds no Risk areas;
+3. the Risk areas card (AC-46);
+4. the Review focus card (AC-47).
+
+**`groupCoverage`:**
+- Groups by `input + status`, keeping first-seen order.
+- `CoverageRow = {input, status, refs: string[], reason: KnownReason | null, count}`.
+- `refs` are the non-null refs, deduped; `count = refs.length`, or 1 when there are none.
+- `reason` is the shared code when every entry in the group carries the same code and that code is in `KNOWN_REASONS`; otherwise null.
+
+**`KNOWN_REASONS`** (13 codes):
+- blast `DegradedReason`: `flag_off`, `index_failed`, `index_partial`, `repo_too_large`, `no_data`;
+- linked-issue `classifyFailure`: `not_found`, `unreachable`, `too_large`;
+- `ContextSkipReason`: `missing`, `outside_search_roots`, `outside_clone` (its `too_large` shares the key);
+- intent `stale_reason`: `head_moved`, `description_changed`.
+
+**`CoverageBlock` row:**
+- A chip — a `Badge` with `coverage.chip.<status>`; colours: missing `var(--crit)`, partial and stale `var(--warn)`, truncated `var(--text-muted)`.
+- The input name (`inputs.<input>`).
+- When `reason` is set, ` — ` plus `coverage.reason.<code>` with `{count}`.
+- When `refs.length > 0`, a `showRefs`/`hideRefs` toggle (`aria-expanded`) revealing the refs as a monospace list.
+- The block has an `aria-label` of its title.
+
+**Copy (S21)** under `prBrief.coverage`:
+- `title` "Brief built without full data"
+- `explanation` "Some inputs were missing or cut, so the risks and focus below may be incomplete."
+- `showRefs` "Show {count, plural, one {# item} other {# items}}", `hideRefs` "Hide"
+- `chip.{missing:"missing", partial:"partial", truncated:"truncated", stale:"stale"}`
+- `reason`:
+  - `flag_off` "blast radius disabled"
+  - `index_failed` "repo index failed"
+  - `index_partial` "repo index incomplete"
+  - `repo_too_large` "repo too large to index"
+  - `no_data` "repo not indexed"
+  - `not_found` "{count, plural, one {# issue} other {# issues}} not found"
+  - `unreachable` "forge unreachable"
+  - `too_large` "too large to read"
+  - `missing` "{count, plural, one {# file} other {# files}} not found in this repo"
+  - `outside_search_roots` "outside the context roots"
+  - `outside_clone` "outside the repo"
+  - `head_moved` "PR has new commits since classification"
+  - `description_changed` "description changed since classification"
+
+Plus `prBrief.riskCount` "{count, plural, one {# risk} other {# risks}}". That is 22 new strings, 54 `prBrief` strings in total.
+
+**T15 (`groupCoverage`):**
+- three `attached_specs`/`missing`/`missing` entries → one row, count 3, reason `missing`;
+- a mixed-reason group → reason null;
+- an unknown code → null;
+- a ref-less `truncated` → count 1;
+- an empty list → `[]`.
+
+**T10 additions (S23):**
+- no `missing_inputs` → no "Brief built without full data";
+- grouped specs row text "attached specs — 3 files not found in this repo", with refs hidden until the toggle is pressed;
+- blast `partial` + `no_data` → "repo not indexed" with a "partial" chip;
+- a `truncated` row (AC-13);
+- an intent `stale` row;
+- "Risk areas" is absent `within` the Intent card, and its card follows the columns and precedes the Review focus card (`compareDocumentPosition`), with a count badge.
+
+All G4–G6 T10 cases are kept: AC-2, 4, 7, 8, 27–33, 38, 42, 43, 45, 48, 50.
+
+**Slot decision (S24):** remove the IntentCard `children` slot rather than keep it unused — see S24 *Layer / why here*.
+
 ### Pass-1 review (resolved)
 TQ1–TQ5, GAP1–GAP3, REC1–REC5 and D1–D8 are as recorded in *Decisions recorded*.
 - D1-A: sync POST, in-process guard, always 200.
@@ -413,6 +629,7 @@ The cross-model review (`docs/plans/assets/28-pr-brief/cross-model-review.md`) w
 - root `INSIGHTS.md` → "the two vendored `shared` copies are not actually in sync" (S1); "a reviewer-core input-type change breaks server tests that `pnpm typecheck` never sees" (server unit suite in S4/S8).
 - `server/docs/architecture.md` §2–3 (`_shared`, DI getters) → S2, S8; `client/docs/ui-architecture.md` §6 → client tests.
 - `onboarding/service.ts:98-185, 228-284` → S7; `ReviewRunAccordion.tsx:51-59` → S10/S11.
+- G5/G6: spec 010 design-conformance Changelog entry and designs 22/36/37; `VerdictBanner.tsx:26-58` (summary prop, score column), `IntentCard.tsx:92-137` (card frame, footer), `PrBriefBlock.tsx` as implemented by G4, `brief/service.ts:180-189` (stored brief), `StructuredResult` usage fields (`adapters.ts:119-123`), `RunSummary` usage (`contracts/trace.ts:150-173`) served by `usePrRuns` (`lib/hooks/reviews.ts:39-47`), `lib/format-cost.ts` (`formatCostUsd`, no compact token formatter yet).
 
 ## Skills
 | Skill | Loaded | Applied in | Not used — reason |
@@ -429,6 +646,9 @@ The cross-model review (`docs/plans/assets/28-pr-brief/cross-model-review.md`) w
 | `next-best-practices` | on demand (S9) | S9, S11–S14 | |
 | `react-testing-library` | on demand (S10) | S10, S11, S13, S14 | |
 
+G5/G6: `zod`, `typescript-expert`, `onion-architecture` → S15, S16; `frontend-architecture` → S17–S20; `next-best-practices` → S18, S20; `react-best-practices`, `react-testing-library` → S19, S20; `security` → S20.
+G7: `next-best-practices`, `frontend-architecture` → S21–S24; `react-best-practices`, `typescript-expert`, `react-testing-library` → S22–S24; `security` → S22, S23.
+
 ## Affected modules
 | Package | Module / path | Layer | New / changed |
 |---|---|---|---|
@@ -441,8 +661,13 @@ The cross-model review (`docs/plans/assets/28-pr-brief/cross-model-review.md`) w
 | client | `components/diff-viewer/*` | shared chrome | changed |
 | client | PR route `DiffTab`, `SmartDiffGroup`, `OverviewTab`, `PrBriefBlock`, `page.tsx` | feature UI | changed / new |
 | client | `messages/en/brief.json` | i18n | changed |
+| client (G6) | `lib/format-cost.ts`; PR route `VerdictBanner`, `IntentCard` (slots); `PrBriefBlock/_components/CostLines` | helper · feature UI | changed / new |
+| client (G7) | `PrBriefBlock` (+ new `_components/CoverageBlock`), `RiskList`, `IntentCard` (slot removed), `messages/en/brief.json` | feature UI · i18n | changed / new |
 
 ## Risks & open questions
+- **G5/G6 assumptions.** The `K`/`M` token format, the IntentCard slot placed after the whole body (sources included), and the Review line showing "—" when the review's run is missing from `/pulls/:id/runs`. All three are read from designs 22/36/37 and AC-50; none needs a product decision.
+- **G7 reverses part of G6.** AC-46's Risk-areas placement inside the Intent card (S19/S20) is reversed by S23/S24. The plan-verifier should check AC-46 against S23/S24 and T10, not against the G6 handoff. The reason copy for the 13 codes is my wording (assumption); unknown codes show no reason by design.
+- **G4 behaviour under the new layout.** S20 restructures what T10/T11 assert. G4's verified behaviour (AC-2, 4, 7, 8, 31, 38, 42, 43) must keep passing in the rewritten T10, and the plan-verifier re-checks those items.
 - **Tokenizer accuracy (AC-11).** Tokens are counted with one encoder (`cl100k_base`, or chars/4) for every provider, and `SCHEMA_TOKEN_RESERVE` is a fixed estimate of the `response_format` schema cost (X11). For some models the real input may differ slightly from the count.
 - **Unconfirmed defaults (assumptions):** the blast caps (30/20/20), the 800-token schema reserve, and the binary-search cut of the description. The verifier checks them only against the plan.
 - **Hidden transport retries (X9).** The SDK's own retries (up to 2) stack under `withRetry` (up to 3), and `attempts` does not show them. A transport retry resends the identical request, which spec 010 allows ("Transport retries" edge case), but the cost of one generation can exceed a single round trip.
@@ -453,6 +678,8 @@ The cross-model review (`docs/plans/assets/28-pr-brief/cross-model-review.md`) w
 ## Handed off
 - architecture-reviewer: `_shared` moves + re-exports (S2), `IntentService.readLinkedIssues` (S6), structural dep ports (S3/S7), memoised container getter (S8).
 - security review: paid LAN-reachable `POST /pulls/:id/brief` (rate limit + guard + explicit timeout), untrusted text into the prompt (S3) and the UI (S13), the forge issue fetch (S6), content-free success and failure logs (S7).
+- G5/G6: no new trust boundary (stored usage is server-computed numbers; model text stays plain text in S20); architecture-reviewer may glance at the S19 slot props.
+- G7: client only, no new trust boundary; refs in the coverage rows are repo paths and issue refs rendered as text (S22).
 
 ## Insights to record
 None.
@@ -468,6 +695,224 @@ None.
 - [x] Execution mode multi-agent per rule
 - [x] Every step's *Skills to apply* is complete
 - [x] `sdd.sh plan-lint` prints `plan-lint: ok`
+
+## Handoffs → G1
+
+## Steps
+| Step | Status | Files changed |
+|---|---|---|
+| S1 | done | both `vendor/shared/contracts/brief.ts` copies (same edit) |
+| S2 | done | `_shared/diff-hunks.ts` (new), `_shared/context-paths.ts` (new), `intent/helpers.ts`, `reviews/helpers.ts`, `test/diff-hunks.test.ts` (new) |
+| S3 | done | `brief/{constants,types,prompt,budget}.ts` (new), `test/brief-prompt.test.ts`, `test/brief-budget.test.ts` (new) |
+| S4 | done | `brief/{grounding,helpers}.ts` (new), `test/brief-grounding.test.ts` (new) |
+
+Deviations (trivial): `types.ts` declares `BriefRepoRow = typeof t.repos.$inferSelect` itself (S5 repository should re-export it from `./types.js`); `buildBriefMessages` is sync with an inline system prompt; `LineRange` is `{start, end}`.
+
+Handoff (paths under `server/src/modules/`):
+- Contract: `BriefInput`, `BriefInputStatus`, `BriefMissingInput {input,status,ref|null,reason|null}`, `ReviewFocusItem`, `BriefModel`, `PrBriefModelOutput`, `BriefFailureReason` (`no_key|over_budget|failed|in_progress`), `PrBriefView`; `PrBrief = {summary, risks: Risks, review_focus, missing_inputs, head_sha, generated_at, model, intent?, blast?, history?}`.
+- `_shared/diff-hunks.ts`: `LineRange`, `changedLineRanges(patch)`, `headersFromPatch` (re-exported by `intent/helpers.ts`). `_shared/context-paths.ts`: `mergeContextPaths` (re-exported by `reviews/helpers.ts`).
+- `brief/types.ts`: `BriefFacts`, `BriefFileFact`, `BriefBlastFacts`, `FitResult`, `TokenCounter`, `BriefRepoRow`, `BriefLogger`; ports `BriefIntentPort`, `BriefBlastPort`, `BriefSmartDiffPort`, `BriefAgentsPort`, `BriefContextPort`.
+- `brief/constants.ts`: `BRIEF_INPUT_TOKEN_BUDGET`, `SCHEMA_TOKEN_RESERVE`, `BRIEF_SCHEMA_NAME`, `BRIEF_LLM_TIMEOUT_MS`, `BRIEF_MAX_OUTPUT_TOKENS`, `FOCUS_MAX`, `RISK_FILE_REFS_MAX`, `BLAST_*_MAX`, `TRIM_ORDER`, `TRIM_GROUP_INPUT`.
+- `brief/prompt.ts`: `buildBriefMessages(facts): ChatMessage[]`.
+- `brief/budget.ts`: `fitToBudget(facts, counter, budget?) → {facts, truncated}`; `capBlast(BriefBlastFacts) → {blast, truncated}` (service maps `BlastRadius` → facts first); `BriefBudgetError`.
+- `brief/grounding.ts`: `normaliseRef`, `groundingContext(files, blast)`, `groundBrief(output, ctx) → {summary, risks: Risk[], review_focus}` (service wraps as `{risks}`).
+- `brief/helpers.ts`: `classifyBriefError(err) → no_key|over_budget|failed`.
+
+## Skills
+| Skill | Loaded | Applied in | Not used — reason |
+|---|---|---|---|
+| `onion-architecture` | preload | S1–S4 | |
+| `engineering-insights` | preload | not applied | read only; no insight to record |
+| `zod` | on demand | S1, S4 | |
+| `typescript-expert` | on demand | S1–S4 | |
+| `security` | on demand | S3, S4 | |
+
+Verification: brief.ts copies identical; server + client typecheck ok; server unit suite 58 files / 796 tests ok.
+
+## Handoffs → G3
+
+## Steps
+| Step / gap | Status | Files changed |
+|---|---|---|
+| S9 | done | `client/src/lib/hooks/brief.ts` (new), `client/src/lib/hooks/index.ts` |
+| S10 | done | `client/src/components/diff-viewer/target.ts` (new), `index.ts`, `DiffViewer/DiffViewer.tsx`, `FileCard/FileCard.tsx`, `CodeLine/CodeLine.tsx`, `styles.ts`, `FileCard/FileCard.test.tsx` |
+| S11 | done | `.../DiffTab/DiffTab.tsx`, `.../DiffTab/_components/SmartDiffGroup/SmartDiffGroup.tsx`, `.../DiffTab/DiffTab.test.tsx` |
+
+Deviations (trivial): `fileHeaderFor(highlighted)` added to `styles.ts` (outline highlight; `s.fileHeader` left unused); `index.ts` also exports `TARGET_HIGHLIGHT_MS` and `DiffTarget`; a file closed and reopened by hand remounts `CodeLine` and re-applies the same nonce once.
+
+Handoff:
+- `client/src/lib/hooks/brief.ts`: `usePrBrief(prId): UseQueryResult<PrBriefView>` polls every 2 s while `generating`; `useGeneratePrBrief()` mutation (prId) — success writes the response into `["pr-brief", prId]`, error invalidates it. Exported from `@/lib/hooks` and importable as `@/lib/hooks/brief`.
+- `@/components/diff-viewer` exports `DiffTarget {path, line: number|null, nonce}` and `TARGET_HIGHLIGHT_MS`.
+- Optional `target?: DiffTarget | null` on `DiffViewer`, `FileCard`, `DiffTab`; `SmartDiffGroup` takes it, `DiffTab` passes it only to the group containing `target.path`.
+- S14 must pass `target={diffTarget}` to `DiffTab`.
+
+## Skills
+| Skill | Loaded | Applied in | Not used — reason |
+|---|---|---|---|
+| `react-best-practices` | on demand | S9–S11 | |
+| `frontend-architecture` | on demand | S9–S11 | |
+| `next-best-practices` | on demand | S9, S11 | |
+| `typescript-expert` | on demand | S9–S11 | |
+| `react-testing-library` | on demand | S10, S11 (tests) | |
+| `onion-architecture`, `engineering-insights` | preload | not applied | server-only and wrap-up skills |
+
+Verification: client typecheck ok; `vitest run FileCard DiffTab` 36 passed; client suite 67 files / 497 tests ok.
+
+## Handoffs → G2
+
+## Steps
+| Step / gap | Status | Files changed |
+|---|---|---|
+| S5 | done | `server/src/modules/brief/repository.ts` (new) |
+| S6 | done | `server/src/modules/intent/service.ts`, `server/test/intent-service.test.ts` (T5) |
+| S7 | done | `server/src/modules/brief/service.ts` (new), `server/test/brief-service.test.ts` (new, T6, 13 tests) |
+| S8 | done | `server/src/modules/brief/routes.ts` (new), `server/src/platform/container.ts`, `server/src/modules/index.ts`, `server/test/brief.it.test.ts` (new, T7, 11 tests) |
+
+Deviations (trivial): `repository.ts` re-exports `BriefRepoRow` from `types.ts`; `readLinkedIssues` also returns `outcomes` (per-link ok/failed, link order) so `runClassification` keeps `sources` order; `BriefService` takes an optional `now?: () => Date` dep for `generated_at`.
+
+Handoff: `PrBriefView` per contract, `failure` = `no_key|over_budget|failed|in_progress|null`. GET/POST `/pulls/:id/brief` 404 only for an unknown PR; POST rate-limited 10/min; failed generation → 200 with `failure` and the stored brief unchanged; `generating` true while in flight; `stale` = stored `head_sha` ≠ PR head; old-shape row → `brief: null`.
+Review notes: `container.brief` wires `agentsRepo`, `intent`, `blast`, `smartDiff`, `context` into structural ports; `BriefService` imports only `_shared` helpers; `IntentService.readLinkedIssues` now public; warn log `brief: failed reason=… err=<name>` only.
+
+## Skills
+| Skill | Loaded | Applied in | Not used — reason |
+|---|---|---|---|
+| `onion-architecture` | preload | S5–S8 | |
+| `engineering-insights` | preload | not applied | no new insight |
+| `drizzle-orm-patterns` | on demand | S5 | |
+| `fastify-best-practices` | on demand | S7, S8 | |
+| `zod` | on demand | S7, S8 | |
+| `typescript-expert` | on demand | S5–S8 | |
+| `security` | on demand | S6–S8 | |
+
+Verification: server typecheck ok; intent-service 11, brief-service 13 passed; brief.it + intent.it 18 passed; server unit suite 59 files / 812 tests ok.
+
+## Handoffs → G4
+
+## Steps
+| Step / gap | Status | Files changed |
+|---|---|---|
+| S12 | done | `client/messages/en/brief.json` |
+| S13 | done | `…/_components/PrBriefBlock/` (new): `PrBriefBlock.tsx`, `index.ts`, `helpers.ts`, `constants.ts`, `styles.ts`, `PrBriefBlock.test.tsx`, `_components/RiskList/{RiskList.tsx,index.ts}`, `_components/FocusList/{FocusList.tsx,index.ts}` |
+| S14 | done | `…/OverviewTab/OverviewTab.tsx`, `…/OverviewTab/OverviewTab.test.tsx`, `…/OverviewTab/styles.ts`, `client/src/app/repos/[repoId]/pulls/[number]/page.tsx` |
+
+Deviations (trivial): `index.ts` barrels for RiskList/FocusList; risk refs and focus items are buttons sharing one open handler (risk ref → `line: null`; path not in diff → `notInDiff` `role="status"`, no navigation); Generate/Refresh always in the header, "Try again" only in the failed alert, failed regenerate keeps the stored brief visible; `columns` moved from OverviewTab `styles.ts` into `PrBriefBlock/styles.ts`; old "no PR Brief" OverviewTab test rewritten as T11.
+Review notes: `PrBriefBlock` owns the Intent/Blast cards; `page.tsx` holds `diffTarget`, `openInDiff` bumps the nonce and switches to the diff tab, `onSetTab` clears it; hooks imported from `@/lib/hooks/brief` and `@/lib/hooks/reviews`; model text rendered as plain text nodes (test: `![x](…) <img src=x>` renders literally).
+Not verified by the implementer: end-to-end against the real server (G2 was running in parallel).
+
+## Skills
+| Skill | Loaded | Applied in | Not used — reason |
+|---|---|---|---|
+| `react-best-practices` | on demand | S13, S14 | |
+| `frontend-architecture` | on demand | S12–S14 | |
+| `next-best-practices` | on demand | S12–S14 | |
+| `typescript-expert` | on demand | S13, S14 | |
+| `security` | on demand | S13 | |
+| `react-testing-library` | on demand | S13, S14 tests | |
+| `onion-architecture`, `engineering-insights` | preload | not applied | server-only and wrap-up skills |
+
+Verification: `jq` 29 `prBrief` keys ok; client typecheck ok; PrBriefBlock + OverviewTab 8 passed; client suite 68 files / 504 tests ok.
+
+## Follow-ups
+- 2026-10-06 readLinkedIssues throw path + AC-2 header-button reading: see fix-loop 1 (H1); AC-2 accepted as met by plan-verifier
+- 2026-10-06 SR2 (MEDIUM) brief/service.ts:308 — per-agent context-doc lookups run 2N sequential queries; use Promise.all or a batched repository method
+- 2026-10-06 SR3 (MEDIUM) brief/routes.ts:33 — optional global concurrency cap on generate() beyond per-IP 10/min + per-PR guard (accepted risk, plan Risks X15)
+- 2026-10-06 SR4 (LOW) brief/service.ts:203 — pr_files read twice per generation; reuse gathered files for grounding
+- 2026-10-06 SR5 (LOW) intent/service.ts:215 — readLinkedIssues returns overlapping shapes; name a LinkedIssueOutcome type
+- 2026-10-06 SR6 (LOW) PrBriefBlock.tsx — notInDiff notice not cleared on Refresh; no_key and generic error alerts can show together; verdict 'as Verdict' cast
+- 2026-10-06 SR7 (LOW) CodeLine.tsx:43 highlight timer not restarted on repeat click; lib/hooks/brief.ts:23 unbounded polling while generating; page.tsx diffPaths not memoised
+- 2026-10-06 sdd.sh delta writes a tree object (make_tree), so a read-only plan-verifier cannot run it — add a read-only variant or pass name-status in the prompt
+- 2026-10-06 SR9: add format-cost.test.ts cases for 999_950 → 1.0M, 999.5 → 1.0K and a negative value (fix applied in main session without a test change)
+- 2026-10-06 SR10 (MEDIUM, no change) PrBriefBlock open handler not memoised; notInDiff notice cleared only by a later successful open
+- 2026-10-06 prBrief.status.{missing,partial,truncated,stale} keys in brief.json have no consumer after S23 (coverage block uses prBrief.coverage.*)
+- 2026-10-06 designs 22/37 show Risk areas inside the Intent card; AC-46 reversed by the user (round 3) — keep the designs as historical reference only
+
+## Handoffs → G5
+
+## Steps
+| Step / gap | Status | Files changed |
+|---|---|---|
+| S15 [Contract] | done | `server/src/vendor/shared/contracts/brief.ts`, `client/src/vendor/shared/contracts/brief.ts` |
+| S16 | done | `server/src/modules/brief/service.ts`, `server/test/brief-service.test.ts`, `server/test/brief.it.test.ts` |
+
+Handoff: both `brief.ts` copies export `BriefUsage {tokens_in, tokens_out, cost_usd, cost_source}` (all nullable) and `PrBrief.usage?: BriefUsage` (optional for pre-G5 rows). `BriefService` stores `usage` on every generation. No client fixtures need to change.
+
+## Skills
+| Skill | Loaded | Applied in | Not used — reason |
+|---|---|---|---|
+| `onion-architecture` | preload | S15, S16 | |
+| `zod` | on demand | S15 | |
+| `typescript-expert` | on demand | S15, S16 | |
+
+Verification: brief.ts copies identical; server + client typecheck ok; brief-service 20, brief.it 15, server unit 824 passed.
+
+## Handoffs → G6
+
+## Steps
+| Step / gap | Status | Files changed |
+|---|---|---|
+| S17 | done | `client/src/lib/format-cost.ts` (`formatTokenFlow`), `client/src/lib/format-cost.test.ts` (T12) |
+| S18 | done | `client/messages/en/brief.json` (`reviewFocus` reworded; `focusCount`, `cost.review`, `cost.brief`; 32 keys) |
+| S19 | done | `…/VerdictBanner/{VerdictBanner.tsx,styles.ts,VerdictBanner.test.tsx}`, `…/IntentCard/{IntentCard.tsx,styles.ts,IntentCard.test.tsx}` (T13, T14) |
+| S20 | done | `…/PrBriefBlock/{PrBriefBlock.tsx,helpers.ts,styles.ts,PrBriefBlock.test.tsx}`, `_components/RiskList/RiskList.tsx`, `_components/FocusList/FocusList.tsx`, `_components/CostLines/{CostLines.tsx,index.ts}` (new) |
+
+Deviations (trivial): `OverviewTab.test.tsx` (an S14 file) gained a `usePrRuns` mock; FocusList count badge wrapped in `<span role="note" aria-label>` (vendored `Badge` has no aria-label), chevron is a rotated `ChevronDown`; `s.card` lost border/padding (banner and summary carry their own frames), obsolete `orderedList`/`iconButton` removed; RiskList/FocusList gated on `shown` so they hide while loading/busy/error (AC-4).
+Review notes: `CostLines` takes `UsageValues` (alias of `BriefUsage`) from `PrBriefBlock/helpers.ts`; VerdictBanner/IntentCard slots import nothing from the brief module; model text still text nodes only. Layout compared to designs only through tests, not in a browser.
+
+## Skills
+| Skill | Loaded | Applied in | Not used — reason |
+|---|---|---|---|
+| `typescript-expert` | on demand | S17, S19, S20 | |
+| `frontend-architecture` | on demand | S17–S20 | |
+| `next-best-practices` | on demand | S18, S20 | |
+| `react-best-practices` | on demand | S19, S20 | |
+| `security` | on demand | S20 | |
+| `react-testing-library` | on demand | S19, S20 | |
+| `onion-architecture`, `engineering-insights` | preload | not applied | server-only and wrap-up skills |
+
+Verification: jq 32 keys ok; format-cost 11, VerdictBanner+IntentCard 11, PrBriefBlock+OverviewTab 19 passed; client typecheck ok; client suite 69 files / 522 tests.
+
+## Handoffs → fix-3
+
+## Steps
+| Step / gap | Status | Files changed |
+|---|---|---|
+| S20-change / SP-AC-30 | done | `…/PrBriefBlock/_components/FocusList/FocusList.tsx`, `…/PrBriefBlock/styles.ts` (`focusItem`, `focusBullet`), `…/PrBriefBlock/PrBriefBlock.test.tsx` |
+| T13 | done | `…/VerdictBanner/VerdictBanner.test.tsx` |
+| SK16 | done | none |
+
+Each focus `li` is a flex row with an aria-hidden `▸` span (`data-testid="focus-bullet"`, `var(--accent-text)`) before the `file:line` button; the test asserts it per item. VerdictBanner test asserts `scoreFooter` shares the "PR SCORE" parent and follows it (`compareDocumentPosition`). Mutation check: both new assertions failed against broken code, restored.
+
+## Skills
+| Skill | Loaded | Applied in | Not used — reason |
+|---|---|---|---|
+| `zod` | re-read on demand (SK16) | S16 (G5: `BriefUsage` usage stored from the result, parsed by `PrBrief`) | |
+| `react-testing-library` | on demand | S19, S20 tests | |
+
+Verification: PrBriefBlock + VerdictBanner 20 passed; client typecheck ok.
+
+## Handoffs → G7
+
+## Steps
+| Step / gap | Status | Files changed |
+|---|---|---|
+| S21 | done | `client/messages/en/brief.json` (22 new strings; `prBrief` 54) |
+| S22 | done | `…/PrBriefBlock/_components/CoverageBlock/{CoverageBlock.tsx,index.ts,helpers.ts,helpers.test.ts}` (new) |
+| S23 | done | `…/PrBriefBlock/{PrBriefBlock.tsx,helpers.ts,styles.ts,PrBriefBlock.test.tsx}`, `_components/RiskList/RiskList.tsx` |
+| S24 | done | `…/IntentCard/{IntentCard.tsx,styles.ts,IntentCard.test.tsx}` |
+
+Deviations (trivial): CoverageBlock styles live in `PrBriefBlock/styles.ts` (S23 file); `groupCoverage` adjusted for `noUncheckedIndexedAccess`; IntentCard kept an unused `import React`.
+UI: CoverageBlock under the summary and stale note, nothing when `missing_inputs` is empty; Risk areas card uses the `focusCard` frame with an AlertTriangle heading and `riskCount` badge, rendered after the columns and before FocusList; IntentCard takes no children; `noteKey`/`notes` removed. Layout checked through tests only, not in a browser.
+T10: keeps empty state, `▸` bullets, G4–G6 cases; asserts Risk areas absent from the Intent card and placed after Blast radius / before Review focus (`compareDocumentPosition`), "1 risk" badge; coverage cases (none, grouped specs "3 files not found in this repo" with toggle, partial + "repo not indexed", stale intent, truncated).
+
+## Skills
+| Skill | Loaded | Applied in | Not used — reason |
+|---|---|---|---|
+| `next-best-practices`, `frontend-architecture` | on demand | S21–S24 | |
+| `react-best-practices`, `typescript-expert`, `react-testing-library` | on demand | S22–S24 | |
+| `security` | on demand | S22, S23 | |
+| `onion-architecture`, `engineering-insights` | preload | not applied | server-only and wrap-up skills |
+
+Verification: jq 54 ok; PrBriefBlock/OverviewTab/IntentCard/CoverageBlock 33 passed; client typecheck ok; client suite 70 files / 527.
 
 ## Verification log
 - 2026-10-06 agent: spec-p1 a1432527c058905c4 spec-creator 2026-10-06T11:07:44Z
@@ -485,3 +930,72 @@ None.
 - 2026-10-06 spec 010 re-approved after X3/X7/X11 (AC-44, AC-45 added)
 - 2026-10-06 agent: plan-p2 a108c93edf4d19650 implementation-planner 2026-10-06T11:58:51Z
 - 2026-10-06 plan approved by user
+- 2026-10-06 agent: implement a87ec07189bbfe7fc implementer 2026-10-06T12:04:06Z
+- 2026-10-06 handback: unknown G1
+- 2026-10-06 G1 done (S1-S4); server+client typecheck ok, server unit 796 passed
+- 2026-10-06 G1 handback 'unknown' is a header mismatch (report used '| Step |', checker wants '| Step / gap |'); main session read the diff: files match S1-S4, typecheck + brief unit tests re-run green
+- 2026-10-06 agent: implement ab0d6f32c2434c578 implementer 2026-10-06T12:08:08Z
+- 2026-10-06 G3 done (S9-S11); client typecheck ok, client suite 497 passed
+- 2026-10-06 agent: implement ab26268c8ef2a7fc5 implementer 2026-10-06T12:08:22Z
+- 2026-10-06 G2 done (S5-S8); server typecheck ok, unit 812 passed, brief.it+intent.it 18 passed
+- 2026-10-06 agent: implement aa6fde79461c8f92d implementer 2026-10-06T12:10:36Z
+- 2026-10-06 G4 done (S12-S14); client typecheck ok, client suite 504 passed
+- 2026-10-06 agent: tests a41ecb172f3f3a197 test-writer 2026-10-06T12:14:07Z
+- 2026-10-06 test-writer: T1-T11 present and green; 14 trust-boundary/negative cases added, 6 break checks reverted (shasum ok)
+- 2026-10-06 it-suite (main session): server .it 29 files / 246 tests passed; client suite 69 files / 510 passed
+- 2026-10-06 agent: review a99e9d32fab69d639 architecture-reviewer 2026-10-06T12:16:22Z
+- 2026-10-06 agent: review aaa1210e9759f3090 security-reviewer 2026-10-06T12:16:31Z
+- 2026-10-06 agent: review ad29968867fe0f3e4 plan-verifier 2026-10-06T12:18:51Z
+- 2026-10-06 review-1: plan-verifier incomplete (154/158; partial T3, T6, T10; R4 not-verifiable); architecture PASS (F1 non-blocking); security PASS (no findings)
+- 2026-10-06 R4 evidence (test-writer Proof): break checks on brief/grounding.ts (allowed-file guard), brief/repository.ts (workspaceId filter in getPull), brief/service.ts (inFlight.delete on success only; rationale leaked into title), PrBriefBlock.tsx (diffPaths.includes guard), lib/hooks/brief.ts (refetchInterval always) - each failed its target tests and was restored, shasum matched the pre-mutation hash
+- 2026-10-06 agent: fix-loop a39b05c211ae1ed21 implementer 2026-10-06T12:20:20Z
+- 2026-10-06 fix-loop 1: T3, T6, T10, F1, H1, SEC1 done (implementer); server unit 822, client src/app/repos 267 passed
+- 2026-10-06 main session: brief.it + intent.it re-run after fix-loop 1 green
+- 2026-10-06 agent: review ad33629a29fe16d87 plan-verifier 2026-10-06T12:22:23Z
+- 2026-10-06 review-2 (delta): plan-verifier complete — 158/158 met, no gaps, no sign-off items
+- 2026-10-06 agent: docs a98c066f2911f2fee doc-writer 2026-10-06T12:23:42Z
+- 2026-10-06 docs: docs/pr-brief.md + docs/README.md row (doc-writer)
+- 2026-10-06 insights: server/INSIGHTS.md (type-only db/schema import edge) + gotchas item; root INSIGHTS.md (test rows' Covers vs assertions)
+- 2026-10-06 metrics: usage-scan + flags (F3 x1, 0 repeats); cost report in docs/plans/assets/28-pr-brief/cost-report.md
+- 2026-10-06 self-review: PASS (0 critical, 1 HIGH budget.ts:107 O(n^2) trim, 2 MEDIUM, 9 LOW); typecheck + server unit 822 + client 513
+- 2026-10-06 self-review HIGH SR1 (budget.ts:107 O(n^2) trim) sent to fix mode by user decision
+- 2026-10-06 agent: fix-loop a5c3392ccf2f5f1c2 implementer 2026-10-06T12:28:26Z
+- 2026-10-06 fix-loop 2: SR1 done; main session: server unit 823 passed, brief.it green
+- 2026-10-06 agent: review aa0ee52bfc21aa7b3 plan-verifier 2026-10-06T12:30:11Z
+- 2026-10-06 review-4 (delta after SR1): plan-verifier complete — 158/158, AC-11/12/13/44/45 re-checked
+- 2026-10-06 self-review state refreshed after SR1: PASS, 0 critical, 0 high
+- 2026-10-06 main-session fix (user request, post-done): PR Brief empty state — PrBriefBlock.tsx shows brief.unavailable + unavailableHint (previously unused root keys, hint reworded) while no brief and no failure; test added to PrBriefBlock.test.tsx (break check: fails without the block); 3 files (S12/S13), over the 1-file trivial threshold — done in main session at the user's direct request; client typecheck ok, client suite 514 passed
+- 2026-10-06 design-conformance round (user, after live check vs designs 22/36/37): summary inside VerdictBanner; review-run cost + brief-generation cost under PR SCORE; Risk areas inside the Intent card; Review focus as a full-width card below the columns. Spec and plan back to draft
+- 2026-10-06 agent: spec-p2 a1432527c058905c4 spec-creator 2026-10-06T17:03:21Z
+- 2026-10-06 spec 010 re-approved (design conformance, AC-46..50)
+- 2026-10-06 agent: plan-p2 a108c93edf4d19650 implementation-planner 2026-10-06T17:07:37Z
+- 2026-10-06 plan re-approved with G5/G6 (planner assumptions accepted: K/M token format, Risk areas after the Intent card body, Review line '—' when the run is missing)
+- 2026-10-06 agent: implement ab4d2fc3e67b8a9c2 implementer 2026-10-06T17:09:41Z
+- 2026-10-06 G5 done (S15-S16); typecheck ok, server unit 824, brief.it 15
+- 2026-10-06 agent: implement af9a364e1c334cfa5 implementer 2026-10-06T17:12:27Z
+- 2026-10-06 G6 done (S17-S20); client typecheck ok, client suite 522 passed
+- 2026-10-06 it-suite after G5/G6 (main session): see result line
+- 2026-10-06 it-suite after G5/G6: server .it 29 files / 247 tests passed; client 522 passed
+- 2026-10-06 agent: review aa387e8232b6bbb38 architecture-reviewer 2026-10-06T17:14:13Z
+- 2026-10-06 review-5: architecture-reviewer PASS on G5/G6 (no findings)
+- 2026-10-06 agent: review a5e22323cb485347d plan-verifier 2026-10-06T17:15:56Z
+- 2026-10-06 review-5 delta: plan-verifier incomplete (partial S20/AC-30 bullets, T13 placement; missing SK16; D16c needs main run)
+- 2026-10-06 D16c (main session): server unit suite 59 files / 824 passed
+- 2026-10-06 agent: fix-loop aa8f8762e9ae7a040 implementer 2026-10-06T17:16:55Z
+- 2026-10-06 fix-loop 3 done (S20/AC-30 bullets, T13 placement, SK16); client suite re-run
+- 2026-10-06 agent: review a38c86743bb113f31 plan-verifier 2026-10-06T17:18:14Z
+- 2026-10-06 review-6 (delta after fix-3): plan-verifier complete — no gaps, no sign-off items; AC-1..50 met
+- 2026-10-06 insights: root INSIGHTS checkpoint entry extended (read-only reviewers cannot run sdd.sh delta; recipe)
+- 2026-10-06 agent: self-review a2d5072aa8eb66a80 general-purpose 2026-10-06T17:19:24Z
+- 2026-10-06 self-review G5/G6: PASS (0 critical, 3 MEDIUM)
+- 2026-10-06 main-session fix: SR8 FocusList.tsx re-indent (S20, formatting only)
+- 2026-10-06 main-session fix: SR9 format-cost.ts compactTokens rounds at display precision before choosing the unit (999_950 → 1.0M, 999.5 → 1.0K) and clamps negatives (S17, 5 lines); client typecheck ok, client suite re-run
+- 2026-10-06 user round 3 (live check): (1) restyle the missing-inputs notes as a titled coverage block with grouped rows and status chips; (2) Risk areas move out of the Intent card into a full-width card on the Review focus level. Spec and plan back to draft
+- 2026-10-06 agent: spec-p2 a1432527c058905c4 spec-creator 2026-10-06T17:47:44Z
+- 2026-10-06 spec 010 re-approved (round 3: AC-13, AC-22, AC-46, AC-47)
+- 2026-10-06 agent: plan-p2 a108c93edf4d19650 implementation-planner 2026-10-06T17:50:22Z
+- 2026-10-06 plan re-approved with G7 (reason wording assumption accepted)
+- 2026-10-06 agent: implement ae7df45097a299290 implementer 2026-10-06T17:52:31Z
+- 2026-10-06 G7 done (S21-S24); main session: client typecheck ok, client suite 70 files / 527 passed (server untouched since review-6: unit 824, .it 247)
+- 2026-10-06 agent: review a76e1807ba79bb77a plan-verifier 2026-10-06T17:55:09Z
+- 2026-10-06 review-7 (delta after G7): plan-verifier complete — 46/46 delta items, AC-1..50 met, no gaps, no sign-off

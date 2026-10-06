@@ -1,6 +1,6 @@
 # server — current gotchas
 
-Last reconciled with ../INSIGHTS.md: 2026-10-05
+Last reconciled with ../INSIGHTS.md: 2026-10-06
 
 This is a curated index of rules still in force. Full write-ups live in
 [`server/INSIGHTS.md`](../INSIGHTS.md) (append-only log). A rule that stops
@@ -9,6 +9,7 @@ holding is edited or removed here. Items are added or updated by the
 
 ## DB & migrations
 
+- **A row type derived from `db/schema` (`typeof t.repos.$inferSelect`) goes in the module's `repository.ts` or `server/src/db/rows.ts`, never in `types.ts`/`service.ts` — a type-only `import type` from `db/schema` still breaks `db-confined-to-repositories` (`tsPreCompilationDeps: true`).** — spot it: `import type * as t from '../../db/schema.js'` in a non-repository module file that typechecks and passes every test. — [INSIGHTS: 2026-10-06 — a type-only `import type … from 'db/schema'` is still a db-outside-repository edge](../INSIGHTS.md#2026-10-06--a-type-only-import-type--from-dbschema-in-a-modules-typests-is-still-a-db-outside-repository-edge)
 - **A data fix that a DDL change needs goes into a `pnpm db:generate --custom` stub, generated before the schema edit**. It is the only hand-written migration kind, and the migrator runs it in the same transaction as the DDL. Compare snapshots with `jq -S 'del(.id,.prevId)'`. — spot it: the DDL migration comes out empty (the stub was generated after the schema edit), or a custom snapshot "diff" looks like drift. — [INSIGHTS: 2026-09-30 — a data migration goes into a `pnpm db:generate --custom` stub](../INSIGHTS.md#2026-09-30--a-data-migration-goes-into-a-pnpm-dbgenerate---custom-stub-generated-before-the-schema-edit)
 - **A nullable column added to a unique index stops deduplicating every row where it's NULL**, because Postgres treats NULLs as distinct values in a unique index. Index `coalesce(<col>, '')` and make the lookup query use the same expression. — spot it: two rows that should be the same (e.g. two self-managed hosts of the same repo) both insert successfully instead of the second one conflicting. — [INSIGHTS: 2026-09-23 — adding a NULLABLE column to a unique index silently stops deduplicating](../INSIGHTS.md#2026-09-23--adding-a-nullable-column-to-a-unique-index-silently-stops-deduplicating)
 - **`pnpm db:generate` can hang forever with no output** when a single schema diff both drops and adds columns on the same table — drizzle-kit's rename-detection prompt renders nothing and reads no stdin. Split the change into two `db:generate` runs: one with only the deletion, then one with only the additions. — spot it: the command never exits and produces a zero-byte log; it looks like a hung DB connection but the same config generates fine before and after. — [INSIGHTS: 2026-09-22 — `pnpm db:generate` hangs forever when one table both drops and adds a column](../INSIGHTS.md#2026-09-22--pnpm-dbgenerate-hangs-forever-when-one-table-both-drops-and-adds-a-column)

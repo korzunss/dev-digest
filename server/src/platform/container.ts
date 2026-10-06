@@ -34,6 +34,8 @@ import type { RepoIntel } from '../modules/repo-intel/types.js';
 import { RepoIntelService } from '../modules/repo-intel/service.js';
 import { IntentService } from '../modules/intent/service.js';
 import { IntentRepository } from '../modules/intent/repository.js';
+import { BriefService } from '../modules/brief/service.js';
+import { BriefRepository } from '../modules/brief/repository.js';
 import { SmartDiffService } from '../modules/smart-diff/service.js';
 import { SmartDiffRepository } from '../modules/smart-diff/repository.js';
 import { BlastService } from '../modules/blast/service.js';
@@ -99,6 +101,7 @@ export class Container {
   private _intent?: IntentService;
   private _smartDiff?: SmartDiffService;
   private _blast?: BlastService;
+  private _brief?: BriefService;
   private _context?: ContextService;
 
   constructor(config: AppConfig, db: Db, private overrides: ContainerOverrides = {}) {
@@ -192,6 +195,26 @@ export class Container {
       repo: new BlastRepository(this.db),
       repoIntel: this.repoIntel,
       forge: (ref) => this.forge(ref),
+    }));
+  }
+
+  /**
+   * PR Brief (spec 010). Reaches intent, blast, smart-diff, agents and the
+   * context reader through their existing getters — this getter is the only
+   * place that knows the concrete services. One instance per app: it holds the
+   * in-flight guard.
+   */
+  get brief(): BriefService {
+    return (this._brief ??= new BriefService({
+      repo: new BriefRepository(this.db),
+      intent: this.intent,
+      blast: this.blast,
+      smartDiff: this.smartDiff,
+      agents: this.agentsRepo,
+      context: this.context,
+      llm: (id) => this.llm(id),
+      tokenizer: this.tokenizer,
+      resolveModel: (workspaceId, id) => resolveFeatureModel(this, workspaceId, id),
     }));
   }
 
