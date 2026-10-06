@@ -343,6 +343,7 @@ No depth limit. `truncated` = visited cap (20,000 dirents) or 500-doc cap hit; e
 - 2026-10-05 PSR25-UI-H1: Project Context page — if the repos request fails, reposLoaded stays false and the document column is a skeleton forever (no error/Retry); expose repos error/pending from useActiveRepo
 - 2026-10-05 PSR25-UI-M: invalidateContextDocs ignores repoId (same path in another repo refetched) — fix the comment or match queryKey[1]; RunTraceDrawer.test console.error spy not restored on failure (afterEach restoreAllMocks); dead setup line in context-invalidation.test.tsx:86; no test for the null (unknown before) invalidate-all branch
 - 2026-10-05 PSR25-BE-M: 0023 SQL does not resolve inner 'x/../' like posix.normalize — legacy rows with '..' stay non-canonical (contract now refuses '..'); fix the header comment or handle '..'; duplicate canonicalise-or-422 loop in agents/skills services → ContextService.canonicalPathsOrThrow; hard < 50 ms timing asserts in context-helpers.test.ts (lines ~178/205/274) are close to the measured worst (58 ms) → loosen or best-of-N
+- 2026-10-06 pr-self-review 2026-10-06 (HIGH): client/src/components/context-doc-preview/DocPreview.tsx:35 renders repo Markdown via the vendored Markdown, which loads remote images (privacy leak on preview). Fix: a react-markdown wrapper with disallowedElements=['img'] + skipHtml (as onboarding-tour SafeMarkdown), plus a test that no <img> renders (client/insights/gotchas.md rule)
 
 ## Handoffs → S7
 

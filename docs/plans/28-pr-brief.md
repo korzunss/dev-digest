@@ -825,6 +825,7 @@ Verification: `jq` 29 `prBrief` keys ok; client typecheck ok; PrBriefBlock + Ove
 - 2026-10-06 SR10 (MEDIUM, no change) PrBriefBlock open handler not memoised; notInDiff notice cleared only by a later successful open
 - 2026-10-06 prBrief.status.{missing,partial,truncated,stale} keys in brief.json have no consumer after S23 (coverage block uses prBrief.coverage.*)
 - 2026-10-06 designs 22/37 show Risk areas inside the Intent card; AC-46 reversed by the user (round 3) — keep the designs as historical reference only
+- 2026-10-06 pr-self-review full branch 2026-10-06: PASS, 0 critical. HIGH follow-ups filed in plan 26 (onboarding SAFE_SCRIPT_RE leading -/.) and plan 25 (DocPreview remote images); pre-existing vendored contract drift (client knowledge/platform/trace lack AgentVersion*) — re-sync in a separate change. MEDIUM: context.list sequential token reads; repo-intel getIndexCoverage clone re-walk; MermaidDiagram global initialize race; AgentEditor nested ternary; ReadingPath pass-through
 
 ## Handoffs → G5
 
