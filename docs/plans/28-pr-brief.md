@@ -1014,3 +1014,4 @@ Verification: jq 54 ok; PrBriefBlock/OverviewTab/IntentCard/CoverageBlock 33 pas
 - 2026-10-06 test-writer G5-G7: AC→assertion map for AC-13/22/28/30/32/33/46-50; 7+1+1+2 cases added (PrBriefBlock, VerdictBanner, CoverageBlock helpers, format-cost incl. SR9 regression); Proof: 6 break checks (format-cost rounding + clamp, CoverageBlock isKnown, VerdictBanner summary, CostLines null-only dash, CostLines conditional Brief line) failed their targets and were restored (shasum ok), 3/3 stable
 - 2026-10-06 agent: review aa82150b9427d5bc1 plan-verifier 2026-10-06T18:14:58Z
 - 2026-10-06 review-9 (delta after test-writer + doc-writer): plan-verifier complete — 17/17, only tests/docs changed, AC-13/22/28/30/32/33/46-50 pinned, R4 Proof present. Removed log line: duplicate 'agent: self-review a2d5072aa8eb66a80' (main-session dedupe, intentional)
+- 2026-10-06 workflow retro written: docs/plans/assets/28-pr-brief/workflow-retro.md (main session; proposals P1-P9)
