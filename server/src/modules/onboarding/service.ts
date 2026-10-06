@@ -116,23 +116,30 @@ export class OnboardingService {
     const clone = await this.cloneView(repo).catch(
       (): CloneView => ({ state: 'none', error: null }),
     );
-    const collected = await this.collect(repo, clone.state === 'ready').catch(
-      (): Collected => ({
-        facts: emptyFacts(),
-        index: NO_INDEX,
-        coverage: { sourceFilesTotal: null, edgeCount: 0 },
-        readingRows: [],
-        criticalRows: [],
-        endpoints: [],
-        currentHead: null,
-      }),
-    );
-
     const failure = this.lastFailure.get(repoId) ?? null;
     const stored = await this.storedTour(repoId).catch(() => null);
-    const tour =
-      stored ??
-      buildSkeleton({
+
+    // A stored tour is returned as-is: only the index view is needed (for `stale`), so the
+    // skeleton reads (reading path, critical paths, endpoints, clone facts) are skipped.
+    let index: IndexView;
+    let tour: OnboardingTourView['tour'];
+    if (stored !== null) {
+      index = (await this.indexOf(repo).catch(() => ({ index: NO_INDEX }))).index;
+      tour = stored;
+    } else {
+      const collected = await this.collect(repo, clone.state === 'ready').catch(
+        (): Collected => ({
+          facts: emptyFacts(),
+          index: NO_INDEX,
+          coverage: { sourceFilesTotal: null, edgeCount: 0 },
+          readingRows: [],
+          criticalRows: [],
+          endpoints: [],
+          currentHead: null,
+        }),
+      );
+      index = collected.index;
+      tour = buildSkeleton({
         facts: collected.facts,
         index: collected.index,
         coverage: collected.coverage,
@@ -141,8 +148,9 @@ export class OnboardingService {
         currentHead: collected.currentHead,
         failure: failure ? { reason: failure.reason } : null,
       });
+    }
 
-    const lastIndexed = collected.index.last_indexed_sha;
+    const lastIndexed = index.last_indexed_sha;
     const stale =
       stored !== null &&
       !!stored.built_sha &&
@@ -152,7 +160,7 @@ export class OnboardingService {
     return {
       repo_id: repoId,
       clone,
-      index: collected.index,
+      index,
       model,
       generating: this.generating.has(repoId),
       stale,
@@ -337,14 +345,21 @@ export class OnboardingService {
     return coverage;
   }
 
+  /** The index view and the coverage figures it was built from. */
+  private async indexOf(
+    repo: OnboardingRepoRef,
+  ): Promise<{ index: IndexView; coverage: IndexCoverage }> {
+    const state = await this.container.repoIntel.getIndexState(repo.id);
+    const coverage = await this.coverageFor(repo, state.lastIndexedSha);
+    return { index: coverageView(state, coverage), coverage };
+  }
+
   /** Facts, index and graph reads for one view or one generation. */
   private async collect(repo: OnboardingRepoRef, cloneReady: boolean): Promise<Collected> {
     const intel = this.container.repoIntel;
     const ref = { owner: repo.owner, name: repo.name };
 
-    const state = await intel.getIndexState(repo.id);
-    const coverage = await this.coverageFor(repo, state.lastIndexedSha);
-    const index = coverageView(state, coverage);
+    const { index, coverage } = await this.indexOf(repo);
 
     const facts = cloneReady
       ? await collectCloneFacts(this.container.git.clonePathFor(ref))

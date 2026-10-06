@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from 'vitest';
 import { and, eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -699,6 +699,72 @@ d('Onboarding Tour API (SPEC-09)', () => {
       const moved = await getView(app, repo.id);
       expect(moved.stale).toBe(true);
       expect(moved.index.last_indexed_sha).toBe('sha-two');
+    });
+
+    // AC2 (plan 27): a stored tour is served without the skeleton reads
+    it('AC-27: a stored tour is returned without the reading-path, critical-path, graph-stat or endpoint reads', async () => {
+      const repo = await insertRepo();
+      await seedIndex(repo.id, { sha: 'sha-one' });
+      const app = await makeApp(goodStubs());
+      const built = await generate(app, repo.id);
+
+      const intel = app.container.repoIntel;
+      const skeleton = [
+        vi.spyOn(intel, 'getTopFilesByRank'),
+        vi.spyOn(intel, 'getCriticalPaths'),
+        vi.spyOn(intel, 'getFileGraphStats'),
+        vi.spyOn(intel, 'getEndpoints'),
+      ];
+      const indexState = vi.spyOn(intel, 'getIndexState');
+
+      const view = await getView(app, repo.id);
+
+      for (const spy of skeleton) expect(spy).not.toHaveBeenCalled();
+      expect(indexState).toHaveBeenCalled();
+      expect(view.stored).toBe(true);
+      expect(view.tour).toEqual(built.tour);
+      expect(view.stale).toBe(false);
+    });
+
+    // AC2 (plan 27): when the index read fails the stored tour is still served, never a 500, and never stale
+    it('AC2: a stored tour whose index read fails is still returned with an empty index and not stale', async () => {
+      const repo = await insertRepo();
+      await seedIndex(repo.id, { sha: 'sha-one' });
+      const app = await makeApp(goodStubs());
+      const built = await generate(app, repo.id);
+
+      const intel = app.container.repoIntel;
+      vi.spyOn(intel, 'getIndexState').mockRejectedValue(new Error('index store down'));
+      const skeleton = vi.spyOn(intel, 'getTopFilesByRank');
+
+      const view = await getView(app, repo.id);
+
+      expect(view.stored).toBe(true);
+      expect(view.tour).toEqual(built.tour);
+      expect(view.index.last_indexed_sha).toBe('');
+      expect(view.stale).toBe(false);
+      expect(skeleton).not.toHaveBeenCalled();
+    });
+
+    // AC2 (plan 27): the skip applies only to a stored tour — without one the skeleton reads still run
+    it('AC2: a repo with no stored tour still runs the skeleton reads and builds the reading path', async () => {
+      const repo = await insertRepo();
+      await seedIndex(repo.id, { sha: 'sha-one' });
+      const app = await makeApp(goodStubs());
+
+      const intel = app.container.repoIntel;
+      const spies = [
+        vi.spyOn(intel, 'getTopFilesByRank'),
+        vi.spyOn(intel, 'getCriticalPaths'),
+        vi.spyOn(intel, 'getFileGraphStats'),
+        vi.spyOn(intel, 'getEndpoints'),
+      ];
+
+      const view = await getView(app, repo.id);
+
+      for (const spy of spies) expect(spy).toHaveBeenCalled();
+      expect(view.stored).toBe(false);
+      expect(view.tour.reading_path.availability.available).toBe(true);
     });
 
     // AC-27: a skeleton has nothing to be stale against
