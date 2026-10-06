@@ -5,7 +5,7 @@
    `AppShell`, the router and the repo context are stubbed — the shell has its own
    smoke test. No `@testing-library/user-event` in this package. */
 import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
-import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, waitFor, act } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import context from "../../../../../messages/en/context.json";
@@ -177,6 +177,90 @@ describe("Project Context page wiring", () => {
     fireEvent.click(screen.getByRole("button", { name: "Reset to default" }));
     await waitFor(() => expect(rootsBox().value).toBe(DEFAULT_ROOTS.globs[0]));
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  // a second activation before React re-renders must not start an overlapping request
+  it("a Save and a Reset activated in the same tick send one request only", async () => {
+    routeGets(CUSTOM_ROOTS);
+    let resolvePut: (v: typeof CUSTOM_ROOTS) => void = () => {};
+    put.mockReturnValue(new Promise((r) => { resolvePut = r; }));
+    del.mockResolvedValue(DEFAULT_ROOTS);
+    renderPage();
+    await screen.findByText("specs/a.md");
+    await waitFor(() => expect(rootsBox().value).toBe("docs/**/*.md"));
+    fireEvent.change(rootsBox(), { target: { value: "x/**/*.md" } });
+    const save = screen.getByRole("button", { name: "Save" });
+    const reset = screen.getByRole("button", { name: "Reset to default" });
+    act(() => {
+      save.click();
+      reset.click();
+    });
+    // react-query starts the mutationFn on a microtask, so wait for the one PUT.
+    await waitFor(() => expect(put).toHaveBeenCalledTimes(1));
+    expect(del).not.toHaveBeenCalled();
+    await act(async () => {
+      resolvePut({ globs: ["x/**/*.md"], is_default: false });
+    });
+    await waitFor(() => expect(rootsBox().value).toBe("x/**/*.md"));
+    expect(del).not.toHaveBeenCalled();
+  });
+
+  // AC1: the guard is symmetric — a Reset first, then a Save in the same tick, sends one DELETE only
+  it("AC1: a Reset and a Save activated in the same tick send one DELETE and no PUT", async () => {
+    routeGets(CUSTOM_ROOTS);
+    let resolveDel: (v: typeof DEFAULT_ROOTS) => void = () => {};
+    del.mockReturnValue(new Promise((r) => { resolveDel = r; }));
+    put.mockResolvedValue(CUSTOM_ROOTS);
+    renderPage();
+    await screen.findByText("specs/a.md");
+    await waitFor(() => expect(rootsBox().value).toBe("docs/**/*.md"));
+    fireEvent.change(rootsBox(), { target: { value: "x/**/*.md" } });
+    const save = screen.getByRole("button", { name: "Save" });
+    const reset = screen.getByRole("button", { name: "Reset to default" });
+    act(() => {
+      reset.click();
+      save.click();
+    });
+    await waitFor(() => expect(del).toHaveBeenCalledTimes(1));
+    expect(put).not.toHaveBeenCalled();
+    await act(async () => {
+      resolveDel(DEFAULT_ROOTS);
+    });
+    await waitFor(() => expect(rootsBox().value).toBe(DEFAULT_ROOTS.globs[0]));
+    expect(put).not.toHaveBeenCalled();
+  });
+
+  // AC1: a failed Save releases the guard (onSettled), so a later Save is sent
+  it("AC1: after a failed Save a later Save is sent again", async () => {
+    routeGets(CUSTOM_ROOTS);
+    put.mockRejectedValueOnce(new ApiError("nope", 422)).mockResolvedValueOnce({ globs: ["x/**/*.md"], is_default: false });
+    renderPage();
+    await screen.findByText("specs/a.md");
+    await waitFor(() => expect(rootsBox().value).toBe("docs/**/*.md"));
+    fireEvent.change(rootsBox(), { target: { value: "x/**/*.md" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("nope");
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(put).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+  });
+
+  // AC1: a failed Reset releases the guard, so a later Save is sent
+  it("AC1: after a failed Reset a later Save is sent", async () => {
+    routeGets(CUSTOM_ROOTS);
+    del.mockRejectedValue(new Error("socket hang up"));
+    put.mockResolvedValue({ globs: ["x/**/*.md"], is_default: false });
+    renderPage();
+    await screen.findByText("specs/a.md");
+    await waitFor(() => expect(rootsBox().value).toBe("docs/**/*.md"));
+    fireEvent.click(screen.getByRole("button", { name: "Reset to default" }));
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Reset to default" })).toBeEnabled());
+    fireEvent.change(rootsBox(), { target: { value: "x/**/*.md" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(put).toHaveBeenCalledTimes(1));
+    expect(del).toHaveBeenCalledTimes(1);
   });
 
   // before the repos load the repo is unknown, so "not cloned" would be a lie

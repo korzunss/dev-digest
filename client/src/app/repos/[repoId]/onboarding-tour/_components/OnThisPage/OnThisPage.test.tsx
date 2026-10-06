@@ -40,8 +40,14 @@ function renderIndex() {
 }
 
 const scrollIntoView = vi.fn();
+// jsdom has no scrollIntoView; the file installs a stub and must leave nothing behind.
+const originalScrollIntoView = Element.prototype.scrollIntoView as Element["scrollIntoView"] | undefined;
+
+// what each test found on the prototype before the file's own stub went in
+const foundAtStart: unknown[] = [];
 
 beforeEach(() => {
+  foundAtStart.push(Element.prototype.scrollIntoView);
   callback = null;
   observed.length = 0;
   vi.stubGlobal("IntersectionObserver", FakeIntersectionObserver);
@@ -51,7 +57,8 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   scrollIntoView.mockReset();
-  disconnect.mockReset();
+  if (originalScrollIntoView === undefined) delete (Element.prototype as Partial<Element>).scrollIntoView;
+  else Element.prototype.scrollIntoView = originalScrollIntoView;  disconnect.mockReset();
 });
 
 describe("OnThisPage", () => {
@@ -92,5 +99,12 @@ describe("OnThisPage", () => {
     expect(disconnect).not.toHaveBeenCalled();
     view.unmount();
     expect(disconnect).toHaveBeenCalled();
+  });
+
+  // AC3: the stub installed for earlier tests is gone again — every test saw the original prototype
+  it("AC3: leaves Element.prototype.scrollIntoView as it found it", () => {
+    expect(foundAtStart.length).toBeGreaterThan(1);
+    for (const seen of foundAtStart.slice(1)) expect(seen).toBe(originalScrollIntoView);
+    expect(foundAtStart.slice(1)).not.toContain(scrollIntoView);
   });
 });

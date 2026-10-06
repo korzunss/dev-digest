@@ -44,6 +44,13 @@ export default function ProjectContextPage() {
   const setRoots = useSetContextRoots();
   const resetRoots = useResetContextRoots();
 
+  // Closes the window between two activations before React re-renders: the handlers'
+  // `isPending` is from the last render, so a second click in the same tick sees it stale.
+  const rootsBusy = React.useRef(false);
+  const settleRoots = () => {
+    rootsBusy.current = false;
+  };
+
   const [picked, setPicked] = React.useState<string | null>(null);
   const docs = listing.data?.docs ?? [];
   // A selection the listing no longer has (roots changed, file removed) is no selection.
@@ -142,12 +149,16 @@ export default function ProjectContextPage() {
               saving={setRoots.isPending || resetRoots.isPending}
               error={rootsError}
               onSave={(globs) => {
+                if (rootsBusy.current || setRoots.isPending || resetRoots.isPending) return;
+                rootsBusy.current = true;
                 resetRoots.reset();
-                setRoots.mutate({ repoId, globs });
+                setRoots.mutate({ repoId, globs }, { onSettled: settleRoots });
               }}
               onReset={() => {
+                if (rootsBusy.current || setRoots.isPending || resetRoots.isPending) return;
+                rootsBusy.current = true;
                 setRoots.reset();
-                resetRoots.mutate({ repoId });
+                resetRoots.mutate({ repoId }, { onSettled: settleRoots });
               }}
             />
           </div>
