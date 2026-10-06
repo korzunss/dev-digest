@@ -54,6 +54,37 @@ read_input() { # file or - (stdin) -> stdout
 
 need_file() { [ -f "$1" ] || die "no such file: $1"; }
 
+# path-argument guards: run before need_file, every rejection exits 2 via die
+bad_path() { # empty, absolute, leading -, or any .. segment
+  case "$1" in ''|/*|-*|..|../*|*/..|*/../*) return 0 ;; esac
+  return 1
+}
+
+need_plan_path() { # docs/plans/<NN>-<name>.md, no further /
+  bad_path "$1" && die "bad plan path: $1"
+  case "$1" in
+    docs/plans/[0-9]*-*.md) ;;
+    *) die "plan path must be docs/plans/NN-name.md: $1" ;;
+  esac
+  case "${1#docs/plans/}" in */*) die "plan path must be docs/plans/NN-name.md: $1" ;; esac
+}
+
+need_spec_path() { # specs/<file>.md or <pkg>/specs/<file>.md
+  bad_path "$1" && die "bad spec path: $1"
+  case "$1" in
+    specs/*.md) case "${1#specs/}" in */*) die "spec path must be specs/<file>.md: $1" ;; esac ;;
+    */specs/*.md)
+      case "${1%%/specs/*}" in */*) die "spec path must be <pkg>/specs/<file>.md: $1" ;; esac
+      case "${1#*/specs/}" in */*) die "spec path must be <pkg>/specs/<file>.md: $1" ;; esac ;;
+    *) die "spec path must be specs/<file>.md or <pkg>/specs/<file>.md: $1" ;;
+  esac
+}
+
+need_tree() { # a git ref that resolves to a tree
+  case "${1:-}" in ''|-*) die "bad tree/ref argument: ${1:-}" ;; esac
+  git rev-parse --verify --quiet "$1^{tree}" >/dev/null || die "not a tree: $1"
+}
+
 need_marker() { grep -qxF "${MARKER}" "$1" || die "no '${MARKER}' line in $1"; }
 
 # append "$3" as the last line of section "$2" in file "$1"; create the section
@@ -111,6 +142,10 @@ file_status_key_value() { # prints "<key>|<value>" of the first Status line (Sta
 cmd_set_status() {
   [ $# -eq 3 ] || die "usage: set-status <plan|spec> <path> <status>"
   local kind="$1" file="$2" status="$3" index key fval ival base legacy=0
+  case "${kind}" in
+    plan) need_plan_path "${file}" ;;
+    spec) need_spec_path "${file}" ;;
+  esac
   need_file "${file}"
   base="$(basename "${file}")"
   case "${kind}" in
@@ -154,6 +189,7 @@ cmd_set_status() {
 cmd_handoff() {
   [ $# -ge 2 ] || die "usage: handoff <plan> <label> [file|-]"
   local plan="$1" label="$2" src="${3:--}" block tmp
+  need_plan_path "${plan}"
   need_file "${plan}"; need_marker "${plan}"
   ! grep -qxF "## Handoffs → ${label}" "${plan}" || die "handoff for ${label} already present"
   block="$(mktemp "${TMPDIR:-/tmp}/sdd-block.XXXXXX")"
@@ -181,6 +217,7 @@ cmd_handoff() {
 cmd_log() {
   [ $# -ge 2 ] || die "usage: log <plan> <text>"
   local plan="$1"; shift
+  need_plan_path "${plan}"
   need_file "${plan}"
   append_line "${plan}" "${LOG_HEAD}" "- $(date +%F) $*" 0
 }
@@ -188,6 +225,7 @@ cmd_log() {
 cmd_follow_up() {
   [ $# -ge 2 ] || die "usage: follow-up <plan> <text>"
   local plan="$1"; shift
+  need_plan_path "${plan}"
   need_file "${plan}"; need_marker "${plan}"
   append_line "${plan}" "${FU_HEAD}" "- $(date +%F) $*" 1
 }
@@ -197,6 +235,7 @@ cmd_handback_check() {
   if [ "${1:-}" = "--log" ]; then
     [ $# -ge 3 ] || die "usage: handback-check --log <plan> <label> [file|-]"
     logplan="$2"; label="$3"; shift 3
+    need_plan_path "${logplan}"
     need_file "${logplan}"
   fi
   body="$(read_input "${1:--}")"
@@ -361,6 +400,8 @@ cmd_checkpoint() {
 cmd_delta() {
   [ $# -ge 1 ] && [ $# -le 2 ] || die "usage: delta <treeA> [treeB]"
   local b="${2:-}"
+  need_tree "$1"
+  if [ -n "${b}" ]; then need_tree "${b}"; fi
   if [ -z "${b}" ]; then b="$(make_tree "")"; fi
   git diff --name-status "$1" "${b}"
 }
@@ -371,6 +412,7 @@ brief_of() { # stdin -> brief text (up to and incl. the marker), minus Status:/E
 
 cmd_brief_diff() {
   [ $# -eq 2 ] || die "usage: brief-diff <plan> <tree>"
+  need_plan_path "$1"; need_tree "$2"
   need_file "$1"; need_marker "$1"
   local a b rc=0
   a="$(mktemp "${TMPDIR:-/tmp}/sdd-a.XXXXXX")"; b="$(mktemp "${TMPDIR:-/tmp}/sdd-b.XXXXXX")"

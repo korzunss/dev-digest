@@ -21,6 +21,20 @@ if (!root || !planArg) {
   console.error(USAGE);
   process.exit(2);
 }
+try {
+  if (!fs.statSync(root).isDirectory()) throw new Error('not a directory');
+} catch {
+  console.error('flags: --root must be an existing directory');
+  process.exit(2);
+}
+if (
+  path.isAbsolute(planArg) ||
+  planArg.split(/[\\/]/).includes('..') ||
+  !/^docs\/plans\/\d+-[^/]+\.md$/.test(planArg)
+) {
+  console.error('flags: plan must be docs/plans/NN-*.md');
+  process.exit(2);
+}
 const planNum = /^(\d+)-/.exec(path.basename(planArg));
 if (!planNum) {
   console.error('flags: plan file name must start with NN-');
@@ -35,11 +49,17 @@ const METRIC = 'weighted_tokens=input+1.25*cache_creation+0.1*cache_read+5*outpu
 const F1_FACTOR = 2;
 const F1_MIN_OTHER_PLANS = 3;
 
+// usage numbers come from a file: non-finite or negative values count as 0
+const num = (v) => {
+  const n = Number(v);
+  return Number.isFinite(n) && n >= 0 ? n : 0;
+};
+
 const weighted = (r) =>
-  W.input * (+r.input || 0) +
-  W.cache_creation * (+r.cache_creation || 0) +
-  W.cache_read * (+r.cache_read || 0) +
-  W.output * (+r.output || 0);
+  W.input * num(r.input) +
+  W.cache_creation * num(r.cache_creation) +
+  W.cache_read * num(r.cache_read) +
+  W.output * num(r.output);
 
 function median(nums) {
   const s = [...nums].sort((a, b) => a - b);

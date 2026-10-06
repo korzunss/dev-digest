@@ -190,6 +190,28 @@ cat "${work}/p.md" > docs/plans/01-x.md
 eq "brief-diff differs after a brief edit" "1" "$(rc_of bash "${SDD}" brief-diff docs/plans/01-x.md "${base}")"
 eq "brief-diff prints the change" "> edited" "$(bash "${SDD}" brief-diff docs/plans/01-x.md "${base}" | grep '^>' || true)"
 
+# --- argument validation (plan-27 R4): bad paths and refs exit 2 and change nothing
+mkdir -p docs/plans/sub
+cp docs/plans/01-x.md docs/plans/sub/01-x.md
+guard_before="$(cat docs/plans/01-x.md docs/plans/README.md specs/001-x.md specs/README.md)"
+for bad in /abs/docs/plans/01-x.md docs/plans/../01-x.md -x docs/plans/sub/01-x.md README.md; do
+  eq "set-status plan rejects ${bad}" "2" "$(rc_of bash "${SDD}" set-status plan "${bad}" approved)"
+  eq "log rejects ${bad}" "2" "$(rc_of bash "${SDD}" log "${bad}" text)"
+  eq "follow-up rejects ${bad}" "2" "$(rc_of bash "${SDD}" follow-up "${bad}" text)"
+  eq "handoff rejects ${bad}" "2" "$(rc_of bash "${SDD}" handoff "${bad}" GX /dev/null)"
+done
+for bad in specs/../x.md a/b/specs/x.md; do
+  eq "set-status spec rejects ${bad}" "2" "$(rc_of bash "${SDD}" set-status spec "${bad}" approved)"
+done
+for bad in --output=x nosuchref; do
+  eq "delta rejects ${bad}" "2" "$(rc_of bash "${SDD}" delta "${bad}")"
+  eq "delta rejects ${bad} as treeB" "2" "$(rc_of bash "${SDD}" delta "${base}" "${bad}")"
+  eq "brief-diff rejects ${bad}" "2" "$(rc_of bash "${SDD}" brief-diff docs/plans/01-x.md "${bad}")"
+done
+eq "brief-diff rejects a bad plan path" "2" "$(rc_of bash "${SDD}" brief-diff docs/plans/sub/01-x.md "${base}")"
+eq "rejections leave plan, spec and indexes unchanged" "${guard_before}" "$(cat docs/plans/01-x.md docs/plans/README.md specs/001-x.md specs/README.md)"
+rm -rf docs/plans/sub
+
 # --- state (files rewritten per case; the fixture spec is approved first)
 rm docs/plans/01-x.md
 sdd set-status spec specs/001-x.md draft >/dev/null
@@ -301,6 +323,15 @@ eq "handback-check --log still fails" "1" "$(rc_of bash "${SDD}" handback-check 
 eq "handback-check --log appends the line" "- ${d} handback: unknown G1" "$(tail -1 docs/plans/05-hb.md)"
 eq "handback-check --log not written on success" "0" "$(rc_of bash "${SDD}" handback-check --log docs/plans/05-hb.md G2 "${work}/good.txt")"
 eq "handback-check --log success leaves the plan" "- ${d} handback: unknown G1" "$(tail -1 docs/plans/05-hb.md)"
+# AC4: a bad plan path is refused before anything is read or appended (the .. and sub/ paths resolve to real files)
+mkdir -p docs/plans/sub
+cp docs/plans/05-hb.md docs/plans/sub/05-hb.md
+hb_before="$(cat docs/plans/05-hb.md docs/plans/sub/05-hb.md)"
+for bad in /abs/docs/plans/05-hb.md docs/plans/../plans/05-hb.md -x docs/plans/sub/05-hb.md README.md; do
+  eq "handback-check --log rejects ${bad}" "2" "$(rc_of bash "${SDD}" handback-check --log "${bad}" G9 "${work}/ph.txt")"
+done
+eq "handback-check --log rejections append nothing" "${hb_before}" "$(cat docs/plans/05-hb.md docs/plans/sub/05-hb.md)"
+rm -rf docs/plans/sub
 
 # --- agent / agent-flush / stages
 sdd agent docs/plans/05-hb.md plan-p1 a1b2 implementation-planner
@@ -433,6 +464,20 @@ eq "flags repeat F2 across plans" "repeat: F2 plans=02,04" "$(printf '%s\n' "${f
 eq "flags summary" "flags: 5 flag(s), 1 repeat(s)" "$(printf '%s\n' "${fx_out}" | tail -1)"
 eq "flags prose-only plan raises nothing" "flags: 0 flag(s), 0 repeat(s)" "$(sdd flags docs/plans/05-e.md)"
 eq "flags bad args exit 2" "2" "$(rc_of sdd flags)"
+eq "flags rejects an absolute plan path" "2" "$(rc_of sdd flags /abs/docs/plans/04-d.md)"
+eq "flags rejects a .. plan path" "2" "$(rc_of sdd flags docs/plans/../plans/04-d.md)"
+# AC4: flags.mjs itself (not only the sdd.sh wrapper) refuses a bad --root or --plan
+eq "flags.mjs rejects a missing --root dir" "2" "$(rc_of node "${here}/flags.mjs" --root "${work}/no-such-dir" --plan docs/plans/04-d.md)"
+eq "flags.mjs rejects a --root that is a file" "2" "$(rc_of node "${here}/flags.mjs" --root "${PWD}/docs/plans/04-d.md" --plan docs/plans/04-d.md)"
+eq "flags.mjs rejects a plan outside docs/plans" "2" "$(rc_of node "${here}/flags.mjs" --root "${PWD}" --plan specs/001-x.md)"
+eq "flags.mjs rejects a nested plan path" "2" "$(rc_of node "${here}/flags.mjs" --root "${PWD}" --plan docs/plans/sub/04-d.md)"
+eq "flags.mjs accepts a good root and plan" "0" "$(rc_of node "${here}/flags.mjs" --root "${PWD}" --plan docs/plans/04-d.md)"
+# non-finite and negative numbers count as 0: F1 line unchanged, no Infinity/NaN anywhere
+fx_row 01 plan-p1 1e999 0 0 0
+fx_row 01 plan-p1 -5 0 0 0
+fx_out2="$(sdd flags docs/plans/04-d.md)"
+eq "flags ignores non-finite and negative usage numbers" "$(printf '%s\n' "${fx_out}" | sed -n 1p)" "$(printf '%s\n' "${fx_out2}" | sed -n 1p)"
+eq "flags output has no Infinity or NaN" "0" "$(printf '%s\n' "${fx_out2}" | grep -c 'Infinity\|NaN' || true)"
 # only two other plans have rows -> F1 is not evaluated
 : > .sdd/usage.jsonl
 fx_row 01 plan-p1 100000 0 0 0
