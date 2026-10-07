@@ -827,6 +827,14 @@ Verification: `jq` 29 `prBrief` keys ok; client typecheck ok; PrBriefBlock + Ove
 - 2026-10-06 designs 22/37 show Risk areas inside the Intent card; AC-46 reversed by the user (round 3) — keep the designs as historical reference only
 - 2026-10-06 pr-self-review full branch 2026-10-06: PASS, 0 critical. HIGH follow-ups filed in plan 26 (onboarding SAFE_SCRIPT_RE leading -/.) and plan 25 (DocPreview remote images); pre-existing vendored contract drift (client knowledge/platform/trace lack AgentVersion*) — re-sync in a separate change. MEDIUM: context.list sequential token reads; repo-intel getIndexCoverage clone re-walk; MermaidDiagram global initialize race; AgentEditor nested ternary; ReadingPath pass-through
 - 2026-10-07 English guarantee, layer 2 (not done): Zod refine on prose fields (brief summary/risk title+explanation/focus reason; intent intent/in_scope/out_of_scope) rejecting non-Latin letters outside backticks; brief fails with no re-ask (user decision: keep AC-3), intent re-asks once (maxRetries 1). Needs spec 010 + spec 006 amendments and a new plan
+- 2026-10-07 retro P1: live UI check (screenshots vs --designs) after the last UI group, before plan-verifier — .claude/skills/sdd/stages.md, plan-verifier prompt
+- 2026-10-07 retro P2: design → AC map in the spec, one row per design region — spec-creator template
+- 2026-10-07 retro P3: a post-done round is a new plan, not new groups — CLAUDE.md Plan → implement → verify
+- 2026-10-07 retro P4: resume an agent only pass 1 → pass 2; later rounds start fresh with the file path — CLAUDE.md, sdd/SKILL.md
+- 2026-10-07 retro P5: test-writer after every implementation wave with an AC → file:line map — sdd/stages.md
+- 2026-10-07 retro P6: sdd.sh delta --ro and handback-check accepting '| Step |' — sdd.sh + selftest
+- 2026-10-07 retro P7: cross-family plan review via the OpenRouter adapter — new plan (scripts/)
+- 2026-10-07 retro P8: risk_brief default → openrouter; show failure class in the UI — new plan (spec 010 amendment)
 
 ## Handoffs → G5
 
@@ -1017,3 +1025,7 @@ Verification: jq 54 ok; PrBriefBlock/OverviewTab/IntentCard/CoverageBlock 33 pas
 - 2026-10-06 review-9 (delta after test-writer + doc-writer): plan-verifier complete — 17/17, only tests/docs changed, AC-13/22/28/30/32/33/46-50 pinned, R4 Proof present. Removed log line: duplicate 'agent: self-review a2d5072aa8eb66a80' (main-session dedupe, intentional)
 - 2026-10-06 workflow retro written: docs/plans/assets/28-pr-brief/workflow-retro.md (main session; proposals P1-P9)
 - 2026-10-07 main-session change (user request, quick path, post-done): English-only output instruction added to the brief system prompt (server/src/modules/brief/prompt.ts) and the intent system prompt (reviewer-core/src/intent/classify.ts) — deepseek-v4-flash sometimes answered in Chinese; 2 files in 2 packages, over the 1-file trivial threshold, done at the user's explicit choice; reviewer-core tc + 223, server tc + unit 824, intent.it + brief.it 22 passed
+- 2026-10-07 retro-fact: live check (user, 2026-10-06): first Generate click returned no_key — risk_brief defaults to openai/gpt-4.1 while other features default to openrouter; a later 'Could not generate the brief' was diagnosable only from the user's server log (service logs err.name only)
+- 2026-10-07 retro-fact: process (main session, 2026-10-06): G5-G7 were implemented without a test-writer run until the user asked (see 'closing process gaps'); self-review analyzers were not logged with sdd.sh agent at first; both cross-model reviewers (Sonnet 5.5, Fable 5.1) are the same model family
+- 2026-10-07 retro: docs/plans/assets/28-pr-brief/workflow-retro.md
+- 2026-10-07 retro: docs/plans/assets/28-pr-brief/workflow-retro.md (re-run: flags refreshed, review F1 added; no new P<n>)

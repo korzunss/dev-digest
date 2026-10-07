@@ -28,6 +28,7 @@ sdd.sh <subcommand> [args]
   agent-flush <plan>                       move .sdd/pending-agents.log into the plan's Verification log
   usage-scan [--session <id>]              sum subagent transcript usage into .sdd/usage.jsonl (no content read)
   flags <plan>                             no-LLM threshold flags F1-F5 and repeat: lines (reads .sdd/usage.jsonl)
+  cost <plan>                              per-stage tokens, cache hit, busy time, parallelism, unattributed rows (reads .sdd/usage.jsonl)
   stages                                   print the stage ids, one per line
   checkpoint <NN> <label>                  pin the work tree as refs/sdd/<NN>/<label> (temp index)
   delta <treeA> [treeB]                    name-status diff between two trees (B defaults to now)
@@ -388,6 +389,12 @@ cmd_flags() {
   node "${here}/flags.mjs" --root "${root}" --plan "$1"
 }
 
+cmd_cost() {
+  command -v node >/dev/null 2>&1 || die "node not found"
+  [ "$#" -eq 1 ] || die "usage: cost <plan>"
+  node "${here}/cost.mjs" --root "${root}" --plan "$1"
+}
+
 cmd_stages() { local s; for s in ${STAGES}; do echo "${s}"; done; }
 
 cmd_checkpoint() {
@@ -453,7 +460,7 @@ cmd_state() {
   kv="$(file_status_key_value "${plan}")"; pstat="${kv#*|}"
   exec_mode="$(grep -m1 '^Execution:' "${plan}" | sed 's/^Execution:[ ]*//' || true)"
   handoffs="$(grep -c '^## Handoffs →' "${plan}" || true)"
-  log_last="$(awk -v h="${LOG_HEAD}" '$0 == h { s = 1; next } /^## / { s = 0 } s && /^- / { t = $0; sub(/^- [0-9-]+ /, "", t); if (t ~ /^(agent|handback|resume|plan-lint|status-check):/) next; l = $0 } END { print l }' "${plan}")"
+  log_last="$(awk -v h="${LOG_HEAD}" '$0 == h { s = 1; next } /^## / { s = 0 } s && /^- / { t = $0; sub(/^- [0-9-]+ /, "", t); if (t ~ /^(agent|handback|resume|plan-lint|status-check|retro|retro-fact):/) next; l = $0 } END { print l }' "${plan}")"
   last="$(printf '%s\n' "${log_last}" | sed -E 's/^- [0-9]{4}-[0-9]{2}-[0-9]{2} //')"
   case "${pstat}" in
     draft)
@@ -514,6 +521,7 @@ case "${sub}" in
   agent-flush) cmd_agent_flush "$@" ;;
   usage-scan) cmd_usage_scan "$@" ;;
   flags) cmd_flags "$@" ;;
+  cost) cmd_cost "$@" ;;
   stages) cmd_stages ;;
   checkpoint) cmd_checkpoint "$@" ;;
   delta) cmd_delta "$@" ;;

@@ -1,74 +1,95 @@
 # Plan 28 — workflow retro (PR Brief, SPEC-10)
 
-Date: 2026-10-06 · Session `02848fd1` · Execution: multi-agent (G1–G7) · Sources: the plan's Verification log, `sdd.sh usage-scan` / `flags` ([cost-report.md](cost-report.md)), [plan-verifier-report.md](plan-verifier-report.md), [cross-model-review.md](cross-model-review.md).
-
-The repo has no standalone `/workflow-retro` skill: plan 23 replaced it with no-LLM metrics (`usage-scan`, `flags`) plus a model review on demand when a flag repeats. This file is that on-demand review for plan 28, written by the main session.
+Date: 2026-10-07 · Execution: multi-agent (G1–G7) · Sources: `docs/plans/28-pr-brief.md` (*Decisions recorded*, *Step groups*, *Follow-ups*, *Verification log*), `sdd.sh usage-scan` / `flags` / `cost` (re-run 2026-10-07, after plans 29/30 shifted the medians), `cost-report.md`, `cross-model-review.md`, `plan-verifier-report.md` (first 12 lines each). Written with `/workflow-retro` (plan 29); replaces the hand-written retro of `8b64d6f`.
 
 ## 1. What happened
 
 | Phase | Rounds | Outcome |
 |---|---|---|
-| Spec (spec-creator) | pass 1 (8 questions, all answered with the recommended option) → pass 2 → 4 amendments (GAP1–3; cross-model X3/X7/X11; design conformance AC-46..50; coverage round AC-13/22/46/47) | 5 approvals, 50 ACs |
-| Research (researcher) | 1 run, 8 questions | found 4 spec↔code tensions before planning |
-| Plan (implementation-planner) | pass 1 → pass 2 → cross-model fixes → G5/G6 → G7 | 4 approvals, 24 steps in 7 groups |
-| Cross-model plan review | Sonnet 5.5 (Y1–12) ∥ Fable 5.1 (X1–15) | 2 BLOCKER-class issues fixed before code (X1 guard released during a paid call, X2 no-key test could reach a real key) |
-| Implementation | G1 → G2 ∥ G3 → G4 → (post-done) G5 → G6 → G7 | 7 implementer runs + 3 fix-mode runs |
-| Verification | 7 plan-verifier passes (1 full, 6 delta), 2 architecture, 1 security | final: complete, AC-1..50 |
-| Pre-PR | `/pr-self-review` ×3 (plan-28 scope, G5/G6 delta, full branch) | PASS, 0 critical; 1 HIGH fixed (SR1), 2 HIGH filed in plans 25/26 |
-| Commits | spec+plan (`76c63a5`) before code (`4cae6be`), follow-ups (`c50bff3`), tests/docs (`2c1c407`) | P2 "spec and plan before code" met |
+| Spec | spec-p1 → spec-p2, re-approved 4× (GAP1–3; X3/X7/X11; AC-46..50; round 3) | AC-1..50 (log 2026-10-06 "spec 010 re-approved" ×4) |
+| Research | 1 run | 3.6 % of tokens (`cost` research row) |
+| Plan | plan-p1 → plan-p2, approved 3× (initial, G5/G6, G7) | 7 groups G1–G7 (*Step groups*) |
+| Cross-model plan review | Sonnet 5.5 (Y1–12) ∥ Fable 5.1 (X1–15) | all fixes but Y11 applied before approval (*Decisions recorded*, cross-model line) |
+| Implementation | 7 groups, 3 fix-loops | `cost` implement 7 runs, fix-loop 3 runs |
+| Verification | review-1 … review-9 (plan-verifier, architecture, security) | final: review-9 complete 17/17, AC-1..50 met (log "review-9") |
+| Pre-PR | self-review ×3 | PASS, 0 critical; SR1 HIGH fixed (log "fix-loop 2: SR1 done") |
+| Post-done | design round (G5/G6), round 3 (G7), empty-state fix, English-prompt change | 3 reopenings after a `complete` verification (log "design-conformance round", "user round 3", 2026-10-07 "main-session change") |
 
 ## 2. Cost
 
-39 logged subagent runs. Weighted tokens (`input + 1.25·cache_write + 0.1·cache_read + 5·output`), total ≈ 10.4 M:
+```
+cost: plan=28 weighted_tokens=input+1.25*cache_creation+0.1*cache_read+5*output
+| Stage | Runs | Agents | Weighted tokens | Share | Cache hit | Busy |
+|---|---:|---:|---:|---:|---:|---:|
+| plan-p2 | 1 | 1 | 3132030 | 30.1% | 93.9% | 385m52s |
+| review | 10 | 10 | 1674848 | 16.1% | 92.4% | 13m30s |
+| implement | 7 | 7 | 1578935 | 15.2% | 92.3% | 40m34s |
+| self-review | 8 | 8 | 1107717 | 10.6% | 83.6% | 2m15s |
+| spec-p2 | 1 | 1 | 716699 | 6.9% | 73.3% | 397m06s |
+| tests | 2 | 2 | 614420 | 5.9% | 93.9% | 4m48s |
+| plan-approve | 2 | 2 | 539283 | 5.2% | 88.8% | 7m59s |
+| research | 1 | 1 | 373313 | 3.6% | 94.0% | 2m23s |
+| docs | 2 | 2 | 228162 | 2.2% | 84.2% | 1m54s |
+| fix-loop | 3 | 3 | 200927 | 1.9% | 87.1% | 2m43s |
+| spec-p1 | 1 | 1 | 135579 | 1.3% | 81.6% | 1m15s |
+| plan-p1 | 1 | 1 | 111431 | 1.1% | 85.7% | 1m52s |
+cost: total 10413344 weighted tokens, 39 runs, 37 agents
+cost: window 428m18s
+cost: busy 408m41s, parallelism 2.14
+cost: critical path spec-p2 397m06s
+cost: unattributed 0 runs, 0 agents, 0 weighted tokens (sessions 1, untimed 0 not counted)
+cost: main-session tokens not included
+```
 
-| Stage | Runs | Share |
-|---|---:|---:|
-| plan-p2 (one resumed planner, 4 resumes) | 1 agent | **30.1 %** |
-| review (plan-verifier ×7, architecture ×2, security ×1) | 10 | 16.1 % |
-| implement | 7 | 15.2 % |
-| self-review analyzers | 8 | 10.6 % |
-| spec-p2 (one resumed spec-creator, 5 resumes) | 1 agent | 6.9 % |
-| tests | 2 | 5.9 % |
-| plan-approve (cross-model reviewers) | 2 | 5.2 % |
-| research, docs, fix-loop, spec-p1, plan-p1 | 9 | 9.9 % |
+```
+flag: F1 plan=28 stage=implement … 1578935 median=435208 over 7 plans
+flag: F1 plan=28 stage=plan-p2 … 3132030 median=739898 over 6 plans
+flag: F1 plan=28 stage=review … 1674848 median=646826 over 6 plans
+flag: F1 plan=28 stage=spec-p2 … 716699 median=279527 over 3 plans
+flag: F3 plan=28 handback unknown x1
+repeat: F1 plans=24,26,28
+```
 
-Flags: **F1** in `implement`, `plan-p2`, `spec-p2` (each 2–2.5× the median of earlier plans); `repeat: F1` across plans 24, 25, 26, 28. **F3** ×1 (G1 hand-back used `| Step |`, not `| Step / gap |`; the main session read the diff instead).
+Main-session tokens are not included. The busy times of `plan-p2` (385m52s) and `spec-p2` (397m06s), and so the critical path and the parallelism figure, are spans of agents resumed across the whole day: an upper bound that counts idle time, not working time. The hand-written retro's `repeat: F1 plans=24,25,26,28` is superseded by the line above; `review` became F1 once plans 29/30 lowered its median.
 
 ## 3. What worked
 
-- **Questions with a recommended default.** spec pass 1, planner pass 1 and the cross-model triage were each closed in one AskUserQuestion round — the user took the recommendation every time.
-- **Cross-model review before code.** It caught defects no test would have caught at that stage (X1, X2, X3 budget unsatisfiable, Y5/X5 navigation on mount). Cost: 5.2 %.
-- **plan-verifier as the last line.** It caught what green suites hide: ACs claimed by a Tests row but not asserted (T3/T6/T10), a missing visual requirement (AC-30 bullets), a placement claim proven by presence only (T13).
-- **Delta verification + fix mode** are cheap (fix-loop 1.9 % of tokens) and kept every round bounded.
-- **Parallelism.** G2 ∥ G3 ∥ G4 and the three reviewers in parallel cut wall-clock time without file conflicts.
+- Cross-model review before code caught issues no test would have caught at that stage, for 5.2 % of tokens (`cost` plan-approve; `cross-model-review.md` Y1 HIGH).
+- plan-verifier caught ACs that a green suite hid: T3/T6/T10 partial at review-1, S20/AC-30 bullets and T13 at review-5 (log "review-1", "review-5 delta").
+- Delta verification + fix mode stayed cheap: fix-loop 1.9 %, three loops (`cost` fix-loop row).
+- Decisions closed in one round each: TQ1–5 defaults, D1–D7 option A (*Decisions recorded*, first lines).
+- G2 ∥ G3 ran in parallel with no file overlap (*Step groups* note "G2 and G3 share no package or file").
 
 ## 4. What did not work
 
-1. **Design conformance found late — the largest loss.** The plan was closed as `done` three times and reopened twice (G5/G6: summary inside the banner, Review/Brief costs, card placement; G7: coverage block, Risk areas card), plus a main-session empty-state fix. Each reopen cost a full spec → plan → approve → implement → verify cycle. Root causes: no agent ever looked at the running UI (implementer: "compared only through tests"); the spec phrased layout loosely ("inside the PR Brief layout") instead of mapping each design region to an AC.
-2. **Resumed agents accumulate context.** One planner carried 4 correction rounds (8.7 M cache-read tokens, 30 % of the run); one spec-creator carried 5. The plan brief grew to ~34.5 k characters (target ~20 k), and every implementer and verifier re-read it.
-3. **Live-environment gaps tests cannot see.** `risk_brief` defaults to `openai` while every other feature uses `openrouter` (first live click → `no_key`); a failed generation shows only "Could not generate the brief" and logs only `err.name`, so it could not be diagnosed without the user's terminal.
-4. **Main-session process slips.** test-writer skipped for G5–G7 (closed afterwards); a 3-file change done in the main session (rule: ≤1 file); self-review analyzers not logged at first (cost report incomplete until fixed); cross-model review used same-family models.
-5. **Large branch.** `L05_risk_brief` carries plans 20–28 (+27 k lines); the full-branch self-review covered 205 files and its HIGHs came from other plans.
-6. **Tooling friction.** Read-only reviewers cannot run `sdd.sh delta` (it writes git objects) — the workaround had to be repeated in four prompts; `handback-check` false negative on a header variant.
+1. **Design conformance found after `done` — the largest loss.** Two reopenings (G5/G6, G7) and a main-session empty-state fix, each a full spec → plan → approve → implement → verify cycle: 2 extra spec re-approvals, 2 plan re-approvals, review-5 … review-9 (log "design-conformance round", "user round 3", "main-session fix (user request, post-done)"). Tag: spec gap.
+2. **One resumed planner carried every round.** `plan-p2` is 30.1 % of all tokens (3132030 weighted, median 739898); `spec-p2` 716699 vs median 279527; `review` 1674848 vs median 646826 over 10 runs (`flags` F1 lines, `cost`). Tag: judgement.
+3. **Live-environment gaps.** First Generate click → `no_key` (`risk_brief` default provider differs); "Could not generate the brief" needed the user's server log (log 2026-10-07 "retro-fact: live check"). Tag: environment.
+4. **Main-session process slips.** test-writer skipped for G5–G7, self-review analyzers logged late, same-family cross-model reviewers (log 2026-10-07 "retro-fact: process"); a 2-file, 2-package change done in the main session (log 2026-10-07 "main-session change"). Tag: judgement.
+5. **Tooling friction.** G1 hand-back header mismatch → `handback: unknown` (F3; log "G1 handback 'unknown'"); read-only reviewers cannot run `sdd.sh delta` (*Follow-ups* "sdd.sh delta writes a tree object"). Tag: mechanical.
+
+| Checklist | Finding | Source |
+|---|---|---|
+| duplicated context | the plan brief re-read by 7 implementer and 10 review runs; one planner resumed for 4 rounds at 93.9 % cache hit, yet 30.1 % share | `cost` plan-p2, implement, review rows |
+| rework / round-trips | 4 spec re-approvals, 3 plan approvals, 3 fix-loops, 3 post-`done` reopenings | Verification log |
+| scope drift | AC-46..50 and AC-13/22/46/47 amendments; G5–G7 added after `done` | log "spec 010 re-approved (design conformance…)", "(round 3…)" |
+| failure taxonomy | mechanical 1 · judgement 2 · environment 1 · spec gap 1 | items 1–5 |
 
 ## 5. Proposed corrections
 
-| # | Change | Where | Expected effect |
-|---|---|---|---|
-| P1 | **Live UI check before review**: after the last UI group, run the app (`run` skill / agent-browser), capture screenshots and give them to plan-verifier with the `--designs` images | `.claude/skills/sdd/stages.md`, `plan-verifier` prompt | would have removed the G5–G7 rounds |
-| P2 | **Design → AC map in the spec**: for each design image, a table "region → AC" (banner, columns, cards, order) | `spec-creator` template | no loose layout ACs |
-| P3 | **A post-`done` round is a new plan**, not an extension of the old one | `CLAUDE.md` → *Plan → implement → verify* | plan stays ≤ 20 k chars; fresh context |
-| P4 | **Fresh agent instead of resume after approval**: resume only inside pass 1 → pass 2; later rounds start a new planner / spec-creator with the file path | `CLAUDE.md`, `sdd/SKILL.md` | ~30–40 % fewer tokens on this run's profile |
-| P5 | **test-writer after every implementation wave** in multi-agent mode, with an AC → `file:line` map | `sdd/stages.md`, test-writer prompt | ACs pinned before verification |
-| P6 | **`sdd.sh delta --ro`** (tracked `git diff <ref>` + per-file compare for untracked, no object writes) | `sdd.sh` | reviewers compute deltas themselves |
-| P7 | **Cross-family plan review** via a small script that sends the plan through the existing OpenRouter adapter (GPT / Gemini) | `scripts/` | meets the "different model family" requirement |
-| P8 | **Product**: `risk_brief` default → `openrouter`; surface the failure class (`invalid_output` / `timeout` / `provider`) in the UI | new spec + plan | fewer dead ends on a demo |
-| P9 | **One PR per plan** (smaller branches) | process | reviewable PRs, scoped self-review |
-
-P1 + P2 + P3 target the largest loss; P4 targets the repeating F1 flag.
+| # | Change | Where | Expected effect | Targets |
+|---|---|---|---|---|
+| P1 | Live UI check (screenshots vs `--designs`) after the last UI group, before plan-verifier | `.claude/skills/sdd/stages.md`, `plan-verifier` prompt | catches layout gaps before `done` | 1 |
+| P2 | Design → AC map in the spec: one row per design region (banner, columns, cards, order) | `spec-creator` template | no loose layout ACs | 1 |
+| P3 | A post-`done` round is a new plan, not new groups on the old one | `CLAUDE.md` → *Plan → implement → verify* | smaller brief, fresh context | 1, 2 |
+| P4 | Resume an agent only from pass 1 to pass 2; later rounds start fresh with the file path | `CLAUDE.md`, `.claude/skills/sdd/SKILL.md` | cuts the F1 repeat on plan-p2/spec-p2 | 2 |
+| P5 | test-writer after every implementation wave, with an AC → `file:line` map | `.claude/skills/sdd/stages.md` | ACs pinned before verification | 4 |
+| P6 | `sdd.sh delta --ro` (no object writes) and `handback-check` accepting `\| Step \|` | `.claude/skills/sdd/scripts/sdd.sh` + selftest | removes F3 and the repeated delta workaround | 5 |
+| P7 | Cross-family plan review through the OpenRouter adapter (GPT / Gemini) | new plan (`scripts/`) | meets the "different model family" rule | 4 |
+| P8 | `risk_brief` default → `openrouter`; show the failure class (`invalid_output` / `timeout` / `provider`) in the UI | new plan (spec 010 amendment) | no dead ends on first use | 3 |
 
 ## 6. Open items
 
-- Cross-family plan review (P7 / homework P2 note) — still same-family only.
-- `repeat: F1` (plans 24, 25, 26, 28): `/sdd` offers a `brainstormer` run on it; not run yet.
-- Follow-ups in plan 28 (SR2–SR10, unused `prBrief.status.*` keys, designs 22/37 vs reversed AC-46) and the HIGHs filed in plans 25 and 26.
+- `repeat: F1 plans=24,26,28` — `/sdd` §5 offers a `brainstormer` run on it; not run (P4 is the candidate answer).
+- English guarantee layer 2 (*Follow-ups* 2026-10-07) and SR2–SR10 remain open.
+- Insight candidate for `engineering-insights`: `sdd.sh cost` busy spans include idle time of resumed agents — already a plan-29 follow-up and a template note, so likely no entry.

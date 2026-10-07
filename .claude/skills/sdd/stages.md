@@ -75,10 +75,10 @@ Run `engineering-insights` (skill); `S log <plan> "insights: <entries written | 
 Run `/pr-self-review`. `S log <plan> "self-review: <result>"`.
 
 ## `metrics`
-No model call. `S usage-scan` (reads the subagent transcripts, never their content, into the gitignored `.sdd/usage.jsonl`), then `S flags <plan>` (flags F1–F5 and `repeat:` lines), then `S log <plan> "metrics: <last flags line>"`. The hand-over lists the flags; a `repeat:` line triggers the question in SKILL.md §5.
+No model call. `S usage-scan` (reads the subagent transcripts, never their content, into the gitignored `.sdd/usage.jsonl`), then `S flags <plan>` (flags F1–F5 and `repeat:` lines), then `S cost <plan>` (per-stage tokens, cache hit, busy time; its output goes to the hand-over), then `S log <plan> "metrics: <last flags line>"`. The hand-over lists the flags; a `repeat:` line triggers the question in SKILL.md §5.
 
 ## `handover`
-The final message as defined in SKILL.md → *Hand-over*.
+The final message as defined in SKILL.md → *Hand-over*, plus the retro offer (AskUserQuestion, default no). On yes: run the `workflow-retro` skill with the plan path; it logs `retro: <path>` and files its `P<n>` with `S follow-up`.
 
 ## `--resume` table
 `S state <spec|plan path>` prints `stage: <id>` and one `because:` line. Show the line, ask the user to confirm, re-enter at that stage. Old plans use other handoff headings — if `because:` looks wrong, ask.
@@ -103,4 +103,4 @@ The final message as defined in SKILL.md → *Hand-over*.
 | `handover` | `handover` |
 | `none` | nothing: the plan is abandoned |
 
-Log line formats `S state` parses (start of the text after the date): `it-suite: …`, `plan-verifier: …`, `review iteration <i>: fix <n>, …`, `docs: …`, `insights: …`, `self-review: …`, `metrics: …`. Lines starting `agent:`, `handback:`, `resume:`, `plan-lint:` or `status-check:` are skipped when `S state` looks for the last stage line. `--resume` logs `resume: <stage>` (`S log <plan> "resume: <stage>"`) once the user has confirmed the stage.
+Log line formats `S state` parses (start of the text after the date): `it-suite: …`, `plan-verifier: …`, `review iteration <i>: fix <n>, …`, `docs: …`, `insights: …`, `self-review: …`, `metrics: …`. Lines starting `agent:`, `handback:`, `resume:`, `plan-lint:`, `status-check:`, `retro:` or `retro-fact:` are skipped when `S state` looks for the last stage line. `--resume` logs `resume: <stage>` (`S log <plan> "resume: <stage>"`) once the user has confirmed the stage.

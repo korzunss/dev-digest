@@ -369,6 +369,14 @@ sdd log docs/plans/06-st.md "self-review: clean" >/dev/null
 eq "state done after self-review is metrics" "stage: metrics" "$(state_of docs/plans/06-st.md)"
 sdd log docs/plans/06-st.md "metrics: flags: 0 flag(s), 0 repeat(s)" >/dev/null
 eq "state done after metrics is handover" "stage: handover" "$(state_of docs/plans/06-st.md)"
+sdd log docs/plans/06-st.md "retro: docs/plans/assets/06-st/workflow-retro.md" >/dev/null
+eq "state done skips a retro line" "stage: handover" "$(state_of docs/plans/06-st.md)"
+write_plan docs/plans/06-st.md done
+sdd log docs/plans/06-st.md "metrics: flags: 0 flag(s), 0 repeat(s)" >/dev/null
+sdd log docs/plans/06-st.md "retro-fact: G2 implementer resumed twice" >/dev/null
+eq "state done skips a retro-fact line" "stage: handover" "$(state_of docs/plans/06-st.md)"
+sdd log docs/plans/06-st.md "retro: docs/plans/assets/06-st/workflow-retro.md" >/dev/null
+eq "state done skips retro-fact then retro" "stage: handover" "$(state_of docs/plans/06-st.md)"
 
 # --- scripts lint
 for f in "${here}"/*.sh "${here}"/../../*/scripts/*.sh; do
@@ -485,5 +493,70 @@ fx_row 02 plan-p1 100000 0 0 0
 fx_row 03 plan-p1 900000 0 0 0
 fx_out="$(sdd flags docs/plans/03-c.md)"
 eq "flags F1 needs 3 other plans" "flags: 0 flag(s), 0 repeat(s)" "${fx_out}"
+
+# --- cost (fixture usage rows only)
+new_repo repo4
+cx_row() { # agent session plan(json) stage(json) input output cache_read first_ts last_ts (json)
+  printf '{"session_id":"%s","agent_id":"%s","agent_type":"x","plan":%s,"stage":%s,"model":"mx","input":%s,"output":%s,"cache_read":%s,"cache_creation":0,"messages":1,"first_ts":%s,"last_ts":%s}\n' "$2" "$1" "$3" "$4" "$5" "$6" "$7" "$8" "$9" >> .sdd/usage.jsonl
+}
+write_plan docs/plans/08-co.md done
+rm -f .sdd/usage.jsonl
+eq "cost no usage file" "cost: no usage data" "$(sdd cost docs/plans/08-co.md)"
+eq "cost no usage file rc 0" "0" "$(rc_of sdd cost docs/plans/08-co.md)"
+mkdir -p .sdd
+: > .sdd/usage.jsonl
+cx_row a1 s1 '"08"' '"plan-p1"' 300000 0 0 '"2026-01-01T10:00:00Z"' '"2026-01-01T10:10:00Z"'
+cx_row a2 s1 '"08"' '"implement"' 50000 10000 0 '"2026-01-01T10:20:00Z"' '"2026-01-01T10:30:00Z"'
+cx_row a3 s1 '"08"' '"implement"' 0 0 1000000 '"2026-01-01T10:25:00Z"' '"2026-01-01T10:35:00Z"'
+cx_row a4 s1 '"09"' '"implement"' 999999 0 0 '"2026-01-01T10:00:00Z"' '"2026-01-01T10:30:00Z"'
+cx_row a5 s1 null null 40000 0 0 '"2026-01-01T10:05:00Z"' '"2026-01-01T10:06:00Z"'
+cx_row a6 s1 null null 7 0 0 null null
+cx_row a7 s2 null null 5 0 0 '"2026-01-01T10:05:00Z"' '"2026-01-01T10:06:00Z"'
+cx_row a8 s1 null null 3 0 0 '"2026-01-01T12:00:00Z"' '"2026-01-01T12:01:00Z"'
+cost_hdr() { printf '%s\n%s\n%s\n' "cost: plan=$1 weighted_tokens=input+1.25*cache_creation+0.1*cache_read+5*output" "| Stage | Runs | Agents | Weighted tokens | Share | Cache hit | Busy |" "|---|---:|---:|---:|---:|---:|---:|"; }
+cost_out1="$(sdd cost docs/plans/08-co.md)"
+cost_exp1="$(cost_hdr 08)
+| plan-p1 | 1 | 1 | 300000 | 60.0% | 0.0% | 10m00s |
+| implement | 2 | 2 | 200000 | 40.0% | 95.2% | 15m00s |
+cost: total 500000 weighted tokens, 3 runs, 3 agents
+cost: window 35m00s
+cost: busy 25m00s, parallelism 1.20
+cost: critical path implement 15m00s
+cost: unattributed 1 runs, 1 agents, 40000 weighted tokens (sessions 1, untimed 1 not counted)
+cost: main-session tokens not included"
+eq "cost full table" "${cost_exp1}" "${cost_out1}"
+write_plan docs/plans/11-nt.md done
+cx_row a9 s3 '"11"' '"docs"' 0 100 0 null null
+cx_row a10 s3 null null 11 0 0 '"2026-01-01T09:00:00Z"' '"2026-01-01T09:01:00Z"'
+cost_out2="$(sdd cost docs/plans/11-nt.md)"
+cost_exp2="$(cost_hdr 11)
+| docs | 1 | 1 | 500 | 100.0% | n/a | n/a |
+cost: total 500 weighted tokens, 1 runs, 1 agents
+cost: window n/a
+cost: busy n/a, parallelism n/a
+cost: critical path n/a
+cost: unattributed 1 runs, 1 agents, 11 weighted tokens (sessions 1, untimed 0 not counted)
+cost: main-session tokens not included"
+eq "cost untimed plan rows print n/a" "${cost_exp2}" "${cost_out2}"
+write_plan docs/plans/12-zs.md done
+cx_row a11 s4 '"12"' '"review"' 0 0 0 '"2026-01-01T10:00:00Z"' '"2026-01-01T10:00:00Z"'
+cost_out3="$(sdd cost docs/plans/12-zs.md)"
+cost_exp3="$(cost_hdr 12)
+| review | 1 | 1 | 0 | n/a | n/a | 0m00s |
+cost: total 0 weighted tokens, 1 runs, 1 agents
+cost: window 0m00s
+cost: busy 0m00s, parallelism n/a
+cost: critical path review 0m00s
+cost: unattributed 0 runs, 0 agents, 0 weighted tokens (sessions 1, untimed 0 not counted)
+cost: main-session tokens not included"
+eq "cost zero span and zero tokens" "${cost_exp3}" "${cost_out3}"
+eq "cost outputs have no NaN or Infinity" "" "$(printf '%s\n%s\n%s\n' "${cost_out1}" "${cost_out2}" "${cost_out3}" | grep -o 'NaN\|Infinity' || true)"
+write_plan docs/plans/10-nr.md done
+eq "cost no rows for plan" "cost: no rows for plan 10" "$(sdd cost docs/plans/10-nr.md)"
+eq "cost no rows rc 0" "0" "$(rc_of sdd cost docs/plans/10-nr.md)"
+eq "cost bad args exit 2" "2" "$(rc_of sdd cost)"
+eq "cost rejects an absolute plan path" "2" "$(rc_of sdd cost /abs/docs/plans/08-co.md)"
+eq "cost rejects a .. plan path" "2" "$(rc_of sdd cost docs/plans/../plans/08-co.md)"
+eq "cost.mjs rejects a missing --root dir" "2" "$(rc_of node "${here}/cost.mjs" --root "${work}/no-such-dir" --plan docs/plans/08-co.md)"
 
 echo "selftest: ok"

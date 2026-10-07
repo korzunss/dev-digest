@@ -4,6 +4,7 @@
 // Exit 0 on every data problem, 2 on bad arguments.
 import fs from 'node:fs';
 import path from 'node:path';
+import { METRIC, weighted } from './usage-weights.mjs';
 
 const USAGE = 'usage: flags.mjs --root <dir> --plan <plan.md>';
 const args = process.argv.slice(2);
@@ -42,24 +43,8 @@ if (!planNum) {
 }
 const thisPlan = planNum[1];
 
-// F1 metric: input-equivalent "weighted tokens" (close to cost ratios; a raw sum
-// would mostly track cache reads). One constant, printed in every F1 line.
-const W = { input: 1, cache_creation: 1.25, cache_read: 0.1, output: 5 };
-const METRIC = 'weighted_tokens=input+1.25*cache_creation+0.1*cache_read+5*output';
 const F1_FACTOR = 2;
 const F1_MIN_OTHER_PLANS = 3;
-
-// usage numbers come from a file: non-finite or negative values count as 0
-const num = (v) => {
-  const n = Number(v);
-  return Number.isFinite(n) && n >= 0 ? n : 0;
-};
-
-const weighted = (r) =>
-  W.input * num(r.input) +
-  W.cache_creation * num(r.cache_creation) +
-  W.cache_read * num(r.cache_read) +
-  W.output * num(r.output);
 
 function median(nums) {
   const s = [...nums].sort((a, b) => a - b);

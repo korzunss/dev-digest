@@ -229,6 +229,12 @@ that path; it's runtime data, and the next resync overwrites it.
 
 ## Tool & Library Notes
 
+### 2026-10-07 — prove a refactored `.mjs` script prints the same output by running the old version straight from a git ref
+**Symptom:** plan 29 moved the weights out of `.claude/skills/sdd/scripts/flags.mjs`; "output unchanged" needed the pre-refactor script, but writing a copy into the tree breaks the reviewers' read-only proof.
+**Cause:** `node -e` takes the script text, but then `process.argv[1]` is the first extra argument, not a script path, so the old script's argument parsing shifts by one.
+**Rule:** `diff <(node --input-type=module -e "$(git show <ref>:<path>)" -- dummy <args>) <(<new command>)` — the `dummy` fills `argv[1]`. This works only for a self-contained script; relative imports resolve against the cwd, not the ref.
+**Evidence:** plan 29 plan-verifier, baseline `refs/sdd/29/pre-impl` vs `sdd.sh flags docs/plans/28-pr-brief.md` → empty diff
+
 ### 2026-10-05 — the root `.gitignore` rule `clones/` silently hides any `clones/` folder, including e2e fixtures
 **Symptom:** plan 24's G7 put fixture docs in `e2e/fixtures/clones/acme/payments-api/specs/*.md`; `./scripts/e2e.sh` passed locally, but `git status` never listed the files, so CI would have run flow 12 without them.
 **Cause:** `.gitignore:20` is the unanchored `clones/` (meant for `server/clones/`), which matches a `clones/` directory at any depth.
