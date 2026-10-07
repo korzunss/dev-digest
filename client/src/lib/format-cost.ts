@@ -48,3 +48,24 @@ export function formatTokenTotal(
   if (tokensIn == null && tokensOut == null) return null;
   return ((tokensIn ?? 0) + (tokensOut ?? 0)).toLocaleString("en-US");
 }
+
+/**
+ * Compact token flow for tight spots — "8.2K→1.3K". Each side is an integer
+ * below 1,000, one-decimal K from 1,000, one-decimal M from 1,000,000; a
+ * missing side is an em dash (unknown, never 0).
+ */
+export function formatTokenFlow(
+  tokensIn: number | null | undefined,
+  tokensOut: number | null | undefined,
+): string {
+  return `${compactTokens(tokensIn)}→${compactTokens(tokensOut)}`;
+}
+
+function compactTokens(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return "—";
+  const n = Math.max(0, value);
+  // Round at the displayed precision before picking the unit, so 999_950 is "1.0M", not "1000.0K".
+  if (Number((n / 1_000).toFixed(1)) >= 1_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (Math.round(n) >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return String(Math.round(n));
+}

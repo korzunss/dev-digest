@@ -7,7 +7,7 @@
 import React from "react";
 import { useTranslations } from "next-intl";
 import { Icon } from "@devdigest/ui";
-import { DiffViewer, type DiffCommentApi, type DiffAnnotationApi } from "@/components/diff-viewer";
+import { DiffViewer, type DiffCommentApi, type DiffAnnotationApi, type DiffTarget } from "@/components/diff-viewer";
 import type { PrFile, SmartDiffRole } from "@devdigest/shared";
 import { ROLE_META } from "../../constants";
 import { s } from "./styles";
@@ -18,17 +18,27 @@ export function SmartDiffGroup({
   findingFileCount,
   commenting,
   annotations,
+  target,
 }: {
   role: SmartDiffRole;
   files: PrFile[];
   findingFileCount: number;
   commenting?: DiffCommentApi;
   annotations?: DiffAnnotationApi;
+  /** Only passed to the group that holds `target.path`; opens the group once per nonce. */
+  target?: DiffTarget | null;
 }) {
   const t = useTranslations("prReview");
   const meta = ROLE_META[role];
   const [open, setOpen] = React.useState(meta.defaultOpen);
   const bodyId = React.useId();
+  const applied = React.useRef<number | null>(null);
+  const nonce = target ? target.nonce : null;
+  React.useEffect(() => {
+    if (nonce == null || nonce === applied.current) return;
+    applied.current = nonce;
+    setOpen(true);
+  }, [nonce]);
   const Chevron = open ? Icon.ChevronDown : Icon.ChevronRight;
 
   return (
@@ -55,7 +65,7 @@ export function SmartDiffGroup({
       </button>
       {open && (
         <div id={bodyId} style={s.body}>
-          <DiffViewer files={files} commenting={commenting} annotations={annotations} />
+          <DiffViewer files={files} commenting={commenting} annotations={annotations} target={target} />
         </div>
       )}
     </div>

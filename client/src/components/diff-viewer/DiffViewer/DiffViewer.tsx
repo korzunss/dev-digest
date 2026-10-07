@@ -11,15 +11,19 @@ import { type DiffCommentApi } from "../comments";
 import { type DiffAnnotationApi } from "../annotations";
 import { s } from "../styles";
 import { FileCard } from "../FileCard";
+import type { DiffTarget } from "../target";
 
 export function DiffViewer({
   files,
   commenting,
   annotations,
+  target,
 }: {
   files: PrFile[];
   commenting?: DiffCommentApi;
   annotations?: DiffAnnotationApi;
+  /** Navigation request: opens the matching file and scrolls to the line. */
+  target?: DiffTarget | null;
 }) {
   const t = useTranslations("shell");
   if (!files || files.length === 0) {
@@ -28,7 +32,7 @@ export function DiffViewer({
   return (
     <div style={s.list}>
       {files.map((f, i) => (
-        <FileCard key={i} file={f} commenting={commenting} annotations={annotations} />
+        <FileCard key={i} file={f} commenting={commenting} annotations={annotations} target={target} />
       ))}
     </div>
   );

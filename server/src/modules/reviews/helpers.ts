@@ -114,11 +114,5 @@ export function pathsOutsidePrFiles(diff: UnifiedDiff, prFiles: { path: string }
   return diff.files.map((f) => f.path).filter((p) => !known.has(p));
 }
 
-/**
- * Merge an agent's own context documents with the ones inherited through its
- * skills: own first, then inherited, the first occurrence of a path wins so a
- * document attached twice reaches the prompt once.
- */
-export function mergeContextPaths(own: readonly string[], inherited: readonly string[]): string[] {
-  return [...new Set([...own, ...inherited])];
-}
+// `mergeContextPaths` moved to `_shared/context-paths.ts`; re-exported for existing imports.
+export { mergeContextPaths } from '../_shared/context-paths.js';

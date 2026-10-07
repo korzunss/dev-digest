@@ -89,7 +89,12 @@ function IntentBody({ intent, state, stale, t }: {
 
 /** The card owns its header (`SectionLabel` "Intent" inside the frame) — the
     Overview lays the card out in a column and adds no label of its own. */
-export function IntentCard({ prId }: { prId: string | null | undefined; prHeadSha?: string | null }) {
+export function IntentCard({
+  prId,
+}: {
+  prId: string | null | undefined;
+  prHeadSha?: string | null;
+}) {
   const t = useTranslations("brief.intentCard");
   const tBlock = useTranslations("brief.block");
   const { data, isLoading, isError } = usePrIntent(prId);

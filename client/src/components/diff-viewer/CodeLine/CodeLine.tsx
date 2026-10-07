@@ -9,6 +9,7 @@ import { type Line } from "../helpers";
 import { s, lineRowFor, lineSignFor, annotationLabelFor } from "../styles";
 import { CommentThreadView } from "../CommentThreadView";
 import { InlineComposer } from "../InlineComposer";
+import { TARGET_HIGHLIGHT_MS } from "../target";
 
 export function CodeLine({
   ln,
@@ -18,6 +19,7 @@ export function CodeLine({
   markers = [],
   contents = [],
   showAnnotationContent = true,
+  targetNonce = null,
 }: {
   ln: Line;
   path: string;
@@ -31,9 +33,27 @@ export function CodeLine({
   /** Gates only the injected `contents[].content` block (S19) — the
       marker bar and right-side label always render. */
   showAnnotationContent?: boolean;
+  /** Set only on the row a navigation target points at; applied once per nonce. */
+  targetNonce?: number | null;
 }) {
   const [hover, setHover] = React.useState(false);
   const [composing, setComposing] = React.useState(false);
+  const [highlighted, setHighlighted] = React.useState(false);
+  const rowRef = React.useRef<HTMLDivElement>(null);
+  const applied = React.useRef<number | null>(null);
+
+  React.useEffect(() => {
+    if (targetNonce == null || targetNonce === applied.current) return;
+    applied.current = targetNonce;
+    rowRef.current?.scrollIntoView({ block: "center" });
+    setHighlighted(true);
+  }, [targetNonce]);
+
+  React.useEffect(() => {
+    if (!highlighted) return;
+    const id = setTimeout(() => setHighlighted(false), TARGET_HIGHLIGHT_MS);
+    return () => clearTimeout(id);
+  }, [highlighted]);
 
   if (ln.kind === "hunk") {
     return (
@@ -58,7 +78,7 @@ export function CodeLine({
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
     >
-      <div style={lineRowFor(ln.kind, marker?.color)}>
+      <div ref={rowRef} style={lineRowFor(ln.kind, marker?.color, highlighted)}>
         <span className="mono tnum" style={{ ...s.lineNo, position: "relative" }}>
           {showAdd && target && (
             <button

@@ -4,7 +4,7 @@
  * dash (never "$0.00"), and an estimate is visibly an estimate.
  */
 import { describe, it, expect } from "vitest";
-import { formatCostUsd, formatTokenTotal } from "./format-cost";
+import { formatCostUsd, formatTokenFlow, formatTokenTotal } from "./format-cost";
 
 describe("formatCostUsd", () => {
   it("renders unknown as an em dash, not as free", () => {
@@ -54,5 +54,26 @@ describe("formatTokenTotal", () => {
   it("returns null when there are no token counts at all", () => {
     expect(formatTokenTotal(null, null)).toBe(null);
     expect(formatTokenTotal(undefined, undefined)).toBe(null);
+  });
+});
+
+describe("formatTokenFlow", () => {
+  it("compacts each side to K or M with one decimal", () => {
+    expect(formatTokenFlow(8_200, 1_300)).toBe("8.2K→1.3K");
+    expect(formatTokenFlow(1_500_000, 20)).toBe("1.5M→20");
+  });
+
+  it("renders a missing side as an em dash", () => {
+    expect(formatTokenFlow(950, null)).toBe("950→—");
+    expect(formatTokenFlow(undefined, null)).toBe("—→—");
+  });
+
+  // SR9: rounding at the displayed precision must not leak "1000.0K" or a fractional below 1K
+  it("rolls a value that rounds up to the next unit into that unit", () => {
+    expect(formatTokenFlow(999_950, 999.5)).toBe("1.0M→1.0K");
+  });
+
+  it("clamps a negative value to 0 and renders null as an em dash", () => {
+    expect(formatTokenFlow(-5, null)).toBe("0→—");
   });
 });

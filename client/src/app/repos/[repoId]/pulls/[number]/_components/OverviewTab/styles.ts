@@ -1,12 +1,6 @@
 import type { CSSProperties } from "react";
 
 export const s = {
-  columns: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))",
-    gap: 16,
-    alignItems: "start",
-  } satisfies CSSProperties,
   descriptionBox: {
     border: "1px solid var(--border)",
     borderRadius: 8,

@@ -626,6 +626,7 @@ TQ1 `maxRetries: 0`; TQ2 `generated_at`; TQ3 `lastIndexedSha` else HEAD; TQ4 Eng
 - 2026-10-05 stripMarkdownImages also removes non-image reference-link definitions ([x]: url), so reference-style links lose their target
 - 2026-10-05 F1: onboarding adds runtime cross-module edges settings/feature-models + repos/constants (accepted drift) — consider a container.featureModels facade and moving CLONE_JOB_KIND to _shared; refresh the onion skill baseline
 - 2026-10-05 docs: architecture-reviewer A2 anchor (openrouter fetch now line 193) and devdigest-appsec rate-limit anchor drifted
+- 2026-10-06 pr-self-review 2026-10-06 (HIGH): server/src/modules/onboarding/grounding.ts:53 SAFE_SCRIPT_RE /^[A-Za-z0-9:_.-]+$/ accepts a leading '-' or '.', so a committed script named e.g. '-g' yields a copyable '<pm> run -g'. Fix: /^[A-Za-z0-9_][A-Za-z0-9:_.-]*$/ at grounding and at collection (facts.ts), plus a grounding test (server/insights/gotchas.md rule)
 
 ## Handoffs → G5
 
