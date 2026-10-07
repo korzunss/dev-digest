@@ -826,6 +826,7 @@ Verification: `jq` 29 `prBrief` keys ok; client typecheck ok; PrBriefBlock + Ove
 - 2026-10-06 prBrief.status.{missing,partial,truncated,stale} keys in brief.json have no consumer after S23 (coverage block uses prBrief.coverage.*)
 - 2026-10-06 designs 22/37 show Risk areas inside the Intent card; AC-46 reversed by the user (round 3) — keep the designs as historical reference only
 - 2026-10-06 pr-self-review full branch 2026-10-06: PASS, 0 critical. HIGH follow-ups filed in plan 26 (onboarding SAFE_SCRIPT_RE leading -/.) and plan 25 (DocPreview remote images); pre-existing vendored contract drift (client knowledge/platform/trace lack AgentVersion*) — re-sync in a separate change. MEDIUM: context.list sequential token reads; repo-intel getIndexCoverage clone re-walk; MermaidDiagram global initialize race; AgentEditor nested ternary; ReadingPath pass-through
+- 2026-10-07 English guarantee, layer 2 (not done): Zod refine on prose fields (brief summary/risk title+explanation/focus reason; intent intent/in_scope/out_of_scope) rejecting non-Latin letters outside backticks; brief fails with no re-ask (user decision: keep AC-3), intent re-asks once (maxRetries 1). Needs spec 010 + spec 006 amendments and a new plan
 
 ## Handoffs → G5
 
@@ -1015,3 +1016,4 @@ Verification: jq 54 ok; PrBriefBlock/OverviewTab/IntentCard/CoverageBlock 33 pas
 - 2026-10-06 agent: review aa82150b9427d5bc1 plan-verifier 2026-10-06T18:14:58Z
 - 2026-10-06 review-9 (delta after test-writer + doc-writer): plan-verifier complete — 17/17, only tests/docs changed, AC-13/22/28/30/32/33/46-50 pinned, R4 Proof present. Removed log line: duplicate 'agent: self-review a2d5072aa8eb66a80' (main-session dedupe, intentional)
 - 2026-10-06 workflow retro written: docs/plans/assets/28-pr-brief/workflow-retro.md (main session; proposals P1-P9)
+- 2026-10-07 main-session change (user request, quick path, post-done): English-only output instruction added to the brief system prompt (server/src/modules/brief/prompt.ts) and the intent system prompt (reviewer-core/src/intent/classify.ts) — deepseek-v4-flash sometimes answered in Chinese; 2 files in 2 packages, over the 1-file trivial threshold, done at the user's explicit choice; reviewer-core tc + 223, server tc + unit 824, intent.it + brief.it 22 passed
