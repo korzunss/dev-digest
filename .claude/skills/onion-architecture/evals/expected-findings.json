@@ -1,0 +1,253 @@
+{
+  "skill": "onion-architecture",
+  "line_tolerance": 3,
+  "recall_threshold": 0.9,
+  "cases": [
+    {
+      "case": "case-1-review-digest",
+      "findings": [
+        {
+          "id": "C1-F1",
+          "file": "server/src/modules/review-digest/routes.ts",
+          "lines": [
+            4,
+            5,
+            43
+          ],
+          "rule": "db-confined-to-repositories"
+        },
+        {
+          "id": "C1-F2",
+          "file": "server/src/modules/review-digest/service.ts",
+          "lines": [
+            4,
+            53
+          ],
+          "rule": "services-depend-on-ports"
+        },
+        {
+          "id": "C1-F3",
+          "file": "server/src/modules/review-digest/types.ts",
+          "lines": [
+            1
+          ],
+          "rule": "db-confined-to-repositories"
+        }
+      ],
+      "must_not_flag": [
+        {
+          "file": "server/src/modules/review-digest/repository.ts",
+          "lines": [
+            1,
+            3
+          ],
+          "reason": "a repository is the one place allowed to import drizzle-orm and db/schema"
+        }
+      ]
+    },
+    {
+      "case": "case-2-review-notifications",
+      "findings": [
+        {
+          "id": "C2-F1",
+          "file": "reviewer-core/src/review/prompt-template.ts",
+          "lines": [
+            1,
+            28,
+            29
+          ],
+          "rule": "core-is-pure",
+          "alt_locations": [
+            {
+              "file": "changes-to-existing-files.diff",
+              "lines": [
+                45
+              ]
+            }
+          ]
+        },
+        {
+          "id": "C2-F2",
+          "file": "server/src/vendor/shared/notifier.ts",
+          "lines": [
+            1,
+            12,
+            13
+          ],
+          "rule": "ports-are-vendor-neutral"
+        },
+        {
+          "id": "C2-F3",
+          "file": "server/src/adapters/notifier/slack.ts",
+          "lines": [
+            4
+          ],
+          "rule": "adapters-dont-know-modules"
+        }
+      ],
+      "must_not_flag": [
+        {
+          "file": "changes-to-existing-files.diff",
+          "lines": [
+            5,
+            18
+          ],
+          "reason": "platform/container.ts is the composition root; importing and constructing the concrete adapter there is allowed"
+        }
+      ]
+    },
+    {
+      "case": "case-3-mcp-review-score",
+      "findings": [
+        {
+          "id": "C3-F1",
+          "file": "mcp-server/src/core/threshold.ts",
+          "lines": [
+            4
+          ],
+          "rule": "mcp-core-is-pure"
+        },
+        {
+          "id": "C3-F2",
+          "file": "mcp-server/src/tools/get-review-score.ts",
+          "lines": [
+            3,
+            10
+          ],
+          "rule": "mcp-transport-uses-injected-api"
+        },
+        {
+          "id": "C3-F3",
+          "file": "mcp-server/src/core/score.ts",
+          "lines": [
+            2
+          ],
+          "rule": "mcp-core-is-pure"
+        }
+      ],
+      "must_not_flag": [
+        {
+          "file": "changes-to-existing-files.diff",
+          "lines": [
+            5,
+            8
+          ],
+          "reason": "server.ts registering a tool and passing deps is the intended wiring"
+        }
+      ]
+    },
+    {
+      "case": "case-4-hotspots",
+      "findings": [
+        {
+          "id": "C4-F1",
+          "file": "server/src/modules/hotspots/service.ts",
+          "lines": [
+            4,
+            33,
+            36
+          ],
+          "rule": "services-depend-on-ports"
+        },
+        {
+          "id": "C4-F2",
+          "file": "server/src/modules/hotspots/helpers.ts",
+          "lines": [
+            1
+          ],
+          "rule": "no-cross-module-internals"
+        },
+        {
+          "id": "C4-F3",
+          "file": "server/src/adapters/git/churn.ts",
+          "lines": [
+            3
+          ],
+          "rule": "adapters-dont-know-modules"
+        }
+      ],
+      "must_not_flag": [
+        {
+          "file": "server/src/modules/hotspots/types.ts",
+          "lines": [
+            2
+          ],
+          "reason": "a type-only import of a service-local port (RepoIntel) from another module's types.ts is the established pattern (blast, onboarding)"
+        },
+        {
+          "file": "changes-to-existing-files.diff",
+          "lines": [
+            50
+          ],
+          "reason": "repo-intel/service importing adapters/astgrep is the documented exception: repo-intel is the indexer subsystem"
+        },
+        {
+          "file": "changes-to-existing-files.diff",
+          "lines": [
+            16,
+            24
+          ],
+          "reason": "the composition root may import and construct the concrete adapter"
+        }
+      ]
+    },
+    {
+      "case": "case-5-check-annotations",
+      "findings": [
+        {
+          "id": "C5-F1",
+          "file": "server/src/modules/checks/repository.ts",
+          "lines": [
+            37,
+            38
+          ],
+          "rule": "repositories-return-rows",
+          "alt_locations": [
+            {
+              "file": "server/src/modules/checks/service.ts",
+              "lines": [
+                25
+              ]
+            }
+          ]
+        },
+        {
+          "id": "C5-F2",
+          "file": "server/src/modules/checks/service.ts",
+          "lines": [
+            1,
+            8
+          ],
+          "rule": "services-depend-on-ports"
+        },
+        {
+          "id": "C5-F3",
+          "file": "changes-to-existing-files.diff",
+          "lines": [
+            29,
+            30,
+            32
+          ],
+          "rule": "adapter-needs-mock-and-override"
+        }
+      ],
+      "must_not_flag": [
+        {
+          "file": "server/src/adapters/github/check-runs.ts",
+          "lines": [
+            1
+          ],
+          "reason": "an adapter is where the SDK belongs"
+        },
+        {
+          "file": "changes-to-existing-files.diff",
+          "lines": [
+            25
+          ],
+          "reason": "the composition root may import the concrete adapter"
+        }
+      ]
+    }
+  ],
+  "must_not_flag_tolerance": 1
+}

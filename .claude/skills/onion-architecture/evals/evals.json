@@ -1,0 +1,80 @@
+{
+  "skill_name": "onion-architecture",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I drafted a new `review-digest` module for the API. The files are in {{fixture}}/server/src/modules/review-digest/ and will be moved as-is into server/src/modules/review-digest/ of the repo at {{repo}}. Before I move it in, review whether it fits our backend architecture \u2014 where each piece lives and what it imports. Write the review to review.md: each finding with file:line, why it's a problem, and the concrete fix; then a verdict.",
+      "expected_output": "Three layering findings: inline Drizzle query in routes.ts, concrete Octokit adapter in service.ts, db/schema type import in types.ts; clean files not flagged.",
+      "files": [
+        "evals/fixtures/case-1-review-digest"
+      ],
+      "expectations": [
+        "Flags routes.ts (the /digest/scores handler) for querying db/schema + drizzle-orm directly in a route, and says the query belongs in repository.ts reached through the service",
+        "Flags service.ts for importing/constructing the concrete OctokitGitHubClient adapter, and says to go through the container (container.forge(repo)) instead",
+        "Flags types.ts for importing db/schema (even type-only) outside a repository, and says the row types belong in repository.ts or db/rows.ts",
+        "Does not flag repository.ts's db/schema or drizzle-orm imports as a violation",
+        "Does not claim a dependency-cruiser / `depcruise` run passed or quote its result unless it actually ran one successfully"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Here's my draft for two things: Slack notifications when a review finishes, and per-repo review prompt templates. New files are under {{fixture}}/ at the paths they'll have in the repo ({{repo}}); edits to existing files are in changes-to-existing-files.diff there. Check the architecture before I open a PR and write the result to review.md \u2014 findings with file:line, why, and the fix, then a verdict.",
+      "expected_output": "Three findings: node:fs in reviewer-core, Slack SDK types leaking into the shared port, adapter importing a feature module; composition-root import of the adapter not flagged.",
+      "files": [
+        "evals/fixtures/case-2-review-notifications"
+      ],
+      "expectations": [
+        "Flags reviewer-core/src/review/prompt-template.ts for using node:fs (I/O in the pure core), and says the server/caller should load the template and pass the text in",
+        "Flags server/src/vendor/shared/notifier.ts for leaking the vendor (@slack/web-api types, WebClient, the 'Slack' name) into the port, and proposes a vendor-neutral port",
+        "Flags server/src/adapters/notifier/slack.ts for importing modules/reviews/helpers (an adapter depending on a feature module)",
+        "Does not flag platform/container.ts importing the concrete SlackWebNotifier as a violation (the composition root is allowed to)",
+        "Does not claim a dependency-cruiser / `depcruise` run passed or quote its result unless it actually ran one successfully"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Adding a `get_review_score` tool to our MCP server. Draft files are in {{fixture}}/mcp-server/src/ (same paths as in {{repo}}/mcp-server/src/), plus changes-to-existing-files.diff. Does this respect how the package is layered? Put your review in review.md \u2014 findings with file:line, why, and the fix, then a verdict.",
+      "expected_output": "Three findings: process.env read in core/threshold.ts, tool building its own HTTP client, core importing from tools/; server.ts registration not flagged.",
+      "files": [
+        "evals/fixtures/case-3-mcp-review-score"
+      ],
+      "expectations": [
+        "Flags core/threshold.ts for reading process.env inside core/, and says the value should come in through the composition root (index.ts env parsing) as a dependency/parameter",
+        "Flags tools/get-review-score.ts for importing http/client (createHttpApi) and building its own API client instead of using deps.api",
+        "Flags core/score.ts for importing from ../tools/messages.js (core depending on the transport layer)",
+        "Does not flag the server.ts registration diff as a layering violation",
+        "Does not claim a dependency-cruiser / `depcruise` run passed or quote its result unless it actually ran one successfully"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "I'm adding a Hotspots view: files that change often and sit high in the import graph. The draft is in {{fixture}}/ at the paths it will have in {{repo}}, and edits to existing files are in changes-to-existing-files.diff. Review whether it fits the backend's layering and write review.md: each finding with file:line, why, and the fix; then a verdict.",
+      "expected_output": "Three findings (service imports adapters/astgrep, helpers value-imports repo-intel/constants, the git adapter imports a hotspots constant); the RepoIntel type import, the repo-intel/service astgrep import and the container wiring are not flagged.",
+      "files": [
+        "evals/fixtures/case-4-hotspots"
+      ],
+      "expectations": [
+        "Flags hotspots/service.ts for importing adapters/astgrep (only repo-intel, the indexer subsystem, may), and says to go through a port or container.repoIntel",
+        "Flags hotspots/helpers.ts for a value import from ../repo-intel/constants.js (cross-module internals)",
+        "Flags adapters/git/churn.ts for importing modules/hotspots/constants (an adapter depending on a feature)",
+        "Does not flag the repo-intel/service.ts import of parseReferences from adapters/astgrep as a violation (documented exception)",
+        "Does not flag the type-only RepoIntel import in hotspots/types.ts as a violation"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Draft for publishing a review's findings as GitHub check-run annotations. Files are under {{fixture}}/ at their paths in {{repo}}; edits to existing files are in changes-to-existing-files.diff. Check that the new port, adapter, repository and service are layered the way this codebase expects, and write review.md with file:line findings, why, the fix, and a verdict.",
+      "expected_output": "Three findings (repository returns a Drizzle query builder, service imports Octokit types, adapter wired without a ContainerOverrides field and mock); the adapter's octokit import and the container's adapter import are not flagged.",
+      "files": [
+        "evals/fixtures/case-5-check-annotations"
+      ],
+      "expectations": [
+        "Flags checks/repository.ts openFindings for returning an un-executed Drizzle query builder that the service then chains (.limit), and says the repository should return rows and take the limit as a parameter",
+        "Flags checks/service.ts for importing types from the octokit SDK, and says the service should use the shared CheckAnnotation types",
+        "Flags the container's checkAnnotations() wiring for having no ContainerOverrides field and no mock in adapters/mocks.ts",
+        "Does not flag adapters/github/check-runs.ts importing octokit as a violation",
+        "Does not claim a dependency-cruiser / `depcruise` run passed or quote its result unless it actually ran one successfully"
+      ]
+    }
+  ]
+}

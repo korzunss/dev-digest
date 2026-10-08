@@ -1,0 +1,59 @@
+--- a/server/src/vendor/shared/adapters.ts
++++ b/server/src/vendor/shared/adapters.ts
+@@
++export interface PathChurn {
++  path: string;
++  commits: number;
++}
++
++/** How often each path changed recently, newest history first. */
++export interface ChurnReader {
++  commitsPerPath(clonePath: string, days: number): Promise<PathChurn[]>;
++}
+--- a/server/src/platform/container.ts
++++ b/server/src/platform/container.ts
+@@
++import { GitChurnReader } from '../adapters/git/churn.js';
++import { HotspotsRepository } from '../modules/hotspots/repository.js';
++import { HotspotsService } from '../modules/hotspots/service.js';
+@@ export interface ContainerOverrides {
++  churn?: ChurnReader;
+@@
++  get churn(): ChurnReader {
++    if (this.overrides.churn) return this.overrides.churn;
++    return (this._churn ??= new GitChurnReader());
++  }
++
++  get hotspots(): HotspotsService {
++    return (this._hotspots ??= new HotspotsService({
++      repo: new HotspotsRepository(this.db),
++      repoIntel: this.repoIntel,
++      churn: this.churn,
++      readSource: (ref, path) => this.git.readFile(ref, path).catch(() => null),
++    }));
++  }
+--- a/server/src/adapters/mocks.ts
++++ b/server/src/adapters/mocks.ts
+@@
++export class MockChurnReader implements ChurnReader {
++  constructor(private rows: PathChurn[] = []) {}
++  async commitsPerPath(): Promise<PathChurn[]> {
++    return this.rows;
++  }
++}
+--- a/server/src/modules/repo-intel/service.ts
++++ b/server/src/modules/repo-intel/service.ts
+@@
+ import {
+   parseImports,
+   parseInvocationHeads,
++  parseReferences,
+   parseSymbols,
+   langForFile,
+ } from '../../adapters/astgrep/index.js';
+--- a/server/src/modules/index.ts
++++ b/server/src/modules/index.ts
+@@
++import hotspots from './hotspots/routes.js';
+@@
++  hotspots,

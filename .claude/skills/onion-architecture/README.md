@@ -2,7 +2,7 @@
 
 A local, hand-authored skill (not pulled from a registry — it is not in `skills-lock.json`).
 It encodes the onion / ports-and-adapters layering the DevDigest backend already follows and
-ships a `dependency-cruiser` gate to enforce it.
+proposes a `dependency-cruiser` config to enforce it (not installed yet; SKILL.md has the checks to run today).
 
 - **Scope:** `server/` (Fastify + Drizzle + Postgres) and `reviewer-core/` (pure domain core).
 - **Out of scope:** `client/` frontend → use `frontend-architecture` / `react-best-practices`.
@@ -50,4 +50,5 @@ ships a `dependency-cruiser` gate to enforce it.
 
 - `SKILL.md` — the one rule, the ring diagram, the decision framework, the "add a dependency" recipe.
 - `layer-map.md` — every ring mapped to real files + tool→adapter→port table + a "where does it go?" cheatsheet.
-- `enforcement.md` — the `.dependency-cruiser.cjs` config, npm scripts, severity rationale, and the exception ledger.
+- `enforcement.md` — the proposed `.dependency-cruiser.cjs` config, npm scripts, severity rationale, and the exception ledger.
+- `evals/` — eval cases with seeded violations and their answer key (`eval.md`, `expected-findings.json`, `evals.json`, `fixtures/`).

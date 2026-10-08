@@ -6,7 +6,7 @@ Reusable AI skills that provide specialized knowledge and workflows. Canonical l
 
 | Skill | Scope | Description |
 |-------|-------|-------------|
-| [onion-architecture](onion-architecture/SKILL.md) | Backend | Ports-and-adapters layering for `server/` + `reviewer-core/` — where routes, services, repositories and adapters belong, DI wiring, the inward dependency rule and its dependency-cruiser gate |
+| [onion-architecture](onion-architecture/SKILL.md) | Backend | Ports-and-adapters layering for `server/` + `reviewer-core/` — where routes, services, repositories and adapters belong, DI wiring, the inward dependency rule and how to check it (a dependency-cruiser config is proposed, not installed); ships evals in `evals/` |
 | [fastify-best-practices](fastify-best-practices/SKILL.md) | Backend | Fastify routes, plugins, JSON-schema validation, error handling |
 | [drizzle-orm-patterns](drizzle-orm-patterns/SKILL.md) | Backend | Drizzle schema, queries, relations, transactions, migrations |
 | [postgresql-table-design](postgresql-table-design/SKILL.md) | Backend | Postgres schema design, data types, indexing, constraints |
