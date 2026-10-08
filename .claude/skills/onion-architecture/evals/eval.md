@@ -17,6 +17,9 @@ lean on the real code around them (`platform/container.ts`, `@devdigest/shared`,
 | `case-3-mcp-review-score` | a new `mcp-server` tool (`changes-to-existing-files.diff`) | 3 |
 | `case-4-hotspots` | new `hotspots` module, a git adapter and wiring. It also touches the documented exceptions (`repo-intel` → `adapters/astgrep`, a type-only `RepoIntel` port import), which must **not** be flagged | 3 |
 | `case-5-check-annotations` | a new port, adapter, repository and service for check-run annotations. The issues are subtle: a leaked query builder, SDK types in a service, and wiring with no override or mock | 3 |
+| `case-6-release-notes` | new `release-notes` module, a tag reader and a notes writer, with wiring. A tunable added to `config.ts` but still read from `process.env`, and two adapters that duplicate an existing client (git, the Anthropic API) | 3 |
+| `case-7-weekly-report` | a larger draft (11 files + diff): a `weekly-report` module, two new `modules/_shared` helpers, a shared contract, a report adapter and wiring. Most leaks sit one hop away from the module: behind `modules/_shared`, a re-export in `@devdigest/shared`, a dynamic `import()`, and a type re-export | 5 |
+| `case-8-review-forecast` | a new `review-forecast` module that reuses `brief`'s dependency ports (`BriefBlastPort`, `BriefLogger`, `TokenCounter`) from `brief/types.ts` in three files, next to an allowed provider-type import from `repo-intel/types.ts` and one plain cross-module constant import as a control | 4 |
 
 No fixture file contains a comment or a name that hints at the planted issue. The answer
 key lives only in `expected-findings.json`, which the agent under test must never see.
@@ -37,7 +40,7 @@ Rule ids:
 - server: `core-is-pure`, `services-depend-on-ports`, `routes-are-thin`,
   `db-confined-to-repositories`, `no-cross-module-internals`, `adapters-dont-know-modules`,
   `no-circular`, `ports-are-vendor-neutral`, `repositories-return-rows`,
-  `adapter-needs-mock-and-override`
+  `adapter-needs-mock-and-override`, `env-at-chokepoints`, `one-adapter-per-system`, `no-foreign-consumer-ports`
 - mcp-server: `mcp-core-is-pure` (no `process.env`, `fetch`, timers, or `http/`/`tools/`
   imports in `core/`), `mcp-transport-uses-injected-api` (no `http/`, `fetch` or
   `process.env` in `tools/` or `server.ts`), `mcp-adapter-boundary` (`http/` never imports
@@ -53,10 +56,11 @@ Only lines inside the `findings` block are scored. They are compared with
 
 - **Match.** A reported line matches a seeded finding when the file is the same and its
   line is within `line_tolerance` (3) of any of that finding's `lines`, or of an
-  `alt_locations` entry (the same issue seen from its other end). Each seeded finding can be
+  `alt_locations` entry (the same issue seen from its other end). An alt location may set its
+  own `tolerance` (0 when it sits next to another finding's lines). Each seeded finding can be
   matched once.
 - **Recall** = matched seeded findings / all seeded findings, pooled over all cases
-  (15 in total).
+  (27 in total).
 - **Rule accuracy** = matched lines whose `rule` equals the expected rule / matched lines.
   This is reported but does not gate.
 - **Precision** = matched lines / all reported lines. A line on a file the key doesn't
@@ -64,7 +68,7 @@ Only lines inside the `findings` block are scored. They are compared with
   layering violations.
 - **False positive on correct wiring.** A reported line within `must_not_flag_tolerance`
   (1) of a `must_not_flag` entry **fails the case**, whatever the recall.
-- **Pass threshold:** recall ≥ `recall_threshold` (0.9), which allows at most 1 of the 15
+- **Pass threshold:** recall ≥ `recall_threshold` (0.9), which allows at most 2 of the 27
   seeded findings to be missed, and no `must_not_flag` hit.
 
 `evals.json` holds the same cases in skill-creator format for manual with- and

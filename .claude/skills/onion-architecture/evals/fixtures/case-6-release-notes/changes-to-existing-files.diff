@@ -1,0 +1,155 @@
+--- a/server/src/vendor/shared/adapters.ts
++++ b/server/src/vendor/shared/adapters.ts
+@@ -416,3 +416,28 @@ export interface SecretsProvider {
+   set?(key: SecretKey, value: string): Promise<void>;
+ }
++
++// ---------- Release notes ----------
++export interface TagCommit {
++  sha: string;
++  subject: string;
++  author: string;
++}
++
++export interface TagReader {
++  commitsBetween(repo: RepoRef, fromTag: string, toTag: string, limit: number): Promise<TagCommit[]>;
++}
++
++export interface NotesWriterInput {
++  repo: string;
++  fromTag: string;
++  toTag: string;
++  commits: TagCommit[];
++}
++
++export interface NotesWriter {
++  write(input: NotesWriterInput): Promise<string>;
++}
+--- /dev/null
++++ b/server/src/vendor/shared/contracts/release-notes.ts
+@@ -0,0 +1,9 @@
++import { z } from 'zod';
++
++export const ReleaseNotes = z.object({
++  fromTag: z.string(),
++  toTag: z.string(),
++  commitCount: z.number().int().nonnegative(),
++  markdown: z.string(),
++});
++export type ReleaseNotes = z.infer<typeof ReleaseNotes>;
+--- a/server/src/vendor/shared/index.ts
++++ b/server/src/vendor/shared/index.ts
+@@ -26,2 +26,3 @@ export * from './contracts/observability.js';
+ export * from './contracts/productionize.js';
++export * from './contracts/release-notes.js';
+ export * from './adapters.js';
+--- a/server/src/platform/config.ts
++++ b/server/src/platform/config.ts
+@@ -36,6 +36,7 @@ const EnvSchema = z.object({
+   GITLAB_HOST: z.string().optional(),
+   API_PORT: z.coerce.number().int().default(3001),
+   WEB_PORT: z.coerce.number().int().default(3000),
++  RELEASE_NOTES_MAX_COMMITS: z.coerce.number().int().positive().default(200),
+   DEVDIGEST_CLONE_DIR: z.string().optional(),
+   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+@@ -68,4 +69,6 @@ export type AppConfig = {
+   /** Normalised self-managed GitLab bases (origin + optional path prefix). */
+   gitlabBases: string[];
++  /** Upper bound on commits read between two tags for release notes. */
++  releaseNotesMaxCommits: number;
+ };
+@@ -96,4 +99,5 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
+     repoIntelEnabled: parsed.REPO_INTEL_ENABLED !== 'false',
+     gitlabBases: parseForgeBases(parsed.GITLAB_HOST),
++    releaseNotesMaxCommits: parsed.RELEASE_NOTES_MAX_COMMITS,
+   };
+ }
+--- a/server/src/platform/container.ts
++++ b/server/src/platform/container.ts
+@@ -7,6 +7,8 @@ import type {
+   Embedder,
+   LLMProvider,
++  NotesWriter,
++  TagReader,
+ } from '@devdigest/shared';
+ import type { AppConfig } from './config.js';
+ import type { Db } from '../db/client.js';
+@@ -20,2 +22,9 @@ import { GitLabRestClient } from '../adapters/gitlab/rest.js';
+ import { forgeCacheKey, forgeTokenKeys } from './forge-resolve.js';
+ import { SimpleGitClient } from '../adapters/git/simple-git.js';
++import { GitTagReader } from '../adapters/git/tags.js';
++import { AnthropicNotesWriter } from '../adapters/llm/notes-writer.js';
++import { ReleaseNotesService } from '../modules/release-notes/service.js';
++import { ReleaseNotesRepository } from '../modules/release-notes/repository.js';
++import {
++  RELEASE_NOTES_MAX_OUTPUT_TOKENS,
++  RELEASE_NOTES_MODEL,
++} from '../modules/release-notes/constants.js';
+@@ -73,4 +82,8 @@ export interface ContainerOverrides {
+   depgraph?: DepGraph;
+   tokenizer?: Tokenizer;
++  /** Release notes: tag log reader and notes writer. */
++  tagReader?: TagReader;
++  notesWriter?: NotesWriter;
+ }
+@@ -98,4 +111,5 @@ export class Container {
+   private _brief?: BriefService;
+   private _context?: ContextService;
++  private _releaseNotes?: ReleaseNotesService;
+ 
+@@ -228,4 +242,20 @@ export class Container {
+     }));
+   }
++
++  /** Release notes between two tags of an imported repo. */
++  get releaseNotes(): ReleaseNotesService {
++    return (this._releaseNotes ??= new ReleaseNotesService({
++      repo: new ReleaseNotesRepository(this.db),
++      tags: this.overrides.tagReader ?? new GitTagReader(this.config.cloneDir),
++      writer:
++        this.overrides.notesWriter ??
++        new AnthropicNotesWriter(
++          this.secrets,
++          RELEASE_NOTES_MODEL,
++          RELEASE_NOTES_MAX_OUTPUT_TOKENS,
++        ),
++    }));
++  }
+ 
+--- a/server/src/adapters/mocks.ts
++++ b/server/src/adapters/mocks.ts
+@@ -398,3 +398,24 @@ export class MockAuthProvider implements AuthProvider {
+ }
+ 
++export class MockTagReader implements TagReader {
++  public calls: { repo: RepoRef; fromTag: string; toTag: string; limit: number }[] = [];
++  constructor(private commits: TagCommit[] = []) {}
++
++  async commitsBetween(repo: RepoRef, fromTag: string, toTag: string, limit: number) {
++    this.calls.push({ repo, fromTag, toTag, limit });
++    return this.commits.slice(0, limit);
++  }
++}
++
++export class MockNotesWriter implements NotesWriter {
++  public inputs: NotesWriterInput[] = [];
++  constructor(private markdown = '## Changes\n') {}
++
++  async write(input: NotesWriterInput): Promise<string> {
++    this.inputs.push(input);
++    return this.markdown;
++  }
++}
++
+ export class MockSecretsProvider implements SecretsProvider {
+--- a/server/src/modules/index.ts
++++ b/server/src/modules/index.ts
+@@ -17,2 +17,3 @@ import onboarding from './onboarding/routes.js';
+ import brief from './brief/routes.js';
++import releaseNotes from './release-notes/routes.js';
+ 
+@@ -47,3 +48,4 @@ export const modules: Record<string, FastifyPluginAsync> = {
+   onboarding,
+   brief,
++  releaseNotes,
+ };
