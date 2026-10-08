@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { CostSource } from './trace.js';
 
 /**
  * PR Brief building blocks: Intent, Blast radius, Risks, PR History,
@@ -182,10 +183,89 @@ export const SmartDiff = z.object({
 export type SmartDiff = z.infer<typeof SmartDiff>;
 
 // ---- Composed PR Brief (pr_brief.json) ----
+/** An input the brief generator draws on. */
+export const BriefInput = z.enum([
+  'intent',
+  'blast_radius',
+  'review_findings',
+  'linked_issue',
+  'attached_specs',
+  'pr_description',
+  'changed_files',
+]);
+export type BriefInput = z.infer<typeof BriefInput>;
+
+/** How an input fell short of full: absent, partly read, cut to fit the
+ * token budget, or older than the PR head. */
+export const BriefInputStatus = z.enum(['missing', 'partial', 'truncated', 'stale']);
+export type BriefInputStatus = z.infer<typeof BriefInputStatus>;
+
+export const BriefMissingInput = z.object({
+  input: BriefInput,
+  status: BriefInputStatus,
+  ref: z.string().nullable(),
+  reason: z.string().nullable(),
+});
+export type BriefMissingInput = z.infer<typeof BriefMissingInput>;
+
+export const ReviewFocusItem = z.object({
+  file: z.string(),
+  line: z.number().int(),
+  reason: z.string(),
+});
+export type ReviewFocusItem = z.infer<typeof ReviewFocusItem>;
+
+export const BriefModel = z.object({
+  provider: z.string(),
+  model: z.string(),
+});
+export type BriefModel = z.infer<typeof BriefModel>;
+
+/** What the model is asked to produce (no refinements: provider schemas). */
+export const PrBriefModelOutput = z.object({
+  summary: z.string(),
+  risks: z.array(Risk),
+  review_focus: z.array(ReviewFocusItem),
+});
+export type PrBriefModelOutput = z.infer<typeof PrBriefModelOutput>;
+
+/** Usage of the brief's own model call; every value nullable (AC-49). */
+export const BriefUsage = z.object({
+  tokens_in: z.number().int().nullable(),
+  tokens_out: z.number().int().nullable(),
+  cost_usd: z.number().nullable(),
+  cost_source: CostSource.nullable(),
+});
+export type BriefUsage = z.infer<typeof BriefUsage>;
+
+/** The stored brief. `intent`/`blast`/`history` are legacy and never written:
+ * the cards read live data. */
 export const PrBrief = z.object({
-  intent: Intent,
-  blast: BlastRadius,
+  summary: z.string(),
   risks: Risks,
-  history: PrHistory,
+  review_focus: z.array(ReviewFocusItem),
+  missing_inputs: z.array(BriefMissingInput),
+  head_sha: z.string(),
+  generated_at: z.string(),
+  model: BriefModel,
+  /** Absent on rows stored before the usage field existed. */
+  usage: BriefUsage.optional(),
+  intent: Intent.optional(),
+  blast: BlastRadius.optional(),
+  history: PrHistory.optional(),
 });
 export type PrBrief = z.infer<typeof PrBrief>;
+
+export const BriefFailureReason = z.enum(['no_key', 'over_budget', 'failed', 'in_progress']);
+export type BriefFailureReason = z.infer<typeof BriefFailureReason>;
+
+/** What GET/POST /pulls/:id/brief serve. */
+export const PrBriefView = z.object({
+  pr_id: z.string(),
+  pr_head_sha: z.string(),
+  brief: PrBrief.nullable(),
+  stale: z.boolean(),
+  generating: z.boolean(),
+  failure: BriefFailureReason.nullable(),
+});
+export type PrBriefView = z.infer<typeof PrBriefView>;

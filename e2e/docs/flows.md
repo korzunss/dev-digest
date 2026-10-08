@@ -1,7 +1,8 @@
 # Flows: format, order, catalogue, and debugging
+<!-- verified against f75b0f9 + working tree on 2026-10-05 · sources: e2e/specs/*.flow.json, scripts/e2e.sh, e2e/fixtures/repos -->
 
 How to read a `specs/*.flow.json` file, why the `NN-` prefix is load-bearing,
-what each of the 11 current flows checks, and what to do when one goes flaky.
+what each of the 12 current flows checks, and what to do when one goes flaky.
 Read this before writing a new flow or chasing a red one. For env knobs, the
 full run instructions and the short coverage table, see
 [`../README.md`](../README.md); this document doesn't repeat those.
@@ -71,9 +72,10 @@ its own starting URL as its first step, but nothing enforces that for a flow
 someone adds later.
 
 The ordering also has to protect against flows that mutate shared, persisted
-state. `10-conventions.flow.json` is the only flow that writes anything: it
-rejects and accepts convention candidates and creates a real skill row (steps
-at `e2e/specs/10-conventions.flow.json:16-34`). It runs after every flow that
+state. Two flows write. `10-conventions.flow.json` rejects and accepts
+convention candidates and creates a real skill row (steps at
+`e2e/specs/10-conventions.flow.json:16-34`); `12-project-context.flow.json`
+attaches two documents to the seeded agent `Test Quality Reviewer`. `10` runs after every flow that
 enumerates skills or agents by name (`03-agents`, `09-skills`), so the skill it
 creates (`payments-api-conventions`) can't appear as noise in an assertion that
 doesn't expect it. Flows `02`, `04`, `05` and `08` additionally assume the
@@ -86,7 +88,7 @@ flow that does must sort after `02/04/05/08`, not before.
 New flows: pick the next free `NN-`, per `e2e/AGENTS.md:29-32` ("name new
 flows `09-…`, `10-…` to place them").
 
-## 3. The 11 flows today
+## 3. The 12 flows today
 
 | Spec | Covers | Seed data / precondition |
 |---|---|---|
@@ -101,9 +103,11 @@ flows `09-…`, `10-…` to place them").
 | `09-skills` | `/skills` rail → open a seeded skill (`secret-leakage-gate`) → walk Config/Context/Preview/Versions/Stats/Evals tabs → open agent `Test Quality Reviewer` → its Skills tab lists an attached skill (`test-coverage-nudge`). | Seeded skill `secret-leakage-gate` with v1/context/stats data; seeded agent `Test Quality Reviewer` with an attached skill. |
 | `10-conventions` | Sidebar → `/repos/:id/conventions` → reject one candidate, bulk-accept the rest, open the create-skill modal, confirm the preview, create the skill, confirm it lands in `/skills` as `payments-api-conventions`. Never presses "Run extraction / Re-scan" (the one model-calling button). | Grounded, pending convention candidates seeded by `pnpm db:seed` (`seedDemoConventions`: a done scan and 3 pending rules) for `acme/payments-api` (`e2e/specs/10-conventions.flow.json:3`). |
 | `11-gitlab-affordances` | Settings → API Keys shows the GitLab PAT row, its scope hint (`read_api + write_repository`) and `GITLAB_HOST` pointer, alongside the pre-existing GitHub row; onboarding's copy accepts a GitLab URL. Deliberately doesn't import a real GitLab project. | None beyond the app booting; GitLab import itself is covered by `server/test/gitlab.it.test.ts` and `server/test/gitlab-adapter.test.ts` (`e2e/specs/11-gitlab-affordances.flow.json:3`). |
+| `12-project-context` | Agent `Test Quality Reviewer` → Context tab → attach `specs/alpha.md` then `specs/beta.md` → drag beta's row onto alpha's → reopen the agent → beta is listed before alpha. Writes (attaches documents), like `10`. Uses native `agent-browser drag`. | A clone of `acme/payments-api` holding `specs/alpha.md` and `specs/beta.md`: `scripts/e2e.sh` and `e2e-web.yml` copy `e2e/fixtures/repos` into a throwaway dir and set `DEVDIGEST_CLONE_DIR` before the API starts; seeded agent `Test Quality Reviewer`. |
 
-All of them target **read-only** seeded fixtures except `10-conventions`,
-which is the one flow in the suite that writes (`e2e/specs/10-conventions.flow.json:3`).
+All of them target **read-only** seeded fixtures except `10-conventions` and
+`12-project-context`, the two flows that write
+(`e2e/specs/10-conventions.flow.json:3`, `e2e/specs/12-project-context.flow.json`).
 None of them uses the AI `chat` command, so none can trigger a model call
 (`e2e/AGENTS.md:41-42`).
 

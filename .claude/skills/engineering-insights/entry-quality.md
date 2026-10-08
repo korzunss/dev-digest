@@ -57,7 +57,7 @@ the mechanism, a named file or command, and a decision the reader can act on.
 
 `<pkg>/insights/gotchas.md` lists the rules of one package that are **still in
 force** — a curated index over the log, not a second log. It exists for readers
-who need the rules, not the history: the start-of-task read, the planner's
+who need the rules, not the history: the start-of-task read, the implementation-planner's
 *Known gotchas*, a reviewer's criteria.
 
 Template (used when creating the file):

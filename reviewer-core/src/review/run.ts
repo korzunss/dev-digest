@@ -11,7 +11,7 @@ import type {
   UnifiedDiff,
 } from '@devdigest/shared';
 import { Review as ReviewSchema } from '@devdigest/shared';
-import { assemblePrompt } from '../prompt.js';
+import { assemblePrompt, type ContextDoc } from '../prompt.js';
 import { groundFindings, groundingSummary } from '../grounding.js';
 import { reduceReviews, scoreFromFindings, sliceDiff, verdictFromFindings } from './reduce.js';
 import { summarizeFindings } from './summary.js';
@@ -82,8 +82,8 @@ export interface ReviewInput {
   changedFiles?: string[];
   /** Cap on the rule text per chunk. Default `DEFAULT_REPO_RULES_MAX_CHARS`. */
   repoRulesMaxChars?: number;
-  /** Project-context spec chunks (untrusted; delimiter-wrapped downstream). */
-  specs?: string[];
+  /** Project-context documents (untrusted; delimiter-wrapped downstream). */
+  specs?: ContextDoc[];
   /**
    * Optional callers-of-changed-symbols digest (T1.3). Untrusted; rendered
    * before the diff section. Empty/undefined → section omitted.

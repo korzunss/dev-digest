@@ -1,6 +1,6 @@
-import { readFile, stat } from 'node:fs/promises';
 import type { Container } from '../../platform/container.js';
-import type { Intent, Provider, Review, RunTrace, UnifiedDiff } from '@devdigest/shared';
+import type { Intent, Provider, Review, RunTrace, SpecSkipped, UnifiedDiff } from '@devdigest/shared';
+import type { ContextDoc } from '@devdigest/reviewer-core';
 import { reviewPullRequest, countBlockers } from '@devdigest/reviewer-core';
 import { RunLogger } from '../../platform/run-logger.js';
 import * as schema from '../../db/schema.js';
@@ -16,14 +16,10 @@ import {
   REVIEW_MAX_SKIPPED_CHUNK_FRACTION,
   REVIEW_REPO_RULES_MAX_CHARS,
 } from './constants.js';
-import { taskLine } from './helpers.js';
+import { taskLine, mergeContextPaths } from './helpers.js';
 import { loadRepoRules, type LoadedRepoRules } from './repo-rules.js';
 import { loadDiff, type LoadedDiff } from './diff-loader.js';
-// The path guard is a pure function owned by the context module; importing it
-// keeps ONE definition of "which files may be read out of a clone".
-import { resolveDocPath } from '../context/helpers.js';
 import { renderSkillBlock } from '../skills/helpers.js';
-import { MAX_DOC_BYTES } from '../context/constants.js';
 
 /** Thrown by a run when the user cancels it mid-flight (between chunks or mid-call). */
 export class RunCancelledError extends Error {
@@ -48,10 +44,12 @@ interface ResolvedSkills {
 
 /** Project-context documents a run actually managed to read. */
 interface ResolvedContext {
-  /** Document bodies, in attachment order — the prompt's `specs` slot. */
-  bodies: string[];
+  /** Documents (path + body), in attachment order — the prompt's `specs` slot. */
+  docs: ContextDoc[];
   /** Their repo-relative paths, recorded on the trace as `specs_read`. */
   paths: string[];
+  /** Linked documents that were not injected, with the reason. */
+  skipped: SpecSkipped[];
 }
 
 // A reduced "Review per file" — same schema as Review (the model returns a small
@@ -287,9 +285,8 @@ export class ReviewRunExecutor {
       // once its body is edited. Every Stats figure reads this table.
       await this.recordRunSkills(runId, skills, runLog);
 
-      // Documents attached to those skills — "any agent using this skill
-      // inherits these documents".
-      const context = await this.buildContextDocs(repo, skills, runLog);
+      // Documents attached to the agent plus those inherited through its skills.
+      const context = await this.buildContextDocs(repo, agent.id, runLog);
 
       // ---- Engine: assemble → single-pass → grounding -----------------------
       // The pure review pipeline lives in @devdigest/reviewer-core (shared with
@@ -315,7 +312,7 @@ export class ReviewRunExecutor {
         ...(skillBodies.length > 0 ? { skills: skillBodies } : {}),
         // Project-context documents inherited through those skills. Same
         // omit-when-empty contract: no documents ⇒ no `## Project context`.
-        ...(context.bodies.length > 0 ? { specs: context.bodies } : {}),
+        ...(context.docs.length > 0 ? { specs: context.docs } : {}),
         // PR author's description/body — untrusted; assemblePrompt wraps +
         // truncates it. Omitted when the PR has no body.
         ...(pull.body ? { prDescription: pull.body } : {}),
@@ -431,6 +428,7 @@ export class ReviewRunExecutor {
         raw_output: outcome.raw,
         memory_pulled: [],
         specs_read: context.paths,
+        specs_skipped: context.skipped,
         // Persisted log = the run's FULL event buffer (incl. shared pre-work:
         // diff load + intent), not just events recorded inside this method.
         log: runLog.logFor(runId),
@@ -512,70 +510,56 @@ export class ReviewRunExecutor {
   }
 
   /**
-   * Read the project-context documents attached to the skills this run pulled.
+   * Read the project-context documents this run attaches: the agent's own links
+   * first, then those inherited through its enabled skills (first occurrence of
+   * a path wins).
    *
-   * Attachments store a PATH, and paths belong to a repo — so an attachment
-   * made against one repo may simply not exist in the repo of this PR. A
-   * missing document is SKIPPED with a line in the run log, never a failure:
-   * the user attached a rule, not a dependency, and failing the review because
-   * a doc moved would be the wrong trade.
-   *
-   * Every path goes through the same `resolveDocPath` guard the HTTP route
-   * uses, because a stored path is no more trustworthy than a requested one —
-   * it was a request once.
+   * A stored path belongs to a repo and was a request once, so the context
+   * module's one safe reader re-checks it. A document that cannot be read is
+   * SKIPPED with its reason in the run log and the trace, never a failure: the
+   * user attached a rule, not a dependency.
    */
   private async buildContextDocs(
     repo: typeof schema.repos.$inferSelect,
-    skills: ResolvedSkills,
+    agentId: string,
     runLog: RunLogger,
   ): Promise<ResolvedContext> {
-    const empty: ResolvedContext = { bodies: [], paths: [] };
-    if (skills.blocks.length === 0) return empty;
+    const empty: ResolvedContext = { docs: [], paths: [], skipped: [] };
 
-    let links;
+    let wanted: string[];
     try {
-      links = await this.container.skillsRepo.contextDocsForSkills(
-        skills.blocks.map((b) => b.skillId),
+      const own = await this.agents.listContextDocs(agentId);
+      const inherited = await this.agents.inheritedContextDocs(agentId);
+      wanted = mergeContextPaths(
+        own.map((l) => l.path),
+        inherited.map((l) => l.path),
       );
     } catch (err) {
       runLog.info(`project context: could not load attachments — ${(err as Error).message}`);
       return empty;
     }
-    if (links.length === 0) return empty;
+    if (wanted.length === 0) return empty;
 
-    // Two skills may attach the same document; it belongs in the prompt once.
-    const wanted = [...new Set(links.map((l) => l.path))];
-    const cloneDir = this.container.git.clonePathFor({ owner: repo.owner, name: repo.name });
-
-    const bodies: string[] = [];
-    const paths: string[] = [];
-    const skipped: string[] = [];
-
-    for (const rel of wanted) {
-      const abs = resolveDocPath(cloneDir, rel);
-      if (!abs) {
-        skipped.push(rel);
-        continue;
-      }
-      try {
-        const stats = await stat(abs);
-        if (!stats.isFile() || stats.size > MAX_DOC_BYTES) {
-          skipped.push(rel);
-          continue;
-        }
-        bodies.push(await readFile(abs, 'utf8'));
-        paths.push(rel);
-      } catch {
-        skipped.push(rel);
-      }
+    let result;
+    try {
+      result = await this.container.context.readDocsForRun(
+        { owner: repo.owner, name: repo.name, contextGlobs: repo.contextGlobs },
+        wanted,
+      );
+    } catch (err) {
+      runLog.info(`project context: could not read documents — ${(err as Error).message}`);
+      return empty;
     }
 
+    const paths = result.docs.map((d) => d.path);
     runLog.info(
       `project context: ${paths.length} document(s) attached` +
         (paths.length > 0 ? ` — ${paths.join(', ')}` : '') +
-        (skipped.length > 0 ? `; skipped ${skipped.length} not in this repo: ${skipped.join(', ')}` : ''),
+        (result.skipped.length > 0
+          ? `; skipped ${result.skipped.length}: ${result.skipped.map((k) => `${k.path} (${k.reason})`).join(', ')}`
+          : ''),
     );
-    return { bodies, paths };
+    return { docs: result.docs, paths, skipped: result.skipped };
   }
 
   /**
@@ -735,6 +719,7 @@ export class ReviewRunExecutor {
       raw_output: '',
       memory_pulled: [],
       specs_read: [],
+      specs_skipped: [],
       log: this.container.runBus.buffer(runId).map((e) => ({ t: e.t, kind: e.kind, msg: e.msg })),
     };
   }

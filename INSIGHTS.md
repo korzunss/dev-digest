@@ -4,6 +4,21 @@ An append-only log of things that cost someone time. Package-local findings go i
 that package's `INSIGHTS.md`; this file is for what crosses package boundaries —
 two or more packages, the `shared` contracts, `scripts/`, Docker, CI.
 
+**Where every insight lives.** A map, not a summary — the rules themselves stay
+in each package's files. There is no root `gotchas.md`: cross-package rules stay
+in this file.
+
+| Package | Log (append-only) | Rules in force |
+|---|---|---|
+| repo-wide | this file | — |
+| `server/` | [`server/INSIGHTS.md`](server/INSIGHTS.md) | [`server/insights/gotchas.md`](server/insights/gotchas.md) |
+| `client/` | [`client/INSIGHTS.md`](client/INSIGHTS.md) | [`client/insights/gotchas.md`](client/insights/gotchas.md) |
+| `reviewer-core/` | [`reviewer-core/INSIGHTS.md`](reviewer-core/INSIGHTS.md) | [`reviewer-core/insights/gotchas.md`](reviewer-core/insights/gotchas.md) |
+| `mcp-server/` | [`mcp-server/INSIGHTS.md`](mcp-server/INSIGHTS.md) | [`mcp-server/insights/gotchas.md`](mcp-server/insights/gotchas.md) |
+| `e2e/` | [`e2e/INSIGHTS.md`](e2e/INSIGHTS.md) | [`e2e/insights/gotchas.md`](e2e/insights/gotchas.md) |
+
+A new package gets a row here when its `INSIGHTS.md` is created.
+
 **How to use it.** Write an entry when a symptom took more than a few minutes to
 explain — especially when the code looks correct and behaves otherwise. The
 `engineering-insights` skill routes a finding to the right file, picks the
@@ -44,15 +59,37 @@ write-up here. That keeps `AGENTS.md` short without losing the reasoning.
 
 ## What Works
 
-_Nothing yet._
+### 2026-10-05 — checkpoint the working tree without a commit: temp index + `write-tree` + a tree ref
+**Symptom:** R3 and delta reviews need a baseline, but the user does not want commits during a pipeline run, and `git add` on the real index re-stages over the approved text (2026-09-30 entry) and changes `git status`, which reviewers use as their read-only proof.
+**Cause:** an approved state has to live somewhere addressable that is neither a commit nor the real index.
+**Rule:** `cp .git/index <tmp-outside-worktree>; GIT_INDEX_FILE=<tmp> git add -A; T=$(GIT_INDEX_FILE=<tmp> git write-tree); git update-ref refs/sdd/<NN>/<label> "$T"` — the real index and `git status --porcelain` stay untouched, the tree and its blobs survive `git gc --prune=now`, `fsck` is clean. Compare two checkpoints with `git diff --name-only <t1> <t2>`. Against the *working tree*, `git diff <tree> -- <path>` shows an untracked file as deleted — use `git show <tree>:<path> | diff - <path>` instead. `/sdd` wraps this as `sdd.sh checkpoint` / `delta` / `brief-diff`; clean up with `git update-ref -d`.
+**Evidence:** `.claude/skills/sdd/scripts/sdd.sh` (`make_tree`) · `docs/plans/22-sdd-pipeline-skill.md` → *Verification log* (R3 `brief-diff` empty, rc 0) · throwaway test on git 2.54.0
+**Guard:** `selftest.sh` cases for `sdd.sh checkpoint` / `delta` / `brief-diff` (real index untouched, tree ref survives gc, untracked paths handled) — plans 22, 23.
+**Addendum 2026-10-06 (plan 28):** a read-only reviewer cannot run `sdd.sh delta` against the working tree — with no second tree it calls `make_tree ""` (`sdd.sh:405`), which writes git objects, so plan-verifier and architecture-reviewer refused it in four delta passes. Give them the recipe in the prompt instead: `git diff --name-status <ref>` for tracked files plus `git show <ref>:<f> | diff - <f>` per untracked file (in plan 28, 38 `D` entries came down to 3 real changes).
 
 ## What Doesn't Work
+
+### 2026-10-06 — "T1–T11 present and green" does not mean every AC in a test row's *Covers* column is asserted
+**Symptom:** after plan 28's test-writer reported all eleven Tests-table rows covered and green, the full plan-verifier pass still came back `incomplete`: T3, T6 and T10 claimed AC-11, AC-18, AC-4/13/27 but no assertion checked them (default budget never exercised; blast-missing only in an `.it` that accepted `missing` *or* `partial`; empty states, truncated note and skeleton never rendered in a test).
+**Cause:** the implementer writes the Tests-table files and the test-writer audits by file presence and pass/fail, while the verifier checks each *Covers* AC against an actual assertion. Nobody between them maps AC → assertion line.
+**Rule:** in the test-writer prompt, ask for an AC → `file:line` assertion map for every AC in each row's *Covers* column, and to add the missing assertion when an AC has none; an assertion that accepts two outcomes does not pin either AC. It costs one fix-loop round less.
+**Evidence:** `docs/plans/28-pr-brief.md` Verification log (review-1: 154/158, partial T3/T6/T10) · `docs/plans/assets/28-pr-brief/plan-verifier-report.md` · `server/test/brief.it.test.ts:215` (the `missing`-or-`partial` assertion)
+
+### 2026-10-05 — writing a script through a heredoc that itself contains `EOF` heredocs ran its body in the real repo
+**Symptom:** while writing `selftest.sh` (plan 22) the implementer's outer `cat > file <<EOF` closed at the first inner `EOF`; the rest of the would-be script — `git init`, fixture writes, `git add -A && git commit` — executed in the current shell, i.e. in this repo on branch L05: two stray commits (`fixtures`, `more`), `specs/README.md` overwritten, fixture files created. Not pushed; the user recovered with `git reset --mixed 12d454d`.
+**Cause:** a heredoc ends at the first line equal to its delimiter, nested or not.
+**Rule:** create script files with the Write tool, never through a shell heredoc. If a heredoc is unavoidable, use a unique outer delimiter (`<<'SDD_EOF_OUTER'`). A test script that runs git must `cd` into a `mktemp -d` repo and assert `[ "$(pwd -P)" = "$(git rev-parse --show-toplevel)" ]` before its first git command; the main session reads such a script before running it and diffs `HEAD`/`git status`/refs before and after.
+**Evidence:** `docs/plans/22-sdd-pipeline-skill.md` → *Verification log* (INCIDENT, 2026-10-05) · `.claude/skills/sdd/scripts/selftest.sh:21-25`
+**Extended 2026-10-05 (plan 23):** a prompt line and the template rule did not stop it: G1 edited `sdd.sh` with a python script fed through a shell heredoc, and G3 ran a no-op `cat > /dev/null <<EOF` after the rule was in `implementer.md`. Neither did damage, but the rule alone is not a guard — the main session still diffs `HEAD`/refs/stash (`sdd.sh git-state`) around every implementer run.
+**Guard:** implementer *Hard rules* bullet "never create or rewrite a script file through a shell heredoc" (`.claude/agents/implementer.md`); `selftest.sh` `new_repo()` toplevel guard; `sdd.sh git-state save|check` catches stray commits, refs and stash (plan 23).
 
 ### 2026-09-30 — an untracked plan file makes R3 and delta re-verification unprovable
 **Symptom:** in plans 07, 08 and 09 the plan-verifier reported R3 ("plan changed only in Status/decisions") as not-verifiable every time, and its delta scope checks fell back to file mtimes.
 **Cause:** plan files and the new code stay untracked until the PR commit, so git has no approved baseline to diff against.
 **Rule:** stage (or commit) the plan file right after the user's approval and again at the end of each implementation wave; the verifier can then diff against the index instead of asking the user to sign off R3.
 **Evidence:** `docs/plans/07-review-diff-base-sha.md`, `08-llm-call-reliability.md`, `09-review-eval-fixture.md` → *Verification log* (R3 rows)
+**Extended 2026-10-04 (plans 20, 21):** staging alone is not enough. The main session re-stages the plan after every appended handoff and log line, and each `git add` replaces the index blob, so by verification time the approved text is gone and R3 is again not-verifiable. Keep R3 provable by committing the plan right after approval (a `docs(plans): approve plan NN` commit on the branch), or by not re-staging it until the verifier has run.
+**Guard:** `sdd.sh checkpoint <NN> plan-approved` at approval + `sdd.sh brief-diff <plan> <tree>` for R3 — `.claude/skills/sdd/scripts/sdd.sh` (plans 22, 23).
 
 ### 2026-09-29 — a skill listed on a step where it has nothing to do can only be closed by a plan change
 **Symptom:** plan 07's plan-verifier kept SK2–SK4 `missing` across two runs although the implementer re-read `zod` in full and recorded S2–S4 under *Not used — reason* ("no Zod schema in this step").
@@ -192,6 +229,44 @@ that path; it's runtime data, and the next resync overwrites it.
 
 ## Tool & Library Notes
 
+### 2026-10-07 — prove a refactored `.mjs` script prints the same output by running the old version straight from a git ref
+**Symptom:** plan 29 moved the weights out of `.claude/skills/sdd/scripts/flags.mjs`; "output unchanged" needed the pre-refactor script, but writing a copy into the tree breaks the reviewers' read-only proof.
+**Cause:** `node -e` takes the script text, but then `process.argv[1]` is the first extra argument, not a script path, so the old script's argument parsing shifts by one.
+**Rule:** `diff <(node --input-type=module -e "$(git show <ref>:<path>)" -- dummy <args>) <(<new command>)` — the `dummy` fills `argv[1]`. This works only for a self-contained script; relative imports resolve against the cwd, not the ref.
+**Evidence:** plan 29 plan-verifier, baseline `refs/sdd/29/pre-impl` vs `sdd.sh flags docs/plans/28-pr-brief.md` → empty diff
+
+### 2026-10-05 — the root `.gitignore` rule `clones/` silently hides any `clones/` folder, including e2e fixtures
+**Symptom:** plan 24's G7 put fixture docs in `e2e/fixtures/clones/acme/payments-api/specs/*.md`; `./scripts/e2e.sh` passed locally, but `git status` never listed the files, so CI would have run flow 12 without them.
+**Cause:** `.gitignore:20` is the unanchored `clones/` (meant for `server/clones/`), which matches a `clones/` directory at any depth.
+**Rule:** never name a committed folder `clones/`; fixture clone roots live in `e2e/fixtures/repos/`. After adding fixtures, check `git check-ignore -v <file>` prints nothing.
+**Evidence:** `git check-ignore -v e2e/fixtures/clones/acme/payments-api/specs/alpha.md` → `.gitignore:20:clones/` · plan 24 Verification log (G7-IGN)
+
+### 2026-10-05 — a reviewer-core input-type change breaks server tests that `pnpm typecheck` never sees
+**Symptom:** plan 24 changed `PromptParts.specs` from `string[]` to `{path, body}[]`; `cd server && pnpm typecheck` was clean, yet 5 server unit tests (`prompt-callers.test.ts`, `prompt-structured.test.ts`) failed on string fixtures.
+**Cause:** `server/tsconfig.json` has `"include": ["src/**/*.ts"]`, so `server/test/**` is never typechecked; only vitest exercises it.
+**Rule:** after changing any reviewer-core or `shared` input type, run the server unit suite (`pnpm exec vitest run --exclude '**/*.it.test.ts'`), not just typecheck.
+**Evidence:** `server/tsconfig.json:28` · plan 24 Handoffs → G4 (deviation)
+
+### 2026-10-05 — a subagent's real token usage lives in its transcript, not in the task notification
+**Symptom:** the task notification's `subagent_tokens` for plan 23's G1 implementer said ~66k, while its transcript summed to ~580k raw tokens (516k of them cache reads); summing transcript `usage` naively gave ~2.2× too much again.
+**Cause:** the notification figure's scope is undocumented (research 2026-10-05); transcripts (`~/.claude/projects/<project>/<session>/subagents/agent-<id>.jsonl`) carry `usage` per streamed message, so one `message.id` appears on several lines (80 usage lines → 36 ids); cache reads dominate a run's raw tokens (~89%). A `SubagentStop` hook gets no token data either.
+**Rule:** measure from transcripts, deduped by `message.id` (last line wins), split input / output / cache_read / cache_creation, and compare runs in weighted tokens (`input + 1.25·cache_creation + 0.1·cache_read + 5·output`), not raw sums. The agent's type is in the sibling `agent-<id>.meta.json` (`agentType`); never store its `description`. Transcripts are deleted after `cleanupPeriodDays` (default 30) — scan before then. `/sdd` does all of this as `sdd.sh usage-scan` + `flags`.
+**Evidence:** `docs/plans/23-workflow-retro-skill.md` → *Verification log* (pre-approval field check, first real scan) and *Handoffs → G3* · `.claude/skills/sdd/scripts/usage-scan.mjs`, `flags.mjs`
+**Guard:** `selftest.sh` usage-scan cases (duplicate `message.id`, no content/description in `.sdd/usage.jsonl`) and the F1 weighted-median case with its weight break check (plan 23).
+
+### 2026-10-05 — in zsh, `$VAR:a` (and `:h`, `:t`, `:r`, `:e`) is a path modifier, not text
+**Symptom:** a Bash-tool one-liner `git rev-parse $T:a.txt` (tree sha + `:path`) failed with `ambiguous argument '/…/scratchpad/<sha>.txt'` — the sha had become an absolute path.
+**Cause:** the Bash tool's shell is zsh here; `$T:a` applies zsh's "absolute path" modifier to `$T`, then `.txt` is appended.
+**Rule:** brace every variable followed by `:` — `"${T}:a.txt"` — in inline commands; scripts start with `#!/usr/bin/env bash` and still use `${VAR}` braces (the `/sdd` scripts do).
+**Evidence:** plan 22 research, EXT3 throwaway test (main session, 2026-10-04)
+**Guard:** the scripts lint in `.claude/skills/sdd/scripts/selftest.sh` fails on an unbraced `$NAME:` in the skill's scripts (plan 23).
+
+### 2026-10-04 — `grep -w <name>` cannot find leftovers of a rename to a hyphenated name
+**Symptom:** while planning the `planner` → `implementation-planner` rename (plan 21), a "no bare `planner` left" check written as `grep -rnw planner` would match every *new* `implementation-planner` too, so it can never come back empty.
+**Cause:** `-w` treats `-` as a word boundary — `implementation-planner` contains the whole word `planner`. The same pattern also matches prose like "Implementation planner" with a space.
+**Rule:** for a rename check use `git grep -nIiE '(^|[^-[:alnum:]_])<old>'` with pathspec exclusions for history (old plans, INSIGHTS) and genuine other meanings (the Postgres "query planner"); write the new name hyphenated everywhere, including titles.
+**Evidence:** `docs/plans/21-implementation-planner.md` → S6 Done-when, G1 handoff ("`# Implementation-planner`") · `.claude/skills/postgresql-table-design/SKILL.md:91`
+
 ### 2026-10-01 — a local review run that dies with `Socket timeout` may just be the Mac falling asleep
 **Symptom:** a 142-file review of PR #13 on the local dev stack failed after 54 min with `Invalid response body while trying to fetch https://openrouter.ai/api/v1/chat/completions: Socket timeout`. It happened before the 10-min call deadline, with no retry. It looked like a provider stall.
 **Cause:** `pmset -g log` shows `Entering Sleep state due to 'Idle Sleep'` 3 s after that chunk's request went out, and DarkWakes at exactly the run log's "still waiting" (12:30:55/56) and failure (12:35:39) timestamps. While the Mac slept, the Node process was paused. On wake, the `openai` SDK's keep-alive agent socket timeout (5 min, `reviewer-core/node_modules/openai/_shims/node-runtime.js:53-54`) fired on the dead connection, and node-fetch raised a `FetchError` (`type: 'system'`), which isn't classified as transient. The same run under `caffeinate` completed.
@@ -218,6 +293,12 @@ Done-when for prose, it picks a short token that cannot wrap (an id, a heading,
 a backticked literal) instead of a sentence fragment.
 **Evidence:** `docs/plans/05-decisions-first-planning.md` → S3/S5 Done-when ·
 implementer run: 100 tool uses · `.claude/agents/plan-verifier.md`, `AGENTS.md`
+**Extended 2026-10-04 (plan 20):** a count threshold has the opposite problem.
+`grep -c` counts matching *lines*, so a Done-when like `grep -c 'spec-creator' … ≥ 2`
+made the implementer add a second mention just to pass (S4, S5); the verifier
+then had to read the lines to tell content from padding. Prefer a per-token
+`grep -n` loop or a heading loop that checks the required content itself.
+**Guard:** `sdd.sh plan-lint <plan>` flags `grep -c` and multi-word greps on `.md` files in Done-whens; implementation-planner runs it (Method step 6, Red-flags check) — plan 23.
 
 ### 2026-09-27 — `rg` edge checks catch comments and prose, and `rg` is not a binary here
 **Symptom:** a plan Done-when "`rg -n "_components|FindingCard|FindingRecord"
@@ -310,6 +391,14 @@ tree looks right in exactly the case the index is wrong.
 
 ## Recurring Errors & Fixes
 
+### 2026-10-04 — an implementer hand-back can be the single word "placeholder" although the edits landed
+**Symptom:** in plan 20 the implementer's hand-back was literally `placeholder` twice (G1, and the AC8a fix-mode run) — no step table, no Done-when output, no handoff — while the files were in fact edited. Asking for "the full report before handing back" in the prompt did not prevent the second one.
+**Cause:** the agent called its hand-back before writing the report (its own words when resumed); the run is short (5–8 tool uses), so nothing in the transcript forces the report.
+**Rule:** treat a hand-back without a step table as "unknown", never as done: read `git diff` (or `git diff` against the index when the wave is staged) yourself and re-run the step's Done-when before logging it. When the plan needs the handoff or the `## Skills` table (next group, `SK` items), resume the same implementer with SendMessage and ask for the report — it then writes a normal one.
+**Evidence:** `docs/plans/20-spec-creator-agent.md` → *Verification log* (AC8a line) and *Handoffs → G2* · resumed G1 run: "I called the hand-back before writing the report"
+**Extended 2026-10-04 (plan 21):** a sharper prompt line did work twice: ending the implementer prompt with "Write your full Implementation Report — step table with each Done-when command and its actual output, Handoff, ## Skills — before you hand back; a one-word hand-back will be treated as 'not done'" gave full reports for G1 and G2. Keep checking the diff anyway.
+**Guard:** `sdd.sh handback-check` (with `--log` it writes `handback: unknown`) rejects a hand-back without a step table — `.claude/skills/sdd/scripts/sdd.sh`; `/sdd` runs it after every implementer run (plan 23).
+
 ### 2026-09-17 — `TS2719: Two different types with this name exist` after adding a contract field
 
 **Symptom:** adding a required field to a Zod contract in `shared` makes
@@ -332,6 +421,12 @@ of the type or a tsconfig `paths` problem.
 _Nothing yet._
 
 ## Open Questions
+
+### 2026-10-04 — does `spec-creator` pass 1 over-classify display details as blocking?
+**Symptom:** in the plan 20 smoke test (T1, feature "show the run's total token count in the review header") pass 1 returned B1–B5 as blocking; B3 (in/out split in a tooltip) and B4 (show cost too) are display details that fit an inline `[NEEDS CLARIFICATION: Qn]` in the draft.
+**Cause:** unknown from one run — the "blocking = scope/boundaries" definition in `.claude/agents/spec-creator.md` (*Passes*) has no counter-example.
+**Rule:** watch the first real specs (SPEC-08+). If display/format questions keep landing in pass 1, add a "not blocking: format, labels, tooltips" counter-example to the agent's pass-1 template.
+**Evidence:** `docs/plans/20-spec-creator-agent.md` → *Verification log* (T1 line)
 
 ### 2026-09-30 — agent precision (plan 10): what to try next, and how to measure it honestly
 **Symptom:** on PR #12 the five agents found 9/12 planted issues (eval baseline, `pnpm eval:review`, plan 09) but 24 findings were only 13 unique: SQL injection reported by 4 agents, SSRF and off-by-one by 3–4; API Contract produced 5 findings, none in its lane. Missed: key written to a log (Security), `JSON.parse(JSON.stringify())` per row (Performance), `averageRisk([])` → `NaN` (General).

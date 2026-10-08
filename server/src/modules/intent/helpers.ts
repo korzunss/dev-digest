@@ -189,25 +189,8 @@ export function redactRef(ref: string): string {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Diff hunk headers
-// ---------------------------------------------------------------------------
-
-const HUNK_HEADER_RE = /^(@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@)/;
-
-/** Keep only the NUMERIC `@@ -a,b +c,d @@` header of each hunk line in a
- * stored `pr_files.patch`; the trailing function-context text and every hunk
- * body line are dropped (spec 006 AC3 — no hunk bodies ever reach the model). */
-export function headersFromPatch(patch: string | null | undefined): string[] {
-  if (!patch) return [];
-  const headers: string[] = [];
-  for (const line of patch.split('\n')) {
-    const m = line.match(HUNK_HEADER_RE);
-    const header = m?.[1];
-    if (header !== undefined) headers.push(header);
-  }
-  return headers;
-}
+// Diff hunk headers moved to `_shared/diff-hunks.ts`; re-exported for existing imports.
+export { headersFromPatch } from '../_shared/diff-hunks.js';
 
 // ---------------------------------------------------------------------------
 // Description hashing & staleness

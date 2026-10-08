@@ -1,9 +1,11 @@
 import type { Container } from '../../platform/container.js';
 import type {
   Agent,
+  AgentContext,
   AgentSkillLink,
   AgentVersion,
   CiFailOn,
+  InheritedContextDoc,
   ModelInfo,
   Provider,
   ReviewStrategy,
@@ -142,6 +144,57 @@ export class AgentsService {
   async skillLinks(agentId: string): Promise<AgentSkillLink[]> {
     const links = await this.repo.linkedSkills(agentId);
     return links.map((l) => ({ agent_id: agentId, skill_id: l.skill.id, order: l.order }));
+  }
+
+  /**
+   * Context documents: the agent's own links plus what its enabled skills bring.
+   * `inherited` omits own paths and repeats of the same path (first wins).
+   */
+  async contextLinks(workspaceId: string, agentId: string): Promise<AgentContext | undefined> {
+    const agent = await this.repo.getById(workspaceId, agentId);
+    if (!agent) return undefined;
+    const [own, inherited] = await Promise.all([
+      this.repo.listContextDocs(agentId),
+      this.repo.inheritedContextDocs(agentId),
+    ]);
+    const seen = new Set(own.map((r) => r.path));
+    const inheritedOut: InheritedContextDoc[] = [];
+    for (const r of inherited) {
+      if (seen.has(r.path)) continue;
+      seen.add(r.path);
+      inheritedOut.push({ path: r.path, skill_id: r.skillId, skill_name: r.skillName });
+    }
+    return {
+      links: own.map((r) => ({ agent_id: agentId, path: r.path, order: r.order })),
+      inherited: inheritedOut,
+    };
+  }
+
+  /**
+   * Replace the agent's own context links. Paths are stored canonical
+   * (`./specs/a.md` -> `specs/a.md`); existence is validated when READ, not
+   * here (a document can appear or vanish from a clone). No version bump:
+   * links are not part of the agent's config snapshot.
+   */
+  async setContextLinks(
+    workspaceId: string,
+    agentId: string,
+    paths: string[],
+  ): Promise<AgentContext | undefined> {
+    const agent = await this.repo.getById(workspaceId, agentId);
+    if (!agent) return undefined;
+    const deduped = [...new Set(this.canonicalPaths(paths))];
+    await this.repo.transaction((r) => r.setContextDocs(agentId, deduped));
+    return this.contextLinks(workspaceId, agentId);
+  }
+
+  /** Canonicalise via the context module's one normaliser; a path it refuses is a 422. */
+  private canonicalPaths(paths: string[]): string[] {
+    return paths.map((p) => {
+      const canonical = this.container.context.normalisePath(p);
+      if (canonical === null) throw new ValidationError(`Invalid document path "${p.slice(0, 80)}"`);
+      return canonical;
+    });
   }
 
   /**

@@ -30,11 +30,12 @@ As soon as the user's request names a module or a file — and **before** planni
 searching, or editing — read, in this order:
 
 1. `insights/gotchas.md` of the package the work lands in (routing table in
-   Step 2) — the short list of rules in force;
-2. that package's `INSIGHTS.md`, in full — the reasoning and the history;
-3. the root `INSIGHTS.md`, in full.
+   Step 2) — the short list of rules in force, in full;
+2. the entry headings of that package's `INSIGHTS.md` and of the root
+   `INSIGHTS.md` — `grep '^### '`, not a full read.
 
-If the request touches two packages, read both packages' files. Then state in one or two
+Open a full `INSIGHTS.md` entry only when a gotcha item or a heading bears on
+the task. If the request touches two packages, do this for both. Then state in one or two
 lines the entries that bear on this task, or say plainly that none do. Naming
 them is the proof the file was actually read; treat them as high-confidence
 guidance unless the code says otherwise.
@@ -104,8 +105,8 @@ Each file carries these seven, in this order:
 
 ## Step 4 — Check the file before writing to it
 
-Never append blind. Re-read the target file (if Step 0 was skipped, read it now)
-and `grep` it for the subject and for the names in the evidence.
+Never append blind. Step 0 read only the headings, so read the target file in
+full now and `grep` it for the subject and for the names in the evidence.
 
 - **Already there in substance → write nothing.** Same lesson in different words
   is still the same lesson. Say it's already recorded and point at the entry.

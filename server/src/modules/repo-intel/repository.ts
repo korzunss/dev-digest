@@ -468,8 +468,72 @@ export class RepoIntelRepository {
       .select({ path: t.fileRank.filePath, rank: t.fileRank.rank })
       .from(t.fileRank)
       .where(eq(t.fileRank.repoId, repoId))
-      .orderBy(desc(t.fileRank.rank))
+      .orderBy(desc(t.fileRank.rank), asc(t.fileRank.filePath))
       .limit(limit);
+  }
+
+  /** Importer count per target file (`file_edges` grouped by `to_file`); zero-importer paths are absent. */
+  async countImporters(
+    repoId: string,
+    paths: string[],
+  ): Promise<Array<{ path: string; importers: number }>> {
+    if (paths.length === 0) return [];
+    const rows = await this.db
+      .select({ path: t.fileEdges.toFile, importers: sql<number>`count(*)::int` })
+      .from(t.fileEdges)
+      .where(and(eq(t.fileEdges.repoId, repoId), inArray(t.fileEdges.toFile, paths)))
+      .groupBy(t.fileEdges.toFile);
+    return rows.map((r) => ({ path: r.path, importers: Number(r.importers) }));
+  }
+
+  /** Total import edges persisted for a repo. */
+  async countEdges(repoId: string): Promise<number> {
+    const [row] = await this.db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(t.fileEdges)
+      .where(eq(t.fileEdges.repoId, repoId));
+    return Number(row?.n ?? 0);
+  }
+
+  /** Files whose precomputed facts carry at least one HTTP endpoint. */
+  async getEndpointFacts(
+    repoId: string,
+    limit: number,
+  ): Promise<Array<{ path: string; endpoints: unknown }>> {
+    if (limit <= 0) return [];
+    return this.db
+      .select({ path: t.fileFacts.filePath, endpoints: t.fileFacts.endpoints })
+      .from(t.fileFacts)
+      .where(
+        and(
+          eq(t.fileFacts.repoId, repoId),
+          sql`jsonb_typeof(${t.fileFacts.endpoints}) = 'array' AND jsonb_array_length(${t.fileFacts.endpoints}) > 0`,
+        ),
+      )
+      .orderBy(asc(t.fileFacts.filePath))
+      .limit(limit);
+  }
+
+  /** Raw `repo_index_state` columns the coverage read needs; null when no row. */
+  async getIndexStats(repoId: string): Promise<{
+    filesIndexed: number;
+    filesSkipped: number;
+    stats: Record<string, unknown>;
+  } | null> {
+    const [row] = await this.db
+      .select({
+        filesIndexed: t.repoIndexState.filesIndexed,
+        filesSkipped: t.repoIndexState.filesSkipped,
+        stats: t.repoIndexState.stats,
+      })
+      .from(t.repoIndexState)
+      .where(eq(t.repoIndexState.repoId, repoId));
+    if (!row) return null;
+    return {
+      filesIndexed: row.filesIndexed,
+      filesSkipped: row.filesSkipped,
+      stats: (row.stats ?? {}) as Record<string, unknown>,
+    };
   }
 
   /** Repo-map candidates: symbols with a signature, joined to rank, ordered. */

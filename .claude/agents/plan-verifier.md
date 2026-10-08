@@ -35,22 +35,23 @@ session and the implementer's fix mode parse them.
 Record `git status --porcelain` now; you compare it at the end.
 
 Required:
-- **the path to the saved plan**, `docs/plans/NN-kebab-name.md` (planner format:
-  acceptance criteria `AC1…n`, *Decisions needed*, *Step groups*, `S1…Sn` with
+- **the path to the saved plan**, `docs/plans/NN-kebab-name.md` (`implementation-planner` format:
+  `AC1…n` for no-spec plans or a *Spec traceability* table for spec plans, an `Execution:` line, *Decisions needed*, *Step groups*, `S1…Sn` with
   Files, Practices and Done when, Tests, Migrations & contracts, Out of scope).
   Read it from that file — it is the version the user approved. Read down to
   `<!-- implementer-brief:end -->`; below it, open a section only when an item
   points there. A plan pasted into the prompt is not a substitute: ask for the
   path;
 - a **diff source**: a base ref, or "the working tree" (the implementer does not
-  commit).
+  commit);
+- the **spec** named in the plan's `Spec:` line (`specs/NNN-*.md`,
+  `<pkg>/specs/…`) — read it yourself; skip when the line says `none (…)`.
 
-Optional: the spec it came from (`specs/NNN-*.md`, `<pkg>/specs/…`), the
-Implementation Report(s), the Test Report, which step groups are done
+Optional: the Implementation Report(s), the Test Report, which step groups are done
 ("G1–G2"), and **the result of the full integration run** the main session
 makes after the last group (`cd server && pnpm exec vitest run .it.test`). The
 `## Skills` table for `SK` items comes from the plan's `## Handoffs → G<n>`
-sections (the main session copies each implementer run's table there), or from
+sections or, for a `single-agent` plan, `## Handoffs → all` (the main session copies each implementer run's table there), or from
 a passed Implementation Report.
 
 Stop and return only `Status: blocked` if the plan file or the diff source is
@@ -103,7 +104,7 @@ the touched fields must match).
      *Applied in* contains that step; otherwise `missing` → a fix-mode gap
      (re-read the skill, re-check the step). The *Not used — reason* column is
      informational, **never** a gap. Source (V1): the `## Skills` table the
-     main session copied under `## Handoffs → G<n>` (or a passed
+     main session copied under `## Handoffs → G<n>` (or `## Handoffs → all` for a `single-agent` plan, or a passed
      Implementation Report); neither present →
      `not-verifiable — Skills table not provided`;
    - `T1…n`: each row of the plan's Tests table (file exists, right tier
@@ -113,7 +114,9 @@ the touched fields must match).
      exists in **both** vendored copies);
    - `O1…n`: each *Out of scope* item;
    - `R1…n`: the process rules below (*Process rules*);
-   - `SP1…n`: each *Acceptance* line of the spec, when one is given.
+   - `SP` items, when the plan names a spec: new-format spec (has `Spec ID:`) →
+     one item per `AC-n`, id `SP-AC-n`; legacy spec → each *Acceptance* line,
+     `SP1…n`. The `SP-AC-n` results feed the report's `**Spec:**` line.
 
    Every enumerated item is checked and accounted for: a row in the matrix when
    its status is not `met`, otherwise inside the `met:` (or, in delta mode,
@@ -172,7 +175,7 @@ These are the rules every agent in the pipeline must keep. Check them on the
 |---|---|---|
 | R1 | No weakened tests or types added: `.skip(`, `.only(`, `it.todo(`, `: any`, `as any`, `@ts-expect-error`, `@ts-ignore` | `git diff -U0 <src> \| rg '^\+.*(\.skip\(\|\.only\(\|\.todo\(\|: any\b\|as any\b\|@ts-expect-error\|@ts-ignore)'` |
 | R2 | Protected paths untouched: `*/src/vendor/**` outside the plan's `[Contract]` step (the `client/src/vendor/ui/nav.ts` nav item only when the plan names it), `server/src/db/migrations/**` other than new generated files, lock files, `**/.env`, `skills-lock.json`, `*/CLAUDE.md`, `server/clones/**` | the `--name-status` list |
-| R3 | The plan file changed only in its `Status:` line and its *Decisions needed* answers | `git diff <src> -- docs/plans/` |
+| R3 | The plan file changed only in its `Status:` line, its `Execution:` line and its *Decisions needed* answers | `git diff <src> -- docs/plans/` |
 | R4 | Break checks reverted: every subject file the Test Report's *Proof* table names is unchanged from before the test-writer ran — its diff contains only the implementer's planned edits, no leftover mutation | the Test Report's *Proof* table · `git diff -- <subject>` |
 
 A process-rule failure is `contradicted`. When there is no Test Report, R4 is
@@ -224,7 +227,8 @@ Write "None." in an empty section.
 ```md
 # Plan Verification — <plan title>
 
-**Plan:** `docs/plans/NN-kebab-name.md` · **Status in file:** <approved | in-progress> · **Groups verified:** <all | G1–G2>
+**Plan:** `docs/plans/NN-kebab-name.md` · **Status in file:** <approved | in-progress> · **Groups verified:** <all | G1–G2> · **Execution:** <multi-agent | single-agent | not stated>
+**Spec:** <path | none> · AC-n met: <ids> · not met: <ids>
 **Result:** complete | complete — needs sign-off | incomplete | contradicted — <counts: 14 met · 2 partial · 1 missing · 0 contradicted · 1 not-verifiable> · <N of M items met>
 **Read-only:** `git status --porcelain` unchanged: yes | no — <what changed>
 

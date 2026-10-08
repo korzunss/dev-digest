@@ -1,4 +1,5 @@
 # UI architecture
+<!-- verified against f75b0f9 + working tree on 2026-10-05 · sources: client/src/app/repos/[repoId]/context/page.tsx, client/src/components/context-doc-{picker,preview}/, client/src/lib/{attachment-order.ts,hooks/*.ts}, client/src/vendor/ui/nav.ts -->
 
 How `client/` is put together: which routes render on the server vs. the
 client, where feature code lives, how data flows from a component to the
@@ -20,8 +21,9 @@ child) opens with `"use client"`, and what that implies:
 | `/repos/:repoId/pulls` | `src/app/repos/[repoId]/pulls/page.tsx:1` | client | PR list; filters/sort in `?status&sort` |
 | `/repos/:repoId/pulls/:number` | `src/app/repos/[repoId]/pulls/[number]/page.tsx:1` | client | PR detail; tab in `?tab`, live SSE run status |
 | `/repos/:repoId/conventions` | `src/app/repos/[repoId]/conventions/page.tsx:1` | client | dynamic on purpose — the repo id is in the path so a scan is deep-linkable (comment at `page.tsx:1-6`) |
+| `/repos/:repoId/context` | `src/app/repos/[repoId]/context/page.tsx` | client | Project Context: the repo's documents with a Markdown preview, the search-roots editor and a footer; read-only (documents are edited in the repo). The sidebar entry is the signed-off `nav.ts` exception below. Details in §8 |
 | `/agents` | `src/app/agents/page.tsx:1` | **RSC** page, delegates to a client view | `page.tsx` has no directive; `_components/AgentsListView/AgentsListView.tsx:3` opens `"use client"` |
-| `/agents/:id` | `src/app/agents/[id]/page.tsx:4` | client | tab in `?tab`, whitelisted against `VALID_TABS` |
+| `/agents/:id` | `src/app/agents/[id]/page.tsx:4` | client | tab in `?tab` (`config`, `skills`, `context`), whitelisted against `VALID_TABS` — a new tab must be added to that list or `?tab=` falls back to `config` |
 | `/skills` | `src/app/skills/page.tsx:1` | **RSC** page, delegates to a client view | same pattern as `/agents`; `SkillsListView.tsx` is client |
 | `/skills/:id` | `src/app/skills/[id]/page.tsx:5` | client, wrapped in `<Suspense>` | comment at `page.tsx:16-18`: `useSearchParams()` forces client rendering, and this route is **static** (no `generateStaticParams`), so `pnpm build` refuses to prerender it without a `Suspense` boundary |
 | `/settings/:section` | `src/app/settings/[section]/page.tsx:1` | **RSC** page, delegates to a client view | `SettingsView.tsx:4` opens `"use client"` |
@@ -65,13 +67,15 @@ Three places, in order of how often you'll use them:
   `styles.ts`, plus its own `_components/` for sub-tabs). This matches
   `client/AGENTS.md`'s "Two folder cases" convention.
 - **Shared chrome, `src/components/<kebab-case>/`** — used across routes:
-  `app-shell/`, `confirm-modal/`, `diff-viewer/`, `findings-preview/`,
+  `app-shell/`, `confirm-modal/`, `context-doc-picker/`,
+  `context-doc-preview/`, `diff-viewer/`, `findings-preview/`,
   `mermaid-diagram/`, `page-shell/`, `repo-not-found/`, `run-cost-badge/`,
   `severity-counter/`, `showcase/` (`ls src/components`). Same internal layout
   as above, `kebab-case` directory name instead of `PascalCase`.
 - **`src/lib/`** — no UI: `api.ts` (fetch layer), `hooks/*` (data hooks),
   `theme.tsx`, `providers.tsx`, `repo-context.tsx`, `severity.ts`,
-  `feature-models.ts`, `toast.tsx`, `types.ts`.
+  `feature-models.ts`, `toast.tsx`, `types.ts`, and `attachment-order.ts`
+  (`toggleAttachment`, `moveId` — see §8).
 - **`src/vendor/ui` is off-limits**, per `client/AGENTS.md`'s Gotchas — it's
   the vendored `@devdigest/ui` design system, refreshed wholesale from
   upstream. The one recorded, signed-off exception is
@@ -96,10 +100,12 @@ for a network failure, the server's status/code/message otherwise. `api`
 (`api.ts:65-74`) wraps `apiFetch` into `get`/`post`/`put`/`patch`/`del`.
 
 **Hooks** live one file per feature domain under `src/lib/hooks/`: `core.ts`
-(settings, secrets, repos, pulls, project context), `agents.ts`, `skills.ts`,
-`reviews.ts`, `trace.ts`, `repo-intel.ts`, and `conventions.ts`. The barrel
-`src/lib/hooks/index.ts:4-9` re-exports `core`, `agents`, `skills`, `reviews`,
-`trace`, `repo-intel` — **`conventions.ts` is not in the barrel**; its
+(settings, secrets, repos, pulls), `context.ts` (project context, §8), `agents.ts`, `skills.ts`,
+`reviews.ts`, `trace.ts`, `repo-intel.ts`, `intent.ts`, `smart-diff.ts`,
+`blast.ts`, and `conventions.ts`. The barrel `src/lib/hooks/index.ts`
+re-exports every one of them (`core`, `agents`, `skills`, `context`,
+`reviews`, `trace`, `repo-intel`, `intent`, `smart-diff`, `blast`) —
+**`conventions.ts` is not in the barrel**; its
 consumer imports it directly (`src/app/repos/[repoId]/conventions/page.tsx`
 imports from `@/lib/hooks/conventions`). Every hook file opens with
 `"use client"` (e.g. `core.ts:5`) since TanStack Query hooks need the client
@@ -236,3 +242,57 @@ flowchart LR
   F -->|"typed T or throw ApiError"| Q
   Q -->|"invalidateQueries on mutation success"| Q
 ```
+
+## 8. Project context
+
+Project context shows up in four places, all fed by the same server routes
+(`../../server/README.md`, "Project-context routes"). Read this when you change
+one of them, so the shared parts stay shared.
+
+| Surface | Where | Owns |
+|---|---|---|
+| Project Context page | `src/app/repos/[repoId]/context/page.tsx`, parts under `_components/` (`ContextDocList`, `ContextRootsEditor`, `ContextFooter`) | Listing, selection, "used by N agents", the search-roots form, document count and token total |
+| Agent Context tab | `src/app/agents/[id]/_components/AgentEditor/_components/ContextTab/` (`?tab=context`) | Which mutation a change calls; documents inherited from enabled skills, shown read-only |
+| Skill Context tab | `src/app/skills/[id]/_components/SkillEditor/_components/ContextTab/` | Which mutation a change calls; "used by N agents"; how attached documents reach the prompt |
+| Run trace drawer | `src/app/repos/[repoId]/pulls/[number]/_components/RunTraceDrawer/_components/TraceBody/TraceBody.tsx` | Lists `specs_read` and each `specs_skipped` entry with its reason |
+
+**Shared components.** Both tabs render `ContextDocPicker`
+(`src/components/context-doc-picker/`): every document of the repo, the checkbox
+is the attachment, attached rows come first in stored order, and every change
+reports the **whole ordered path array** through `onChange` — the order is the
+order the documents reach the model, so it is part of the value. Rows can be
+reordered by drag-and-drop or by the `Reorder <path>` handle (the handle is also
+what the e2e flow `12-project-context` locates rows by). Inherited rows are
+shown, not editable. The page and the picker both render `DocPreview`
+(`src/components/context-doc-preview/`), which owns the loading, failed and
+refused states once: a 422 shows a plain note without a Retry button, because
+retrying cannot change it.
+`DocPreview` renders the document with the design system's `Markdown` as-is, with
+no raw-HTML plugin, so raw HTML in a document is never interpreted; link and
+image URLs go through react-markdown's default sanitising. That is the whole
+defence, because a document is repository content.
+
+**One ordering rule.** `toggleAttachment` and `moveId`
+(`src/lib/attachment-order.ts`) are the only list operations. The agent's
+SkillsTab and `ContextDocPicker` both import them, so ordering cannot fork
+between "skills attached to an agent" and "documents attached to either".
+
+**Hooks.** Roots and documents are in `src/lib/hooks/context.ts`:
+`useContextDocs` (`["context-docs", repoId]`), `useContextDoc` (`retry: false`),
+`useContextRoots`, `useSetContextRoots`, `useResetContextRoots` — the last two
+write the roots cache and invalidate the listing. Attachments live with their
+owners: `useAgentContext` / `useSetAgentContext` in `src/lib/hooks/agents.ts`
+(optimistic) and `useSkillContext` / `useSetSkillContext` in
+`src/lib/hooks/skills.ts`. Documents belong to a repo, so both tabs follow the
+shell's active repo (`useActiveRepo`) and render the picker only with a real
+repo id.
+
+**Loading guard.** Both tabs show a skeleton while their links load and an
+error state with Retry on failure, and never mount the picker before the links
+arrive. The reason: the picker reports the whole array, so a first toggle made
+against an unloaded `attached = []` would overwrite the stored links
+(plan `docs/plans/24-project-context.md`, fix 1, `MS1`).
+
+**Nav.** The "Project Context" sidebar entry is a hand-added line in
+`src/vendor/ui/nav.ts`, the second signed-off exception beside `conventions`.
+A vendor refresh drops it.

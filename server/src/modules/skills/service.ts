@@ -3,7 +3,7 @@ import type { Container } from '../../platform/container.js';
 import { createTwoFilesPatch } from 'diff';
 import type {
   Skill,
-  SkillContextLink,
+  SkillContext,
   SkillImportPreview,
   SkillSource,
   SkillStats,
@@ -71,7 +71,7 @@ export interface SkillVersionDiff {
 export class SkillsService {
   private repo: SkillsRepository;
 
-  constructor(container: Container) {
+  constructor(private container: Container) {
     this.repo = new SkillsRepository(container.db);
   }
 
@@ -226,16 +226,23 @@ export class SkillsService {
   async contextLinks(
     workspaceId: string,
     id: string,
-  ): Promise<SkillContextLink[] | undefined> {
+  ): Promise<SkillContext | undefined> {
     const skill = await this.repo.getById(workspaceId, id);
     if (!skill) return undefined;
-    const rows = await this.repo.listContextDocs(id);
-    return rows.map((r) => ({ skill_id: id, path: r.path, order: r.order }));
+    const [rows, agents] = await Promise.all([
+      this.repo.listContextDocs(id),
+      // Includes disabled agents: their configured links count (spec AC-27).
+      this.repo.agentsUsingSkill(workspaceId, id),
+    ]);
+    return {
+      links: rows.map((r) => ({ skill_id: id, path: r.path, order: r.order })),
+      used_by_agents: agents.length,
+    };
   }
 
   /**
-   * Replace the attached set. Paths are stored verbatim and validated when they
-   * are READ, not here: a document can appear or vanish from a clone between
+   * Replace the attached set. Paths are stored canonical (`./specs/a.md` ->
+   * `specs/a.md`) and existence is validated when they are READ, not here: a document can appear or vanish from a clone between
    * attaching and running, so there is no moment at which a stored path is
    * guaranteed to resolve.
    */
@@ -243,10 +250,15 @@ export class SkillsService {
     workspaceId: string,
     id: string,
     paths: string[],
-  ): Promise<SkillContextLink[] | undefined> {
+  ): Promise<SkillContext | undefined> {
     const skill = await this.repo.getById(workspaceId, id);
     if (!skill) return undefined;
-    const deduped = [...new Set(paths)];
+    const canonical = paths.map((p) => {
+      const c = this.container.context.normalisePath(p);
+      if (c === null) throw new ValidationError(`Invalid document path "${p.slice(0, 80)}"`);
+      return c;
+    });
+    const deduped = [...new Set(canonical)];
     await this.repo.setContextDocs(id, deduped);
     return this.contextLinks(workspaceId, id);
   }

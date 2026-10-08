@@ -54,6 +54,7 @@ command -v agent-browser >/dev/null || \
 # --- teardown trap (installed before we start anything) ----------------------
 SERVER_PID=""
 WEB_PID=""
+CLONE_DIR=""
 # Recursively kill a process and all its descendants. `pnpm exec tsx` / `next dev`
 # spawn the real listener as a GRANDCHILD, so a plain `kill $PID` + `pkill -P`
 # leaves it orphaned (port stays bound). Walk the tree leaves-first instead.
@@ -77,6 +78,7 @@ cleanup() {
     [ -n "$pids" ] && kill $pids 2>/dev/null || true
   done
   docker rm -f "$PG_CONTAINER" >/dev/null 2>&1 || true
+  [ -n "$CLONE_DIR" ] && rm -rf "$CLONE_DIR"
   exit "$code"
 }
 trap cleanup EXIT INT TERM
@@ -126,6 +128,14 @@ log "applying migrations (isolated db)"
 (cd server && pnpm db:migrate)
 log "seeding demo data (isolated db)"
 (cd server && pnpm db:seed)
+
+# --- fixture clone root (project-context flow) ---------------------------------
+# The seeded repo has no clone; point the API at a throwaway copy of the fixture
+# clones so the documents page lists specs/alpha.md and specs/beta.md. Exported
+# before the API starts (config reads it at boot).
+CLONE_DIR="$(mktemp -d)"
+cp -R e2e/fixtures/repos/. "$CLONE_DIR"/
+export DEVDIGEST_CLONE_DIR="$CLONE_DIR"
 
 # --- API on :$API_PORT -------------------------------------------------------
 # tsx directly (not `pnpm start`, which needs a build; not `tsx watch`, to avoid

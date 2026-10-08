@@ -36,7 +36,9 @@ const INTENT_SYSTEM_PROMPT =
   'medium / low) in that classification. If a listed source is marked ' +
   'unavailable, say so in your reasoning and NEVER invent its content — lower ' +
   'your confidence instead of guessing. With no description and no reachable ' +
-  'linked source, confidence must be low.';
+  'linked source, confidence must be low. Write `intent`, `in_scope` and ' +
+  '`out_of_scope` in English, whatever the language of the PR, issue or ' +
+  'linked docs; keep code identifiers and file paths unchanged.';
 
 export interface IntentPromptIssue {
   ref: string;

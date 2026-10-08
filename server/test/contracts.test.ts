@@ -9,7 +9,7 @@ import {
   SmartDiff,
   SmartDiffRole,
   Conformance,
-  Onboarding,
+  OnboardingTour,
   EvalRun,
   MemoryItem,
   RunTrace,
@@ -135,7 +135,8 @@ describe('AI contracts parse fixtures', () => {
     expect(() => SmartDiffRole.parse('lockfile')).toThrow();
   });
 
-  it('Conformance / Onboarding / EvalRun / MemoryItem', () => {
+  it('Conformance / OnboardingTour / EvalRun / MemoryItem', () => {
+    const na = { available: false, cause: 'index_failed', reason: null };
     expect(() =>
       Conformance.parse({
         spec_id: 's1',
@@ -145,8 +146,17 @@ describe('AI contracts parse fixtures', () => {
       }),
     ).not.toThrow();
     expect(() =>
-      Onboarding.parse({
-        sections: [{ kind: 'architecture', title: 'T', body: 'b', links: [] }],
+      OnboardingTour.parse({
+        source: 'skeleton',
+        built_sha: null,
+        generated_at: null,
+        index_files: 0,
+        model: null,
+        architecture: { availability: na, body: '', diagram: null, stack: [], structure: [] },
+        critical_paths: { availability: na, rows: [] },
+        run_locally: { availability: na, commands: [] },
+        reading_path: { availability: na, steps: [] },
+        first_tasks: { availability: na, tasks: [] },
       }),
     ).not.toThrow();
     expect(() =>

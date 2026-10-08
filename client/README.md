@@ -1,4 +1,5 @@
 # `@devdigest/web` — the studio (Next.js 15)
+<!-- verified against f75b0f9 + working tree on 2026-10-05 · sources: client/src/app/**/page.tsx, client/src/app/agents/[id]/page.tsx -->
 
 The DevDigest UI: import repos, browse pull requests, run and read AI reviews,
 and author agents. App Router + React Server/Client components, data via
@@ -19,8 +20,10 @@ dashboard screens.)
 ## UI route map
 
 Routes (`src/app/**/page.tsx`) cover the repo/PR flow (`/`, `/onboarding`,
-`/repos/:repoId/pulls`, `/pulls/:number`, `/repos/:repoId/conventions`),
-agent and skill management (`/agents`, `/agents/:id`, `/skills`, `/skills/:id`),
+`/repos/:repoId/pulls`, `/pulls/:number`, `/repos/:repoId/conventions`,
+`/repos/:repoId/context` — Project Context),
+agent and skill management (`/agents`, `/agents/:id` with `?tab=config|skills|context`,
+`/skills`, `/skills/:id`),
 and `/settings/:section`. Each talks to the Fastify API only through
 `src/lib/hooks/*` → `src/lib/api.ts`. Cross-cutting chrome lives in
 `src/components/app-shell` (nav, breadcrumbs, `g`-then-key shortcuts). Pages

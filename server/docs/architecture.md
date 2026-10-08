@@ -1,4 +1,5 @@
 # Server architecture
+<!-- verified against f75b0f9 + working tree on 2026-10-05 · sources: server/src/modules/context/*, server/src/platform/container.ts, server/src/modules/reviews/run-executor.ts, server/src/modules/agents/repository.ts, server/src/db/schema/{agents,repos}.ts -->
 
 How `@devdigest/api` is layered, wired, and run — read this when you need to
 place new code in the right layer, add an adapter, or trace a request from the
@@ -86,6 +87,9 @@ decorated onto the Fastify instance as `app.container`). It:
   (`container.ts:117-121`), `async forge(ref)` (`container.ts:173-197`,
   cached per provider+instance so one workspace can hold a GitHub repo and two
   different self-managed GitLabs), `async llm(id)` (`container.ts:219-227`);
+- exposes `get context()` — the `ContextService` that owns the one safe
+  document reader, built from `db`, `git` and `tokenizer`
+  (`src/platform/container.ts`, `get context`; §9);
 - exposes shared cross-module repositories as getters too —
   `get agentsRepo()` (`container.ts:105-107`), `get reviewRepo()`
   (`container.ts:113-115`) — constructed once in the composition root so
@@ -207,7 +211,8 @@ one `agent_runs` row per target agent up front, then calls
 (`service.ts:132-135`) — the HTTP response carries the `runId`s immediately.
 `ReviewRunExecutor.executeRuns` / `runOneAgent`
 (`src/modules/reviews/run-executor.ts:83`, `:167`) loads the diff once, then
-per agent resolves the LLM provider, repo-intel context, and skills, calls the
+per agent resolves the LLM provider, repo-intel context, skills and
+project-context documents (§9), calls the
 pure `reviewPullRequest` from `@devdigest/reviewer-core`
 (`run-executor.ts:229`), and persists the outcome. Every step is also pushed
 through `RunLogger` onto `container.runBus` (`src/platform/sse.ts`), which
@@ -268,7 +273,8 @@ github, or fs objects. `ReviewInput`
 callbacks (`onEvent`, `checkCancelled`). `run-executor.ts` is the only layer
 that resolves repo-intel, skills, and context documents from the DB/adapters
 *before* calling `reviewPullRequest`; the engine itself only ever sees the
-resolved strings.
+resolved values — strings, and `{ path, body }` pairs for `specs`
+(`ContextDoc`, exported by `@devdigest/reviewer-core`).
 
 Contracts (`@devdigest/shared`) live at `src/vendor/shared`, vendored — not a
 generated artifact. The rule (`CLAUDE.md` → "Contracts change in `shared`
@@ -279,3 +285,103 @@ kept in sync as a whole — `diff -r` between them is expected to be non-empty
 to the fields you touched, never whole-file equality. Full write-up:
 [`../INSIGHTS.md` — "the two vendored `shared` copies are not actually in
 sync"](../../INSIGHTS.md#2026-09-17--the-two-vendored-shared-copies-are-not-actually-in-sync).
+
+## 9. Project context
+
+`src/modules/context/` serves the markdown a repo carries about itself
+(`specs/`, `docs/`, `insights/`) and lets an agent or a skill attach it to
+review prompts. Read this when you change who may read a document, how
+attachments reach a run, or what the Project Context page lists. The routes are
+in [`../README.md`](../README.md#api-map-starter).
+
+**Storage.** The documents are never stored. The source of truth is the working
+clone on disk, resolved through `GitClient.clonePathFor`
+(`src/modules/context/service.ts`, `ContextService.cloneDirOf`). The database
+holds only the links and the roots:
+
+| Table / column | Holds | Defined in |
+|---|---|---|
+| `repos.context_globs` (`text[]`, not null) | The repo's search roots. The default is `**/{specs,docs,insights}/**/*.md`, mirroring `DEFAULT_CONTEXT_ROOTS` in `@devdigest/shared` | `src/db/schema/repos.ts` |
+| `agent_context_docs` (`agent_id`, `path`, `order`; PK `(agent_id, path)`, cascade on agent delete) | Documents attached directly to an agent, by repo-relative path | `src/db/schema/agents.ts` (`agentContextDocs`) |
+| `skill_context_docs` | The same, attached to a skill (older table) | `src/db/schema/skills.ts` |
+
+A repo that is not cloned yet lists as empty, not as an error: the clone is a
+background job (`ContextService.list`).
+
+**Search roots.** `compileRoots` builds one `picomatch` matcher per glob with
+`dot: false`, `nocase: false` and `node_modules` ignored
+(`src/modules/context/helpers.ts`). Dot-directories therefore never match, and
+`README.MD` is not matched by the default glob even though the `.md` check is
+case-insensitive. `ContextService.setRoots` accepts at most `MAX_ROOT_GLOBS`
+(20) deduplicated globs and rejects a glob that `validateRootGlob` refuses
+(absolute, `..` segment, not ending in `.md`, longer than `MAX_GLOB_LENGTH`).
+Both limits live in `src/modules/context/constants.ts`.
+
+**One safe reader.** `ContextService.readSafely` is the only code that opens a
+document, for both the HTTP read (`getDoc`) and the review run
+(`readDocsForRun`). It runs these checks in order and returns content or a
+`ContextSkipReason`:
+
+1. `resolveContextPath`: normalise the path, match the search roots, require
+   `.md`, require containment in the clone → `outside_search_roots` or
+   `outside_clone`;
+2. `realpath` of both the clone and the target (the clone is often behind a
+   symlink itself) → `missing` when either does not resolve, `outside_clone`
+   when the target leaves the clone;
+3. the real target, made repo-relative, must itself match the roots, end in
+   `.md` and have no dot-directory segment, so a symlink inside a root cannot
+   reach `.git/config` or `.github/…` → `outside_search_roots`;
+4. regular file of at most `MAX_DOC_BYTES` (512 KB) → `missing` or `too_large`.
+
+Content is read only after all four. The HTTP route turns a refusal into 422
+and a missing file into 404; a run never throws, it records the reason (below).
+The executor read used to `stat` an allow-listed path without the realpath
+re-check, which let a committed symlink reach the prompt
+(`docs/plans/24-project-context.md`, *Insights to record*). One reader for both
+callers is how that gap closed: the plan's decision D3 chose it, and the class
+comment says "a refusal means the same thing everywhere".
+
+**Listing.** `ContextService.list` walks the clone from its root with sorted
+`readdir`: it prunes dot-directories and `EXCLUDED_DIRS`, never follows or lists
+symlinks, reads directories at most `MAX_WALK_DEPTH` (6) levels below the clone root, and stops at
+`MAX_LISTED_DOCS` (500) with `truncated: true`. Each entry carries `type`
+(`docType`: the nearest ancestor named `specs`, `docs` or `insights`, else
+`other`), size, mtime and an exact token count from the tokenizer, or `null`
+above `MAX_DOC_BYTES`. `getDoc` adds `used_by_agents`:
+`ContextRepository.agentCountForPath` counts workspace agents that link the path
+directly or through an **enabled** skill. A disabled agent counts; an agent
+whose only link is a disabled skill does not (plan 24, *Decisions recorded*,
+GAP1).
+
+**Run-time flow.** `ReviewRunExecutor.buildContextDocs` gathers the agent's own
+links, then those inherited through its enabled skills
+(`AgentsRepository.inheritedContextDocs`, ordered by skill order then document
+order). `mergeContextPaths` puts own links first and keeps the first occurrence
+of a path. `ContextService.readDocsForRun` reads each path through `readSafely`,
+in order, deduplicating on the resolved relative path so two spellings of one
+file attach once. It returns `{ docs, skipped }`; the executor passes `docs` to
+`reviewPullRequest` as `specs` only when non-empty, writes `specs_read` and
+`specs_skipped` into the trace, and logs one `project context:` line.
+
+```mermaid
+flowchart LR
+    own["agent_context_docs<br/>listContextDocs"] --> merge["mergeContextPaths<br/>own first, dedupe"]
+    inh["skill_context_docs<br/>enabled skills only"] --> merge
+    merge --> read["ContextService<br/>readDocsForRun"]
+    read --> safe["readSafely<br/>roots, realpath, size"]
+    safe -->|"readable"| wrap["assemblePrompt<br/>wrapUntrusted(path, body)"]
+    safe -->|"refused or unreadable"| skip["skipped: path + reason"]
+    wrap --> trace["RunTrace specs_read"]
+    skip --> trace2["RunTrace specs_skipped<br/>+ run log line"]
+```
+
+The diagram follows one run: both kinds of link are merged, each path is read
+through the single guard, readable documents reach the prompt as path-labelled
+untrusted blocks (`reviewer-core/docs/pipeline.md`, "Prompt assembly"), and
+every outcome is recorded in the trace. A skipped document never fails the
+review: the code comment says the user "attached a rule, not a dependency".
+
+**Layering.** `ContextService` takes `{ db, git, tokenizer }`; the tokenizer type
+comes from `Container['tokenizer']` through a type-only import, never from
+`src/adapters/**`. The executor reaches the reader through `container.context`
+instead of importing the module's helpers.

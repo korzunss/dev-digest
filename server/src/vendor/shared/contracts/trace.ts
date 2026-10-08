@@ -110,6 +110,17 @@ export const RunStats = z.object({
 });
 export type RunStats = z.infer<typeof RunStats>;
 
+export const ContextSkipReason = z.enum([
+  'missing',
+  'outside_search_roots',
+  'outside_clone',
+  'too_large',
+]);
+export type ContextSkipReason = z.infer<typeof ContextSkipReason>;
+
+export const SpecSkipped = z.object({ path: z.string(), reason: ContextSkipReason });
+export type SpecSkipped = z.infer<typeof SpecSkipped>;
+
 /** The single-document trace stored in `run_traces.trace`. */
 export const RunTrace = z.object({
   config: z.object({
@@ -126,6 +137,8 @@ export const RunTrace = z.object({
   raw_output: z.string(),
   memory_pulled: z.array(MemoryPulled),
   specs_read: z.array(z.string()),
+  /** Docs that were linked but not injected. Nullish: older traces lack it. */
+  specs_skipped: z.array(SpecSkipped).nullish(),
   log: z.array(RunLogLine),
 });
 export type RunTrace = z.infer<typeof RunTrace>;

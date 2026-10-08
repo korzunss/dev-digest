@@ -6,7 +6,9 @@ rules and the template.
 
 **Read the spec before implementing the feature.**
 
-Naming: `NNN-slug.md`, status in front-matter (`draft` | `active` | `done`).
+Written by the `spec-creator` agent. Numbering and the template are repo-wide, in
+[`specs/README.md`](../../specs/README.md). The `Status:` line is
+`draft | approved | implemented`.
 
 ## Index
 

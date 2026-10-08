@@ -3,7 +3,7 @@
 import React from "react";
 import { useTranslations } from "next-intl";
 import { SectionLabel, Button, Icon, SEV, type Severity } from "@devdigest/ui";
-import { DiffViewer, type DiffCommentApi, type DiffAnnotationApi } from "@/components/diff-viewer";
+import { DiffViewer, type DiffCommentApi, type DiffAnnotationApi, type DiffTarget } from "@/components/diff-viewer";
 import { usePrComments, useCreatePrComment, usePrReviews, useFindingAction } from "@/lib/hooks/reviews";
 import { useSmartDiff } from "@/lib/hooks/smart-diff";
 import { notify } from "@/lib/toast";
@@ -25,9 +25,11 @@ interface DiffTabProps {
       card has no forge link, so `repo`/`headSha` are not forwarded to it. */
   repo?: ForgeRepoRef | null;
   headSha?: string | null;
+  /** Navigation request from the PR Brief block; opens the file/line in the diff. */
+  target?: DiffTarget | null;
 }
 
-export function DiffTab({ prId, filesCount, files, canComment, repo, headSha }: DiffTabProps) {
+export function DiffTab({ prId, filesCount, files, canComment, repo, headSha, target }: DiffTabProps) {
   const t = useTranslations("prReview");
   const { data: comments } = usePrComments(prId);
   const create = useCreatePrComment(prId);
@@ -120,7 +122,7 @@ export function DiffTab({ prId, filesCount, files, canComment, repo, headSha }: 
       {reviewNotRun(reviews) && <p style={s.reviewNotRun}>{t("smartDiff.reviewNotRun")}</p>}
 
       {order === "original" ? (
-        <DiffViewer files={files} commenting={commenting} annotations={annotations} />
+        <DiffViewer files={files} commenting={commenting} annotations={annotations} target={target} />
       ) : smartDiff.isLoading ? (
         <div style={s.loading}>{t("smartDiff.loading")}</div>
       ) : smartDiff.isError ? (
@@ -128,7 +130,7 @@ export function DiffTab({ prId, filesCount, files, canComment, repo, headSha }: 
           <div style={s.unavailable}>
             {t("smartDiff.unavailable")}
           </div>
-          <DiffViewer files={files} commenting={commenting} annotations={annotations} />
+          <DiffViewer files={files} commenting={commenting} annotations={annotations} target={target} />
         </>
       ) : (
         groups.map((g) => (
@@ -139,6 +141,7 @@ export function DiffTab({ prId, filesCount, files, canComment, repo, headSha }: 
             findingFileCount={g.findingFileCount}
             commenting={commenting}
             annotations={annotations}
+            target={target && g.files.some((f) => f.path === target.path) ? target : null}
           />
         ))
       )}

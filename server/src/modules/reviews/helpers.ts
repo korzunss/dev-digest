@@ -113,3 +113,6 @@ export function pathsOutsidePrFiles(diff: UnifiedDiff, prFiles: { path: string }
   const known = new Set(prFiles.map((f) => f.path));
   return diff.files.map((f) => f.path).filter((p) => !known.has(p));
 }
+
+// `mergeContextPaths` moved to `_shared/context-paths.ts`; re-exported for existing imports.
+export { mergeContextPaths } from '../_shared/context-paths.js';

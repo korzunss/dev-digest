@@ -4,16 +4,16 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
+import { changedPaths, invalidateContextDocs } from "./context";
 import type {
   AgentSkillLink,
   Skill,
-  SkillContextLink,
+  SkillContext,
   SkillImportPreview,
   SkillSource,
   SkillStats,
   SkillType,
   SkillVersion,
-  SpecFile,
 } from "@devdigest/shared";
 
 export function useSkills() {
@@ -177,11 +177,11 @@ export function useSkillStats(id: string | null | undefined) {
 
 // ---- Project context -------------------------------------------------------
 
-/** The project-context documents attached to a skill, in prompt order. */
+/** The project-context documents attached to a skill (prompt order) and how many agents use it. */
 export function useSkillContext(id: string | null | undefined) {
   return useQuery({
     queryKey: ["skill-context", id],
-    queryFn: () => api.get<SkillContextLink[]>(`/skills/${id}/context`),
+    queryFn: () => api.get<SkillContext>(`/skills/${id}/context`),
     enabled: !!id,
   });
 }
@@ -192,30 +192,43 @@ export function useSkillContext(id: string | null | undefined) {
  * the order is part of the value, not a separate operation.
  *
  * Attaching a document does NOT change the skill or its versions: the body is
- * untouched and no snapshot is appended, so only `["skill-context", id]` goes
- * stale here.
+ * untouched and no snapshot is appended, so only `["skill-context", id]` and
+ * the `["context-doc", repoId, path]` queries of the added/removed paths ("used
+ * by N agents") go stale here.
  */
 export function useSetSkillContext() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, paths }: { id: string; paths: string[] }) =>
-      api.put<SkillContextLink[]>(`/skills/${id}/context`, { paths }),
+      api.put<SkillContext>(`/skills/${id}/context`, { paths }),
     // Same reasoning as useSetAgentSkills: the attachment list is reordered by
     // repeated keypresses, so the cache has to hold the new order before the
     // next one is computed from it.
     onMutate: async ({ id, paths }) => {
       await qc.cancelQueries({ queryKey: ["skill-context", id] });
-      const previous = qc.getQueryData<SkillContextLink[]>(["skill-context", id]);
-      qc.setQueryData<SkillContextLink[]>(
-        ["skill-context", id],
-        paths.map((path, order) => ({ skill_id: id, path, order })),
+      const previous = qc.getQueryData<SkillContext>(["skill-context", id]);
+      // Only `links` is rewritten: "used by N agents" is not something this
+      // request changes, so the cached count is kept until the response lands.
+      qc.setQueryData<SkillContext | undefined>(["skill-context", id], (prev) =>
+        prev
+          ? { ...prev, links: paths.map((path, order) => ({ skill_id: id, path, order })) }
+          : prev,
       );
       return { previous };
     },
     onError: (_err, { id }, context) => {
       if (context?.previous) qc.setQueryData(["skill-context", id], context.previous);
     },
-    onSuccess: (data, { id }) => qc.setQueryData(["skill-context", id], data),
+    onSuccess: (data, { id }, context) => {
+      qc.setQueryData(["skill-context", id], data);
+      invalidateContextDocs(
+        qc,
+        changedPaths(
+          context?.previous?.links.map((l) => l.path),
+          data.links.map((l) => l.path),
+        ),
+      );
+    },
   });
 }
 
@@ -259,30 +272,5 @@ export function useRestoreSkillVersion() {
       qc.setQueryData(["skill", data.id], data);
       qc.invalidateQueries({ queryKey: ["skill-versions", data.id] });
     },
-  });
-}
-
-// ---- Repo context documents ------------------------------------------------
-
-/**
- * The context documents available in a repo — the pool the Context tab picks
- * from. Keyed by repo because a workspace holds several, and a path only means
- * something inside one of them.
- */
-export function useContextDocs(repoId: string | null | undefined) {
-  return useQuery({
-    queryKey: ["context-docs", repoId],
-    queryFn: () => api.get<SpecFile[]>(`/repos/${repoId}/context`),
-    enabled: !!repoId,
-  });
-}
-
-/** One context document with its content — the preview behind an attached path. */
-export function useContextDoc(repoId: string | null | undefined, path: string | null | undefined) {
-  return useQuery({
-    queryKey: ["context-doc", repoId, path],
-    queryFn: () =>
-      api.get<SpecFile>(`/repos/${repoId}/context/doc?path=${encodeURIComponent(path!)}`),
-    enabled: !!repoId && !!path,
   });
 }

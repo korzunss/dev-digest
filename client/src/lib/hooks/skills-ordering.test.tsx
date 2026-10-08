@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach, vi } from "vitest";
 import React from "react";
 import { renderHook, act, waitFor, cleanup } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import type { AgentSkillLink, SkillContextLink } from "@devdigest/shared";
+import type { AgentContext, AgentSkillLink, SkillContext } from "@devdigest/shared";
 
 /**
  * Reordering is driven by repeated keypresses, and each press recomputes from
@@ -13,17 +13,20 @@ import type { AgentSkillLink, SkillContextLink } from "@devdigest/shared";
 
 const post = vi.fn();
 const put = vi.fn();
+const del = vi.fn();
 vi.mock("../api", () => ({
   api: {
     post: (...args: unknown[]) => post(...args),
     put: (...args: unknown[]) => put(...args),
     get: vi.fn(),
-    del: vi.fn(),
+    del: (...args: unknown[]) => del(...args),
   },
   ApiError: class extends Error {},
 }));
 
 import { useSetAgentSkills, useSetSkillContext } from "./skills";
+import { useSetAgentContext } from "./agents";
+import { useResetContextRoots, useSetContextRoots } from "./context";
 
 function wrapper(qc: QueryClient) {
   return function Wrapper({ children }: { children: React.ReactNode }) {
@@ -47,6 +50,7 @@ afterEach(() => {
   cleanup();
   post.mockReset();
   put.mockReset();
+  del.mockReset();
 });
 
 describe("useSetAgentSkills", () => {
@@ -113,12 +117,15 @@ describe("useSetAgentSkills", () => {
 });
 
 describe("useSetSkillContext", () => {
-  it("writes the new order to the cache before the request resolves", async () => {
+  it("writes the new order to the cache before the request resolves, keeping the used-by count", async () => {
     const qc = client();
-    qc.setQueryData(["skill-context", "sk1"], [
-      { skill_id: "sk1", path: "specs/a.md", order: 0 },
-      { skill_id: "sk1", path: "docs/b.md", order: 1 },
-    ] satisfies SkillContextLink[]);
+    qc.setQueryData(["skill-context", "sk1"], {
+      links: [
+        { skill_id: "sk1", path: "specs/a.md", order: 0 },
+        { skill_id: "sk1", path: "docs/b.md", order: 1 },
+      ],
+      used_by_agents: 3,
+    } satisfies SkillContext);
     put.mockReturnValue(new Promise(() => {}));
 
     const { result } = renderHook(() => useSetSkillContext(), { wrapper: wrapper(qc) });
@@ -126,14 +133,18 @@ describe("useSetSkillContext", () => {
 
     await waitFor(() =>
       expect(
-        qc.getQueryData<SkillContextLink[]>(["skill-context", "sk1"])!.map((l) => l.path),
+        qc.getQueryData<SkillContext>(["skill-context", "sk1"])!.links.map((l) => l.path),
       ).toEqual(["docs/b.md", "specs/a.md"]),
     );
+    expect(qc.getQueryData<SkillContext>(["skill-context", "sk1"])!.used_by_agents).toBe(3);
   });
 
   it("puts the previous attachment back when the request fails", async () => {
     const qc = client();
-    const original: SkillContextLink[] = [{ skill_id: "sk1", path: "specs/a.md", order: 0 }];
+    const original: SkillContext = {
+      links: [{ skill_id: "sk1", path: "specs/a.md", order: 0 }],
+      used_by_agents: 1,
+    };
     qc.setQueryData(["skill-context", "sk1"], original);
     put.mockRejectedValue(new Error("422"));
 
@@ -141,6 +152,69 @@ describe("useSetSkillContext", () => {
     act(() => result.current.mutate({ id: "sk1", paths: [] }));
 
     await waitFor(() => expect(result.current.isError).toBe(true));
-    expect(qc.getQueryData<SkillContextLink[]>(["skill-context", "sk1"])).toEqual(original);
+    expect(qc.getQueryData<SkillContext>(["skill-context", "sk1"])).toEqual(original);
+  });
+});
+
+describe("useSetAgentContext", () => {
+  const inherited = [{ path: "docs/x.md", skill_id: "s1", skill_name: "rubric" }];
+
+  it("writes the new order before the request resolves, keeping the inherited list", async () => {
+    const qc = client();
+    qc.setQueryData(["agent-context", "ag1"], {
+      links: [
+        { agent_id: "ag1", path: "specs/a.md", order: 0 },
+        { agent_id: "ag1", path: "docs/b.md", order: 1 },
+      ],
+      inherited,
+    } satisfies AgentContext);
+    put.mockReturnValue(new Promise(() => {}));
+
+    const { result } = renderHook(() => useSetAgentContext(), { wrapper: wrapper(qc) });
+    act(() => result.current.mutate({ id: "ag1", paths: ["docs/b.md", "specs/a.md"] }));
+
+    await waitFor(() =>
+      expect(
+        qc.getQueryData<AgentContext>(["agent-context", "ag1"])!.links.map((l) => l.path),
+      ).toEqual(["docs/b.md", "specs/a.md"]),
+    );
+    expect(qc.getQueryData<AgentContext>(["agent-context", "ag1"])!.inherited).toEqual(inherited);
+  });
+
+  it("restores the previous links when the request fails", async () => {
+    const qc = client();
+    const original: AgentContext = {
+      links: [{ agent_id: "ag1", path: "specs/a.md", order: 0 }],
+      inherited: [],
+    };
+    qc.setQueryData(["agent-context", "ag1"], original);
+    put.mockRejectedValue(new Error("422"));
+
+    const { result } = renderHook(() => useSetAgentContext(), { wrapper: wrapper(qc) });
+    act(() => result.current.mutate({ id: "ag1", paths: [] }));
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(qc.getQueryData<AgentContext>(["agent-context", "ag1"])).toEqual(original);
+  });
+});
+
+describe("context roots mutations", () => {
+  it("saving and resetting both refresh the listing and store the roots", async () => {
+    const qc = client();
+    const spy = vi.spyOn(qc, "invalidateQueries");
+    put.mockResolvedValue({ globs: ["docs/**/*.md"], is_default: false });
+    del.mockResolvedValue({ globs: ["**/{specs,docs,insights}/**/*.md"], is_default: true });
+
+    const set = renderHook(() => useSetContextRoots(), { wrapper: wrapper(qc) });
+    act(() => set.result.current.mutate({ repoId: "r1", globs: ["docs/**/*.md"] }));
+    await waitFor(() => expect(set.result.current.isSuccess).toBe(true));
+    expect(qc.getQueryData(["context-roots", "r1"])).toEqual({ globs: ["docs/**/*.md"], is_default: false });
+
+    const reset = renderHook(() => useResetContextRoots(), { wrapper: wrapper(qc) });
+    act(() => reset.result.current.mutate({ repoId: "r1" }));
+    await waitFor(() => expect(reset.result.current.isSuccess).toBe(true));
+    expect(del).toHaveBeenCalledWith("/repos/r1/context/roots");
+    expect(qc.getQueryData<{ is_default: boolean }>(["context-roots", "r1"])!.is_default).toBe(true);
+    expect(spy).toHaveBeenCalledWith({ queryKey: ["context-docs", "r1"] });
   });
 });

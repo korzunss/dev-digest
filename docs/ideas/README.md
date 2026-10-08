@@ -8,11 +8,11 @@ Development Plan (**how**, once one approach is chosen).
 | | `docs/ideas/` | `specs/` | `docs/plans/` |
 |---|---|---|---|
 | Answers | *whether* / *what* — is it worth it, which approach | *what* and *why* | *how* |
-| Written by | the `brainstormer` agent (brief), saved by the main session | a person (or `doc-writer`) | the `planner` agent |
+| Written by | the `brainstormer` agent (brief), saved by the main session | the `spec-creator` agent | the `implementation-planner` agent |
 | Lifetime | a record of one comparison, kept even when killed | describes the feature for as long as it exists | a record of one piece of work |
 
 An idea brief never lists implementation steps. Once an option is chosen, the
-`planner` reads the brief and turns the chosen option into a plan.
+`spec-creator` (then the `implementation-planner`) reads the brief and turns the chosen option into a spec and a plan. After the spec is approved the main session asks whether to run research (default yes); the spec becomes `implemented` when its plan becomes `done` (a `complete` verification, or `complete — needs sign-off` once the user has accepted the listed items) (see `AGENTS.md`).
 
 ## Naming
 
@@ -65,3 +65,4 @@ why, in one or two lines.
 | [04-count-failed-llm-attempt-usage](04-count-failed-llm-attempt-usage.md) | chosen | go (Opt3) | [plan 13](../plans/13-count-failed-llm-attempt-usage.md) |
 | [05-truncated-chunk-runaways](05-truncated-chunk-runaways.md) | chosen | go (Opt1) | [plan 08](../plans/08-llm-call-reliability.md) Amendment A1 |
 | [06-fewer-false-criticals](06-fewer-false-criticals.md) | chosen | go (Opt2) + Opt1 | [plan 10](../plans/10-agent-precision.md) |
+| [07-workflow-retro](07-workflow-retro.md) | chosen | go (Opt4) + Opt1 | [plan 23](../plans/23-workflow-retro-skill.md) |

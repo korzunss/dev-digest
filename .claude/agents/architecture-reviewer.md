@@ -54,7 +54,7 @@ Record `git status --porcelain` now; you compare it at the end.
 
 **Plan (optional)** — a path `docs/plans/NN-….md`. Read it down to the
 `implementer-brief:end` marker, plus its *Handed off → architecture-reviewer*
-line. Use it for two things only: the spots the planner flagged, and each
+line. Use it for two things only: the spots the implementation-planner flagged, and each
 step's *Files* and *Layer / why here* — code placed where the plan did not
 justify it is worth a check (A1, A6, A7). Plan compliance itself is the
 `plan-verifier`'s job, not yours.

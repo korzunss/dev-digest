@@ -1,17 +1,81 @@
 {
-  "title": "Onboarding Tour",
-  "sections": "Sections",
-  "sectionCount": "{count} sections",
-  "regenerate": "Regenerate",
-  "regenerating": "Regenerating…",
-  "unknownError": "Unknown error",
-  "generate": {
-    "title": "Generate onboarding tour",
-    "body": "DevDigest indexes the repo and specs, then writes a 5-section guided tour: overview, architecture, key modules, getting started, and conventions & gotchas.",
-    "cta": "Generate onboarding tour",
-    "generating": "Generating…"
+  "title": "Onboarding for {repo}",
+  "crumb": "Onboarding Tour",
+  "onThisPage": "On this page",
+  "sections": {
+    "architecture": "Architecture",
+    "criticalPaths": "Critical paths",
+    "runLocally": "Run it locally",
+    "readingPath": "Guided reading path",
+    "firstTasks": "First tasks"
   },
-  "loadError": {
-    "title": "Couldn’t load the onboarding tour"
+  "actions": {
+    "generate": "Generate",
+    "regenerate": "Regenerate",
+    "generating": "Generating…",
+    "shareLink": "Share link",
+    "linkCopied": "Link copied",
+    "open": "Open",
+    "copy": "Copy",
+    "copied": "Copied",
+    "copyFailed": "Could not copy",
+    "reclone": "Re-clone",
+    "resync": "Re-sync index",
+    "settingsModels": "Open model settings"
+  },
+  "header": {
+    "willUse": "Will use {provider} · {model}",
+    "subtitle": "Generated from index of {count} files · last refreshed {age}",
+    "coverage": "indexed {n} of {m} source files · partial",
+    "stale": "Index moved since this tour was built"
+  },
+  "partialCause": {
+    "file_cap": "the file cap was reached",
+    "parse_errors": "some files failed to parse",
+    "graph_failed": "the import graph could not be built",
+    "soft_budget": "the time budget ran out"
+  },
+  "indexStatus": {
+    "full": "Index complete",
+    "partial": "Index partial",
+    "degraded": "Index degraded",
+    "failed": "Index failed"
+  },
+  "indexReason": {
+    "no_data": "The repository has not been indexed yet",
+    "no_clone": "There is no local clone to index",
+    "index_failed": "The last indexing run failed",
+    "other": "The index is not fully available"
+  },
+  "clone": {
+    "none": "This repository has no local clone yet. Clone it first to build a tour.",
+    "cloning": "The repository is being cloned. The tour can be built once it is ready.",
+    "failed": "Cloning the repository failed"
+  },
+  "failure": {
+    "no_key": "No API key is configured for the selected provider",
+    "no_model": "The selected model was not found",
+    "timeout": "The model took too long to answer",
+    "invalid_output": "The model returned an answer that could not be used",
+    "provider_error": "The model provider returned an error"
+  },
+  "unavailable": {
+    "language_not_indexed": "Not available for this language — this repository's languages are not indexed, so there is no file graph to build it from",
+    "index_failed": "Not available — the index failed",
+    "model_failed": "Not available — the model could not produce this section"
+  },
+  "reasons": {
+    "rankImporters": "rank #{rank} · imported by {count} files",
+    "headsChain": "heads the chain {chain}"
+  },
+  "tasks": {
+    "onlyN": "only {count} tasks could be tied to files",
+    "generateFirst": "Generate the tour to get first tasks"
+  },
+  "commands": {
+    "none": "no run scripts found"
+  },
+  "page": {
+    "loadError": "Couldn’t load the onboarding tour"
   }
 }

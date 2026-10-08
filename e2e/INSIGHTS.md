@@ -17,7 +17,11 @@ the section guide and the promotion rule (a standing rule becomes one line under
 
 ## What Works
 
-_Nothing yet._
+### 2026-10-05 — `agent-browser drag <src> <dst>` drives React HTML5 drag-and-drop; no synthetic DragEvent fallback needed
+**Symptom:** plan 24 needed an e2e check of drag reordering (AC-21), untestable in jsdom; the plan assumed agent-browser's mouse drag might not fire HTML5 `dragstart`/`dragover`/`drop` and prepared an `eval` fallback.
+**Cause:** in agent-browser 0.38.1 the native `drag` command does trigger React's `onDragStart`/`onDragOver`/`onDrop` on `draggable` rows.
+**Rule:** use `drag` with CSS selectors for HTML5 DnD; locate picker rows by the `Reorder <path>` handle's aria-label (attachable-row checkboxes carry none), and assert persistence after a full reopen.
+**Evidence:** `e2e/specs/12-project-context.flow.json` (drag step, persisted-order `wait --fn`) · `./scripts/e2e.sh` → `12/12 flows passed`
 
 ## What Doesn't Work
 

@@ -34,7 +34,10 @@ import type {
   BlastChangedSymbol,
   BlastResult,
   DegradedReason,
+  FileGraphStat,
   FileRankRow,
+  IndexCoverage,
+  IndexPartialCause,
   IndexResult,
   IndexState,
   RefRow,
@@ -56,6 +59,7 @@ import {
 } from './constants.js';
 import { runFullIndex, type IndexPayload } from './pipeline/full.js';
 import { runIncremental } from './pipeline/incremental.js';
+import { walkClone } from './pipeline/walk.js';
 
 /** Blast traversal bounds, reported on every `BlastResult` so consumers never import them. */
 const BLAST_LIMITS = { callersPerSymbol: MAX_CALLERS_PER_SYMBOL, depth: BFS_DEPTH } as const;
@@ -788,7 +792,9 @@ export class RepoIntelService implements RepoIntel {
     const edges = await this.repo.getEdges(repoId);
     if (edges.length === 0) return [];
 
-    const ranked = await this.repo.getRankedPaths(repoId, 100_000);
+    const ranked = (await this.repo.getRankedPaths(repoId, 100_000)).filter(
+      (r) => !isJunkPath(r.path),
+    );
     const rankOf = new Map(ranked.map((r) => [r.path, r.rank]));
 
     // Adjacency importer → imported.
@@ -808,7 +814,7 @@ export class RepoIntelService implements RepoIntel {
       let cur = root;
       for (let depth = 0; depth < BFS_DEPTH; depth += 1) {
         const next = (adj.get(cur) ?? [])
-          .filter((t) => !inChain.has(t))
+          .filter((t) => !inChain.has(t) && !isJunkPath(t))
           .sort((a, b) => (rankOf.get(b) ?? 0) - (rankOf.get(a) ?? 0))[0];
         if (!next) break;
         chain.push(next);
@@ -822,6 +828,95 @@ export class RepoIntelService implements RepoIntel {
       paths.push(chain);
     }
     return paths;
+  }
+
+  /** Rank, 1-based rank position (over all ranked files) and importer count for `paths`. */
+  async getFileGraphStats(repoId: string, paths: string[]): Promise<FileGraphStat[]> {
+    if (!this.container.config.repoIntelEnabled) return [];
+    if (paths.length === 0) return [];
+    try {
+      const ranked = await this.repo.getRankedPaths(repoId, 100_000);
+      const info = new Map(ranked.map((r, i) => [r.path, { rank: r.rank, rankPosition: i + 1 }]));
+      const importers = new Map(
+        (await this.repo.countImporters(repoId, paths)).map((r) => [r.path, r.importers]),
+      );
+      const out: FileGraphStat[] = [];
+      for (const path of paths) {
+        const hit = info.get(path);
+        if (!hit) continue;
+        out.push({ path, rank: hit.rank, rankPosition: hit.rankPosition, importers: importers.get(path) ?? 0 });
+      }
+      return out;
+    } catch {
+      return [];
+    }
+  }
+
+  /** Files that declare HTTP endpoints, read from the persisted `file_facts`. */
+  async getEndpoints(
+    repoId: string,
+    limit: number,
+  ): Promise<Array<{ path: string; endpoints: string[] }>> {
+    if (!this.container.config.repoIntelEnabled) return [];
+    if (limit <= 0) return [];
+    try {
+      const rows = await this.repo.getEndpointFacts(repoId, limit);
+      return rows
+        .map((r) => ({
+          path: r.path,
+          endpoints: Array.isArray(r.endpoints)
+            ? r.endpoints.filter((e): e is string => typeof e === 'string')
+            : [],
+        }))
+        .filter((r) => r.endpoints.length > 0);
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Coverage of the persisted index. The universe is the persisted
+   * `stats.totalCandidates` (full runs only — incremental runs drop it and
+   * double-count `filesIndexed`), else a fresh `walkClone` of the clone, else null.
+   */
+  async getIndexCoverage(repoId: string): Promise<IndexCoverage> {
+    const empty: IndexCoverage = { sourceFilesTotal: null, partialCause: null, edgeCount: 0 };
+    if (!this.container.config.repoIntelEnabled) return empty;
+    try {
+      const [state, edgeCount] = await Promise.all([
+        this.repo.getIndexStats(repoId),
+        this.repo.countEdges(repoId),
+      ]);
+      if (!state) return { ...empty, edgeCount };
+      const stats = state.stats;
+      const incremental = stats.incremental === true;
+      let total: number | null =
+        !incremental && typeof stats.totalCandidates === 'number' ? stats.totalCandidates : null;
+      if (total === null) {
+        const repo = await this.repo.getRepoBasics(repoId);
+        if (repo?.clonePath) {
+          try {
+            total = (await walkClone(repo.clonePath)).stats.totalCandidates;
+          } catch {
+            total = null;
+          }
+        }
+      }
+      const bounded = typeof stats.bounded === 'number' ? stats.bounded : 0;
+      let partialCause: IndexPartialCause | null = null;
+      if (bounded > 0 || (total !== null && state.filesIndexed + state.filesSkipped < total)) {
+        partialCause = 'file_cap';
+      } else if (stats.graphFailed !== undefined && stats.graphFailed !== null) {
+        partialCause = 'graph_failed';
+      } else if (Array.isArray(stats.parseDegraded) && stats.parseDegraded.length > 0) {
+        partialCause = 'parse_errors';
+      } else if (stats.softBudgetReached === true) {
+        partialCause = 'soft_budget';
+      }
+      return { sourceFilesTotal: total, partialCause, edgeCount };
+    } catch {
+      return empty;
+    }
   }
 }
 

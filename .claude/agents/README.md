@@ -8,31 +8,34 @@ set. For exact rules and output templates, open the agent file.
 
 | Agent | Responsibility | Tools | Model | Permission mode | `maxTurns` |
 |---|---|---|---|---|---|
-| [`brainstormer`](brainstormer.md) | Turns a vague idea into at most 5 substantively different approaches, including the status quo, with one recommendation and a go/needs-clarification/kill verdict; optional stage before `researcher`/`planner` | `Read, Grep, Glob` | `opus` | default | 25 |
+| [`brainstormer`](brainstormer.md) | Turns a vague idea into at most 5 substantively different approaches, including the status quo, with one recommendation and a go/needs-clarification/kill verdict; optional stage before `researcher`/`implementation-planner` | `Read, Grep, Glob` | `opus` | default | 25 |
+| [`spec-creator`](spec-creator.md) | Turns a feature request (+ optional idea brief) into a spec (what/why, EARS acceptance criteria) in two passes; writes only its own spec file and index row | `Read, Grep, Glob, Write, Edit` | `opus` | default | 40 |
 | [`researcher`](researcher.md) | Answers questions with sourced evidence, about this repo or external libraries and APIs | `Read, Grep, Glob, Bash, WebSearch, WebFetch` | `sonnet` | default | 40 |
-| [`planner`](planner.md) | Turns a request into a Development Plan (`Status: draft`) before any code is written; writes only that plan file and its index row | `Read, Grep, Glob, Bash, Write, Edit` | `opus` | default | 60 |
-| [`implementer`](implementer.md) | Executes an approved plan one step group per run across `server/`, `reviewer-core/`, `client/`, `e2e/` and verifies its own changes; closes gaps in fix mode | `Read, Grep, Glob, Edit, Write, Bash` | `sonnet` | `acceptEdits` | 100 |
+| [`implementation-planner`](implementation-planner.md) | Plans *how* for an approved spec (or a `no spec: <reason>` request): pass 1 is a requirements review (`TQn`, `GAPn`, `RECn`, execution mode) in a decisions-only draft, pass 2 the Development Plan (`Status: draft`); never decides a product question; writes only that plan file and its index row | `Read, Grep, Glob, Bash, Write, Edit` | `opus` | default | 60 |
+| [`implementer`](implementer.md) | Executes an approved plan one step group per run (or the whole plan in one run when the plan says `Execution: single-agent`) across `server/`, `reviewer-core/`, `client/`, `e2e/` and verifies its own changes; closes gaps in fix mode | `Read, Grep, Glob, Edit, Write, Bash` | `sonnet` | `acceptEdits` | 100 |
 | [`test-writer`](test-writer.md) | Writes and runs UI and backend tests in the right tier, including negative tests at trust boundaries, and proves each new test can fail | `Read, Grep, Glob, Edit, Write, Bash` | `sonnet` | `acceptEdits` | 60 |
 | [`architecture-reviewer`](architecture-reviewer.md) | Checks a diff or a module against the architectural boundaries (A1–A12), returns evidence-backed findings with fix-mode ids and PASS/BLOCK | `Read, Grep, Glob, Bash` | `opus` | default | 40 |
 | [`security-reviewer`](security-reviewer.md) | Traces untrusted data from a source to a sink across DevDigest's own trust boundaries (X1–X11), returns evidence-backed `SF` findings and PASS/BLOCK | `Read, Grep, Glob, Bash` | `opus` | default | 40 |
 | [`plan-verifier`](plan-verifier.md) | Verifies the code against every plan and spec item and the pipeline's process rules, as a traceability matrix; unverifiable items go to the user for sign-off | `Read, Grep, Glob, Bash` | `opus` | default | 60 |
-| [`doc-writer`](doc-writer.md) | Documents finished, verified features and turns notes into docs or specs with diagrams, filed in the right section with an index row | `Read, Grep, Glob, Edit, Write, Bash` | `sonnet` | `acceptEdits` | 40 |
+| [`doc-writer`](doc-writer.md) | Documents finished, verified features and turns notes into docs with diagrams, filed in the right section with an index row | `Read, Grep, Glob, Edit, Write, Bash` | `sonnet` | `acceptEdits` | 40 |
 
 None of them has the `Agent` tool. Only the main session delegates, so there is
 no nested spawning.
 
 **What enforces the limits.** `researcher`, `architecture-reviewer`,
 `security-reviewer`, `plan-verifier` and `brainstormer` have no `Edit`/`Write`
-in `tools`, so they cannot write files through those tools. `planner` has
+in `tools`, so they cannot write files through those tools. `spec-creator` has
+`Write`/`Edit`, but only for its own spec file and that folder's index row, and
+no `Bash` — a **prompt rule**, no hook (D8). `implementation-planner` has
 `Write`/`Edit`, but only for its own plan file and index row — a **prompt
 rule**, like everything else below. Dropping `Edit` and keeping only `Write`
 was considered (D4) and declined: it enforces nothing (`Write` can still
 overwrite any file the agent has read) and forces whole-file rewrites for
-every pass-1 → pass-2 fill-in and correction. A planner-scoped hook on
+every pass-1 → pass-2 fill-in and correction. An implementation-planner-scoped hook on
 `docs/plans/**` is the only real limit and was declined too (plans 03/04):
 
 - `Bash` is limited by an explicit command allowlist in `researcher`,
-  `planner`, `architecture-reviewer`, `security-reviewer`, `plan-verifier` and
+  `implementation-planner`, `architecture-reviewer`, `security-reviewer`, `plan-verifier` and
   `doc-writer`, and by a list of forbidden commands in `implementer` and
   `test-writer`;
 - `brainstormer` has no `Bash` at all, unlike the others' allowlist, so its
@@ -52,20 +55,28 @@ that reviews a *user's* pull request.
 ```mermaid
 flowchart LR
   req([request]) -. vague idea .-> brainstormer
+  req --> sc[spec-creator<br/>pass 1: B1…, pass 2: draft]
   brainstormer --> idea[brief saved verbatim<br/>docs/ideas/NN]
   idea --> pick{you pick OptN}
-  pick --> planner
+  pick --> sc
   pick -. facts needed .-> researcher
-  req --> planner
-  planner --> pass1[pass 1:<br/>decisions-only draft]
+  sc --> spec{you approve spec,<br/>Open questions empty}
+  spec --> rq{research?<br/>default yes}
+  rq -- yes --> researcher
+  rq -- no --> ip
+  researcher -. repo facts .-> ip
+  req -. no spec: reason .-> ip
+  ip[implementation-planner] --> pass1[pass 1: requirements review +<br/>decisions-only draft]
+  pass1 -. GAPn .-> sc
   pass1 --> record[you decide,<br/>main session records]
   record -. EXT questions .-> researcher
-  record --> planner2[planner pass 2<br/>resumed]
-  researcher -. EXT research .-> planner2
-  planner2 --> plan[Development Plan S1…Sn<br/>Status: draft]
+  record --> ip2[implementation-planner<br/>pass 2, resumed]
+  researcher -. EXT research .-> ip2
+  ip2 --> plan[Development Plan S1…Sn<br/>Status: draft]
   plan --> ok{decisions resolved,<br/>you approve}
   ok -- Status: approved --> implementer
-  implementer -- next step group --> implementer
+  implementer -- multi-agent: next step group --> implementer
+  implementer -. single-agent .-> it
   implementer --> tw[test-writer]
   tw --> it[main session:<br/>full .it suite once]
   it --> PV[plan-verifier]
@@ -77,7 +88,8 @@ flowchart LR
   gate -- gaps: fix mode --> implementer
   gate -- plan change --> record
   gate -- complete or signed off:<br/>Status: done --> dw[doc-writer]
-  researcher -. on demand .-> planner
+  gate -- complete or signed off:<br/>Status: done --> impl[spec: implemented]
+  researcher -. on demand .-> ip
   researcher -. on demand .-> implementer
 ```
 
@@ -88,29 +100,46 @@ The main session drives every hop:
    returns a brief. It writes nothing; the brief is saved **verbatim** (`kill`
    included) to `docs/ideas/NN-kebab-name.md` with its index row, by the main
    session, which adds only `Status:` and `## Choice recorded`. The chosen
-   option becomes the planner's scope; *Facts needed* seeds the researcher's
+   option becomes the implementation-planner's scope; *Facts needed* seeds the researcher's
    questions.
-1. Research before planning is repo-mode only. By default the `planner` first
-   writes **pass 1**: a decisions-only draft (`docs/plans/NN-kebab-name.md`,
-   `Status: draft`, ends `Steps: pending decisions`) plus the index row
-   (`draft (decisions)`), and returns the *Decisions needed* table and any
-   external-research questions. It skips straight to the full plan only when
-   the prompt says `single pass: <reason>` (D1) — the request or idea brief
-   already fixes every choice, or the plan is trivial (≤1 package, ≤3 files).
+   The spec stage follows (D7, D13, D16): for a feature, `spec-creator` pass 1
+   returns at most 8 blocking questions `B1…` and writes no file; after the
+   user answers, pass 2 writes the spec (`Status: draft`, `Spec ID: SPEC-NN`).
+   The main session sets it `approved` only on the user's explicit yes with
+   *Open questions* empty, then **asks** whether to research (default yes),
+   then the `implementation-planner` runs with the spec path. A bug fix, verifier/reviewer follow-up,
+   no-behaviour-change refactor or tooling plan skips it with
+   `no spec: <reason>`. The main session keeps the spec's Changelog.
+1. Research before planning is repo-mode only. The `implementation-planner`
+   writes **pass 1** for every non-trivial plan: a requirements review
+   (`TQn` clarifying questions, `GAPn` spec gaps, `RECn` recommendations) in a
+   decisions-only draft (`docs/plans/NN-kebab-name.md`, `Status: draft`, ends
+   `Steps: pending decisions`) plus the index row (`draft (decisions)`), and
+   returns the review ids, the *Decisions needed* table (technical only, last
+   row the execution mode) and any external-research questions. It skips to
+   the full plan only when the prompt says `single pass: <reason>` (D5), and
+   only for a trivial plan (≤1 package, ≤3 files), which gets
+   `Execution: single-agent`. A `GAPn` goes to `spec-creator` (A3: the main
+   session sets an approved spec back to `draft`, runs a correction round,
+   writes the Changelog and re-approves); pass 2 waits until every `TQn` is
+   answered and every `GAPn` closed. The main session records the chosen mode
+   as the header line `Execution: <multi-agent | single-agent>`.
 2. The main session records the user's answers into *Decisions recorded*.
    When pass 1 listed research questions, a separate `researcher` run answers
-   them before pass 2. The main session then resumes the same planner
+   them before pass 2. The main session then resumes the same implementation-planner
    (SendMessage) — or, if that is unavailable, starts a fresh run with the
    plan path — for **pass 2**: it fills in the rest of the template, sets
    *Decisions needed* to `None open — see *Decisions recorded*`, and flips the
    index cell from `draft (decisions)` to `draft`; in a later correction round
    it edits the file and lists the changed sections. The main session sets
    `Status: approved` only on the user's explicit final approval.
-3. From then on every agent gets the **file path**, not pasted text. The
-   implementer runs once per step group (`G1`, `G2`, …) and runs only the
-   integration tests related to its group; the status moves to `in-progress`.
-   Hand-offs between groups are appended by the main session under
-   `## Handoffs → G<n>` in the plan, not pasted into prompts.
+3. From then on every agent gets the **file path**, not pasted text. In
+   `multi-agent` mode (also a plan with no `Execution:` line) the implementer
+   runs once per step group (`G1`, `G2`, …); in `single-agent` mode it runs
+   once with `all`. It runs only the integration tests related to its work;
+   the status moves to `in-progress`. Hand-offs between groups are appended by
+   the main session under `## Handoffs → G<n>` in the plan, or under
+   `## Handoffs → all` for a single-agent plan, not pasted into prompts.
 4. After the last group, the main session runs the full server integration
    suite once and passes its result, with the same plan path, to the
    `plan-verifier`. `architecture-reviewer` and, per D7, `security-reviewer`
@@ -127,19 +156,21 @@ The main session drives every hop:
    `plan-verifier` in **delta mode**.
 6. The plan becomes `done` after a `complete` verification, or after
    `complete — needs sign-off` once the user has accepted every listed
-   unverified item. Then the `doc-writer` documents what was delivered.
+   unverified item. The spec then becomes `implemented`, and the `doc-writer`
+   documents what was delivered.
 
 The lifecycle and its rules are in `docs/plans/README.md`.
 
 ## Plan status per agent
 
-Only the main session changes a plan's `Status:` line. The planner is the only
+Only the main session changes a plan's `Status:` line. The implementation-planner is the only
 agent that edits a plan file, and only its own draft or correction round.
 
 | Agent | Accepts a plan in status | Refuses |
 |---|---|---|
 | `brainstormer` | none — runs before a plan exists | — |
-| `planner` | pass 1 writes a new one as `draft` with `Steps: pending decisions`; pass 2 fills it, still `draft`; corrections keep it `draft` | — |
+| `spec-creator` | none — runs before a plan exists | — |
+| `implementation-planner` | pass 1 writes a new one as `draft` with `Steps: pending decisions`; pass 2 fills it, still `draft`; corrections keep it `draft` | — |
 | `implementer` | `approved`, `in-progress` | `draft`, `done`; any plan with an unresolved *Decisions needed* row |
 | `test-writer` | `approved`, `in-progress`, `done` | `draft` |
 | `architecture-reviewer` | any, or none — the plan is optional context | — |
@@ -151,10 +182,11 @@ agent that edits a plan file, and only its own draft or correction round.
 
 | Agent | Input | Output | Stops early with |
 |---|---|---|---|
-| `brainstormer` | A vague idea, goal or "should we…" question, with no chosen approach yet | **Idea brief**: problem, decision drivers, appetite, an "already in the repo" check, at most 5 unranked options including the status quo (value, packages/contract/migration, per-run LLM cost, risk, kill criterion), a comparison table adding purity, no-go and confidence as columns, one recommendation with a go/needs-clarification/kill verdict, the cheapest experiment for the riskiest assumption, questions that would change the choice, facts needed for the researcher | *Clarification needed*: up to 3 blocking questions, each with a default; or a redirect naming `planner` when one approach is already chosen and the request asks "how" |
+| `brainstormer` | A vague idea, goal or "should we…" question, with no chosen approach yet | **Idea brief**: problem, decision drivers, appetite, an "already in the repo" check, at most 5 unranked options including the status quo (value, packages/contract/migration, per-run LLM cost, risk, kill criterion), a comparison table adding purity, no-go and confidence as columns, one recommendation with a go/needs-clarification/kill verdict, the cheapest experiment for the riskiest assumption, questions that would change the choice, facts needed for the researcher | *Clarification needed*: up to 3 blocking questions, each with a default; or a redirect naming `implementation-planner` when one approach is already chosen and the request asks "how" |
+| `spec-creator` | A feature request, optionally an idea-brief path and design sources; later, answers to `B1…`/`Qn` or corrections | **Pass 1 report**: at most 8 blocking questions `B1…` with recommended answers, clarification categories, `Files written: none`. **Pass 2 report**: spec path, `Spec ID`, categories, suggestions `SG1…`, open `Qn`, files written | *Clarification needed*: up to 3 questions with defaults, or a redirect naming `brainstormer` when no approach is chosen |
 | `researcher` | A concrete question, about the repo, external facts, or both | *Repo research* and/or *External research* report: answer, confidence, evidence table (`path:line` or URL), every claim labelled `fact`/`inference`, only sources actually fetched, mandatory **Not established** | *Clarification needed*: up to 3 blocking questions |
-| `planner` | A feature or change request, optionally a spec from `specs/`; later, corrections or decisions | **Pass 1** (default, `Status: draft`, `Save as: docs/plans/NN-…`): Goal & acceptance criteria, **Decisions needed**, EXT research questions, `Steps: pending decisions` — returns the path, the Decisions table and the questions. **Pass 2** (resumed once decisions are recorded, or single-pass when `single pass: <reason>` is given): the same file filled with **step groups** with handoffs, steps `S1…Sn` (files, layer, skills, practices, known gotchas, **Done when**), tests by tier, migrations and contracts, out of scope; below the brief marker: context, a `## Skills` table, design notes, risks, handed off, insights to record, red-flags check. On corrections: only the changed sections | *Clarification needed*: up to 3 blocking questions, each with a default |
-| `implementer` | Plan mode: the path of an `approved` plan in `docs/plans/` + the step group to run. Fix mode: the plan path + gap ids from `plan-verifier` or findings from `architecture-reviewer` | **Implementation Report**: plan, mode and group, status, per-step (or per-gap) table, deviations (trivial / material with a suggested plan change), skills applied, verification commands with results, not verified, diff trace, out-of-plan issues, handoff to the next group, handoff to review (architecture / security), insight candidates | *Plan deviation*: no plan file, plan not `approved`, an unresolved decision, a step without Files or Done when, a step it is not allowed to do, a fix that needs a file outside the plan, or Node < 22 |
+| `implementation-planner` | A feature or change request, optionally a spec from `specs/`; later, corrections or decisions | **Pass 1** (every non-trivial plan, `Status: draft`, `Save as: docs/plans/NN-…`): Spec traceability (or Goal & acceptance criteria for `Spec: none`), **Requirements review** (`TQ1…`, `GAP1…`, `REC1…`), technical **Decisions needed** with the execution-mode row, EXT research questions, `Steps: pending decisions` — returns the path, the review ids, the Decisions table and the questions. **Pass 2** (resumed once every `TQn` is answered and `GAPn` closed, or single-pass for a trivial plan when `single pass: <reason>` is given): the same file filled with **step groups** with handoffs, steps `S1…Sn` (files, layer, skills, practices, known gotchas, **Done when**), tests by tier, migrations and contracts, out of scope; below the brief marker: context, a `## Skills` table, design notes, risks, handed off, insights to record, red-flags check. On corrections: only the changed sections | *Clarification needed*: up to 3 blocking questions, each with a default |
+| `implementer` | Plan mode: the path of an `approved` plan in `docs/plans/` + the step group to run, or `all` on an `Execution: single-agent` plan. Fix mode: the plan path + gap ids from `plan-verifier` or findings from `architecture-reviewer` | **Implementation Report**: plan, mode and group, status, per-step (or per-gap) table, deviations (trivial / material with a suggested plan change), skills applied, verification commands with results, not verified, diff trace, out-of-plan issues, handoff to the next group, handoff to review (architecture / security), insight candidates | *Plan deviation*: no plan file, plan not `approved`, an unresolved decision, a step without Files or Done when, a step it is not allowed to do, a fix that needs a file outside the plan, or Node < 22 |
 | `test-writer` | The path of an approved (or done) plan in `docs/plans/` + the Implementation Report(s), or named files and the behaviour to cover | **Test Report**: cases listed before writing, tests written (file, tier, kind, result), **proof** per new file (break check with `shasum` restored, 3-run stability), commands, **production defects found**, not verified, changed paths, coverage gaps | *Blocked* (no subject, no seam, or a `shasum` mismatch after a break check) or *Clarification needed* (no target, undecided expected behaviour) |
 | `architecture-reviewer` | Diff mode: a base ref or the working tree. Module mode: target paths. Optionally the plan path in `docs/plans/` | **Architecture Review**: mode, PASS/BLOCK, read-only proof (`git status` unchanged), checks run (A1…A12), findings `F1…` with `file:line` and evidence, *For fix mode* list, informational (module mode), downgraded, pre-existing, checks not run | *Clarification needed* (missing or ambiguous target) or `Status: blocked` (empty diff, unknown base ref) |
 | `security-reviewer` | Diff mode: a base ref or the working tree. Module mode: target paths. Optionally the plan path in `docs/plans/` | **Security Review**: mode, PASS/BLOCK, read-only proof (`git status` unchanged), trust boundaries touched, checks run (X1…X11), findings `SF1…` with quoted source → sink and evidence, *For fix mode* list, needs manual check, filtered out, downgraded, not reported by design, informational (module mode), pre-existing, checks not run | *Clarification needed* (missing or ambiguous target) or `Status: blocked` (empty diff, unknown base ref) |
@@ -191,15 +223,15 @@ collected here so a change to one is made in all.
   main session's integration run it was given, named as such).
 - **Exclude `server/clones/**`** from every search.
 - **Budgets.** Every agent has a `maxTurns` cap (table above). `researcher`
-  states about 15 searches + fetches per mode, `planner` about 40 reads or
-  searches, `brainstormer` about 10 reads. `implementer` follows "keep the run
+  states about 15 searches + fetches per mode, `implementation-planner` about 40 reads or
+  searches, `brainstormer` about 10 reads, `spec-creator` about 30 reads. `implementer` follows "keep the run
   small": narrowest test per step, full package suites once per group, related
   integration tests only, no repeat runs "to confirm stability"; the main
   session runs the full integration suite once after the last group.
 - **Report sizes.** Plan brief (above the marker) ≤ ~20,000 characters;
   reports ≤ ~700–1,000 words (implementer ~900, test-writer ~800,
   architecture-reviewer ~900, security-reviewer ~900, plan-verifier ~1,000,
-  doc-writer ~700, brainstormer: the brief itself, ~90 lines). Commands and
+  doc-writer ~700, spec-creator pass-1 report ~400, brainstormer: the brief itself, ~90 lines). Commands and
   outcomes, not logs.
 
 ## Shared ids
@@ -209,19 +241,21 @@ verifier's matrix reuse them, and the implementer's fix mode accepts them.
 
 | Id | Defined by | Used by |
 |---|---|---|
-| `Opt1…` options · `Q1…` questions | idea brief | user's choice, planner |
-| `AC1…` acceptance criteria · `DC1…` decisions | plan | plan-verifier matrix |
-| `G1…` step groups | plan | implementer (one group per run), plan-verifier (groups verified) |
+| `Opt1…` options · `Q1…` questions | idea brief | user's choice, implementation-planner |
+| `AC1…` acceptance criteria (no-spec plans only) · `DC1…` decisions | plan | plan-verifier matrix |
+| `TQ1…` questions · `GAP1…` spec gaps · `REC1…` recommendations | implementation-planner pass 1 | user, main session (`GAP` → spec-creator) |
+| `G1…` step groups | plan | implementer (one group per run in multi-agent mode, or `all` in single-agent mode), plan-verifier (groups verified) |
 | `S1…` steps with *Files*, *Practices*, *Done when* | plan | implementer report, plan-verifier (`S`, `P`, `D` rows), fix mode |
 | `T1…` Tests-table rows · `M1…` migrations and contracts · `O1…` out of scope | plan | plan-verifier |
 | `R1…R4` process rules | `plan-verifier.md` | plan-verifier |
-| `SP1…` spec acceptance lines | spec | plan-verifier |
+| `B1…` blocking questions · `Qn` spec open questions · `AC-n` spec EARS criteria (distinct from plan `AC1`) · `SG1…` suggestions · `SPEC-NN` spec id | spec-creator | user's answers, implementation-planner, plan-verifier |
+| `SP-AC-n` (new-format spec) / `SP1…` (legacy spec) | spec acceptance criteria | plan-verifier |
 | `A1…A12` checks · `F1…` findings | `architecture-reviewer.md` / its report | fix mode (*For fix mode* list) |
 | `X1…X11` checks · `SF1…` findings | `devdigest-appsec` skill / `security-reviewer.md` / its report | fix mode (*For fix mode* list) |
 
 ## Skills
 
-`planner` and `implementer` preload only `engineering-insights` and
+`implementation-planner` and `implementer` preload only `engineering-insights` and
 `onion-architecture` through the `skills:` frontmatter (D7) — about 18.5 KB of
 `SKILL.md` combined, an estimated ~4–5k tokens per spawn, down from the ~28k
 tokens the previous 12-skill preload cost (T4 measures the real figure on the
@@ -229,7 +263,7 @@ next plan that touches package code). Every other skill —
 `fastify-best-practices` · `drizzle-orm-patterns` · `postgresql-table-design` ·
 `frontend-architecture` · `next-best-practices` · `react-best-practices` ·
 `react-testing-library` · `zod` · `typescript-expert` · `security` — is read on
-demand: the planner reads a skill's `SKILL.md` while placing a step, and names
+demand: the implementation-planner reads a skill's `SKILL.md` while placing a step, and names
 every skill whose rules bind that step in the step's *Skills to apply*; the
 implementer reads exactly that list before making the step's change (hard
 rule). The `plan-verifier`'s `SK` items check that every *Skills to apply*
@@ -242,10 +276,11 @@ review knowledge, used only by `security-reviewer`. `researcher` preloads only
 `engineering-insights`, because its repo mode starts from the `INSIGHTS.md`
 files.
 
-The other six preload only what their job needs:
+The other seven preload only what their job needs:
 
 | Agent | Preloaded skills | Why this set |
 |---|---|---|
+| `spec-creator` | `engineering-insights` | its grounding read starts from the root `INSIGHTS.md` headings, like `brainstormer`; it places nothing and writes no code |
 | `brainstormer` | `engineering-insights` | its grounding read starts from the root `INSIGHTS.md` headings, like `researcher`; it needs no other skill because it places nothing and writes no code |
 | `test-writer` | `engineering-insights` · `react-testing-library` · `fastify-best-practices` · `drizzle-orm-patterns` · `onion-architecture` · `zod` · `typescript-expert` · `security` | test idioms per layer. `security` picks the negative cases at trust boundaries. The production-code skills (`next-best-practices`, `react-best-practices`, `frontend-architecture`, `postgresql-table-design`) are left out because it writes no production code |
 | `architecture-reviewer` | `engineering-insights` · `onion-architecture` · `frontend-architecture` · `next-best-practices` · `fastify-best-practices` · `zod` · `typescript-expert` | the skills that define boundaries and placement. No `security`: security review is out of its scope |
@@ -258,7 +293,7 @@ The other six preload only what their job needs:
 
 ## INSIGHTS.md and gotchas
 
-All nine agents **read** `<pkg>/insights/gotchas.md` first, then the root and
+All ten agents **read** `<pkg>/insights/gotchas.md` first, then the root and
 package `INSIGHTS.md`. `brainstormer` is the one exception: it reads only the
 root `INSIGHTS.md`'s `^### ` headings, never the full log, as part of its
 shallow grounding read. None of them **writes** `INSIGHTS.md`,
@@ -269,7 +304,7 @@ the main session records them during wrap-up with `engineering-insights`, as
 
 ## Sources behind the rules
 
-### planner and implementer: external practice
+### implementation-planner and implementer: external practice
 
 All are primary Anthropic sources, retrieved 2026-09-25 by `researcher`.
 
@@ -293,7 +328,7 @@ skill it needed — is now covered by the `plan-verifier`'s `SK` coverage check
 instead of by preloading. Reference files inside skills are still read only
 on demand, as before.
 
-### planner and implementer: repo sources
+### implementation-planner and implementer: repo sources
 
 | Rule | Source |
 |---|---|
@@ -308,6 +343,7 @@ on demand, as before.
 | Protected paths and excluding `server/clones/**` from searches | `CLAUDE.md` *Do not touch* · root `INSIGHTS.md` |
 | Plan lifecycle: saved by the main session, `draft → approved → in-progress → done`, back to `draft` on a scope change, sign-off before `done`, full `.it` run by the main session | `docs/plans/README.md` · root `AGENTS.md` → *Plan → implement → verify* |
 | *Step 0* clarification and a mandatory *not established* section | modelled on `researcher.md` |
+| Requirements review, spec gaps, execution mode | `docs/plans/21-implementation-planner.md` D1–D5 |
 | At most 3 fix attempts per failing check. A skill rule outranks the plan | project decision, with no external source |
 
 ### test-writer, architecture-reviewer, plan-verifier, doc-writer: external practice
@@ -387,6 +423,14 @@ Researcher runs, retrieved 2026-09-27 (plan `docs/plans/03-brainstormer-agent.md
 | A new or edited agent is picked up mid-session, with a delay; wait for the "new agent types are now available" notice before spawning it | root `INSIGHTS.md`, 2026-09-25 "correction: new agents do show up mid-session" |
 | A brand-new `.claude/agents/*.md` cannot be spawned in the session that created it | root `INSIGHTS.md`, 2026-09-25 "a new `.claude/agents/*.md` can't be spawned…" |
 | `rg` is a shell function here, not a binary; process scans use `grep`, not `xargs rg` | root `INSIGHTS.md`, 2026-09-27 "`rg` … is not a binary here" |
+
+### spec-creator: repo sources
+
+| Rule | Source |
+|---|---|
+| Template, EARS, provenance, passes, placement, numbering, Changelog, pipeline wiring (D1–D15), skip rule (D16) | `docs/plans/20-spec-creator-agent.md` → Design notes and Decisions recorded |
+| Output rules go inside the fenced template, not in prose | root `INSIGHTS.md`, 2026-09-27 "in an agent prompt, the output template beats the prose rules" |
+| Grep-target literals stay on one line in backticks | root `INSIGHTS.md`, 2026-09-28 "a Done-when `grep` for a phrase fails when Markdown wraps" |
 
 ### security-reviewer: external practice
 

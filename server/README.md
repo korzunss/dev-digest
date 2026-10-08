@@ -1,4 +1,5 @@
 # `@devdigest/api` — the engine (Fastify + Postgres)
+<!-- verified against f75b0f9 + working tree on 2026-10-05 · sources: server/src/modules/{context,agents,skills}/routes.ts -->
 
 The DevDigest backend: imports repos and pull requests, indexes a repo with
 `repo-intel`, stores agents, and runs the reviewer (diff → `reviewer-core` →
@@ -58,7 +59,11 @@ flowchart TB
     reviews["reviews<br/>/pulls/:id/review · /reviews · /findings/:id/(accept|dismiss)<br/>/runs/:id/(events|trace)"]
   end
   subgraph Agents["Agents"]
-    agents["agents<br/>/agents · /agents/:id"]
+    agents["agents<br/>/agents · /agents/:id · /agents/:id/context"]
+    skills["skills<br/>/skills/:id/context"]
+  end
+  subgraph Context["Project context"]
+    context["context<br/>/repos/:id/context · /context/doc · /context/roots"]
   end
   subgraph Intel["Repo intelligence"]
     repoIntel["repo-intel<br/>/repos/:id/index-state · /resync"]
@@ -69,6 +74,17 @@ flowchart TB
   end
   HEALTH["/health (liveness) · /health/ready (DB ping → 200/503)"]
 ```
+
+Project-context routes (all workspace-scoped; design in
+[`docs/architecture.md`](docs/architecture.md#9-project-context)):
+
+| Route | Returns | Notes |
+|---|---|---|
+| `GET /repos/:id/context` | `ContextListing` (`docs`, `truncated`) | No `content`; an uncloned repo lists empty |
+| `GET /repos/:id/context/doc?path=…` | `SpecFile` with `content`, `tokens`, `used_by_agents` | 422 when the path is refused or the file is over 512 KB, 404 when it is not there |
+| `GET` / `PUT` / `DELETE /repos/:id/context/roots` | `ContextRoots` (`globs`, `is_default`) | `PUT` body `{ globs }`; 422 names a refused glob; `DELETE` resets to the default |
+| `GET` / `PUT /agents/:id/context` | `AgentContext` (`links`, `inherited`) | `PUT` body `{ paths }` replaces the agent's own ordered links; `inherited` comes from enabled skills |
+| `GET` / `PUT /skills/:id/context` | `SkillContext` (`links`, `used_by_agents`) | `PUT` body `{ paths }` |
 
 ## Environment
 

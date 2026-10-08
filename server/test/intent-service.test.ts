@@ -396,3 +396,50 @@ describe('IntentService — built from IntentServiceDeps fakes, no container (S1
     expect(git.fetchPullHead).toHaveBeenCalledWith(expect.anything(), pull.number, expect.any(AbortSignal));
   });
 });
+
+describe('IntentService.readLinkedIssues (T5, spec 010 AC-21)', () => {
+  function build(forge: IntentServiceDeps['forge']) {
+    const pull = makePull({ body: 'Fixes #12' });
+    const repo = makeRepo();
+    const { store } = makeStore(pull, repo);
+    const deps: IntentServiceDeps = {
+      repo: store,
+      git: makeGit(),
+      forge,
+      llm: async () => makeFastLlm(),
+      tokenizer: { count: (s) => Math.ceil(s.length / 4) },
+      resolveModel: async () => ({ provider: 'openrouter', model: 'm' }),
+    };
+    return { svc: new IntentService(deps), pull, repo };
+  }
+
+  it('a 404 issue is reported as failed with reason not_found', async () => {
+    const { svc, pull, repo } = build(async () => ({
+      getIssue: async () => {
+        throw Object.assign(new Error('secret body'), { status: 404 });
+      },
+    }));
+    const r = await svc.readLinkedIssues(pull, repo);
+    expect(r.issues).toEqual([]);
+    expect(r.failed).toHaveLength(1);
+    expect(r.failed[0]!.reason).toBe('not_found');
+  });
+
+  it('a forge factory that rejects marks every issue unreachable', async () => {
+    const { svc, pull, repo } = build(async () => {
+      throw new Error('no token');
+    });
+    const r = await svc.readLinkedIssues(pull, repo);
+    expect(r.issues).toEqual([]);
+    expect(r.failed.map((f) => f.reason)).toEqual(['unreachable']);
+  });
+
+  it('a readable issue is returned with its title and body', async () => {
+    const { svc, pull, repo } = build(async () => ({
+      getIssue: async () => ({ title: 'T', body: 'B' }) as IssueMeta,
+    }));
+    const r = await svc.readLinkedIssues(pull, repo);
+    expect(r.issues).toEqual([{ ref: expect.any(String), title: 'T', body: 'B' }]);
+    expect(r.failed).toEqual([]);
+  });
+});

@@ -12,7 +12,8 @@ import { Badge, Checkbox, ErrorState, Icon, Skeleton } from "@devdigest/ui";
 import type { Agent } from "@devdigest/shared";
 import { useAgentSkills, useSetAgentSkills, useSkills } from "../../../../../../../lib/hooks/skills";
 import { TYPE_COLOR } from "../../../../../../skills/_components/SkillCard";
-import { attachedIds, filterRows, moveId, orderedRows, toggleAttachment } from "./helpers";
+import { moveId, toggleAttachment } from "@/lib/attachment-order";
+import { attachedIds, filterRows, orderedRows } from "./helpers";
 import { s } from "./styles";
 
 export function SkillsTab({ agent }: { agent: Agent }) {

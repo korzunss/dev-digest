@@ -30,6 +30,12 @@ export const repos = pgTable(
     fullName: text('full_name').notNull(),
     defaultBranch: text('default_branch').notNull().default('main'),
     clonePath: text('clone_path'),
+    // Project-context search roots (globs). The default mirrors
+    // DEFAULT_CONTEXT_ROOTS in @devdigest/shared contracts/platform.ts.
+    contextGlobs: text('context_globs')
+      .array()
+      .notNull()
+      .default(sql`ARRAY['**/{specs,docs,insights}/**/*.md']::text[]`),
     lastPolledAt: timestamp('last_polled_at', { withTimezone: true }),
     createdBy: uuid('created_by').references(() => users.id),
     createdAt: now(),

@@ -1,0 +1,36 @@
+{
+  "name": "Project context: attach two documents to an agent and reorder them by drag and drop",
+  "description": "Opens the seeded agent `Test Quality Reviewer`, switches to its Context tab, attaches specs/alpha.md then specs/beta.md, drags beta's row above alpha's, reloads and asserts the order persisted (beta before alpha). jsdom cannot verify real HTML5 drag and drop, so this is the only coverage of AC-21. PRECONDITION: the repo `acme/payments-api` has a clone holding specs/alpha.md and specs/beta.md — scripts/e2e.sh and e2e-web.yml copy e2e/fixtures/repos into a throwaway dir and point DEVDIGEST_CLONE_DIR at it before the API starts — and the agent is the one `pnpm db:seed` writes. The flow WRITES (it attaches documents to the seeded agent), like 10-conventions, which is why it sorts after it. Drag variant shipped: the native `agent-browser drag` command (CDP mouse drag) fires the HTML5 dragstart/dragover/drop events, so no eval-dispatched DragEvent fallback is used.",
+  "steps": [
+    { "cmd": ["open", "{BASE}/agents"], "label": "load the agents page" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "agents fetch settles" },
+    { "cmd": ["wait", "--text", "Test Quality Reviewer"], "label": "seeded agent card is rendered" },
+    { "cmd": ["find", "text", "Test Quality Reviewer", "click"], "label": "open the seeded agent" },
+    { "cmd": ["wait", "--url", "/agents/"], "label": "agent editor reached" },
+    { "cmd": ["wait", "--fn", "[...document.querySelectorAll('button')].some(b => b.textContent.trim() === 'Context')"], "label": "the agent editor's tab strip rendered (a Context button exists)" },
+    { "cmd": ["find", "role", "button", "click", "--name", "Context", "--exact"], "label": "switch to the agent's Context tab" },
+    { "cmd": ["wait", "--url", "tab=context"], "label": "tab is in the URL" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "context fetches settle" },
+    { "cmd": ["wait", "--text", "specs/alpha.md"], "label": "the fixture clone's documents are listed" },
+    { "cmd": ["wait", "--text", "specs/beta.md"], "label": "both fixture documents are listed" },
+
+    { "cmd": ["click", "div:has(> button[aria-label='Reorder specs/alpha.md']) button[role='checkbox']"], "label": "attach alpha" },
+    { "cmd": ["wait", "--fn", "!document.querySelector(\"button[aria-label='Reorder specs/alpha.md']\").disabled"], "label": "alpha is attached (its reorder handle is enabled)" },
+    { "cmd": ["click", "div:has(> button[aria-label='Reorder specs/beta.md']) button[role='checkbox']"], "label": "attach beta" },
+    { "cmd": ["wait", "--fn", "!document.querySelector(\"button[aria-label='Reorder specs/beta.md']\").disabled"], "label": "beta is attached (its reorder handle is enabled)" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "the PUTs settle" },
+    { "cmd": ["wait", "--fn", "(l => l.findIndex(b => b.getAttribute('aria-label') === 'Reorder specs/alpha.md') < l.findIndex(b => b.getAttribute('aria-label') === 'Reorder specs/beta.md'))([...document.querySelectorAll(\"button[aria-label^='Reorder ']\")])"], "label": "before the drag alpha sits above beta"},
+
+    { "cmd": ["drag", "div[draggable='true']:has(button[aria-label='Reorder specs/beta.md'])", "div[draggable='true']:has(button[aria-label='Reorder specs/alpha.md'])"], "label": "drag beta's row onto alpha's" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "the reorder PUT settles" },
+
+    { "cmd": ["open", "{BASE}/agents"], "label": "leave and come back to force a fresh fetch" },
+    { "cmd": ["wait", "--text", "Test Quality Reviewer"], "label": "agents list rendered again" },
+    { "cmd": ["find", "text", "Test Quality Reviewer", "click"], "label": "reopen the seeded agent" },
+    { "cmd": ["wait", "--fn", "[...document.querySelectorAll('button')].some(b => b.textContent.trim() === 'Context')"], "label": "tab strip rendered after the reload" },
+    { "cmd": ["find", "role", "button", "click", "--name", "Context", "--exact"], "label": "switch to the Context tab again" },
+    { "cmd": ["wait", "--url", "tab=context"], "label": "tab is in the URL" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "context fetches settle" },
+    { "cmd": ["wait", "--fn", "(l => { const a = l.findIndex(b => b.getAttribute('aria-label') === 'Reorder specs/alpha.md'); const b = l.findIndex(b => b.getAttribute('aria-label') === 'Reorder specs/beta.md'); return b >= 0 && a >= 0 && b < a; })([...document.querySelectorAll(\"button[aria-label^='Reorder ']\")])"], "label": "the persisted order has beta before alpha" }
+  ]
+}

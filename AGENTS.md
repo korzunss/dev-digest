@@ -65,26 +65,44 @@ that package's `AGENTS.md`, which loads automatically when you work in its folde
 
 ## Plan → implement → verify
 
+- Feature work runs through `/sdd` (`.claude/skills/sdd/SKILL.md`), which follows the rules below.
 - **Optional brainstorm stage** for a goal with no chosen approach: the
   read-only `brainstormer` returns an idea brief, never a plan. The main
   session saves **every** brief, `kill` included, verbatim to
   `docs/ideas/NN-kebab-name.md` plus its index row, adding only `Status:` and
   `## Choice recorded`. A correction re-runs `brainstormer` with the brief's
   path; it returns only the changed sections. *Facts needed* seed the
-  researcher's ≤8 questions, and the planner gets the brief's path.
+  researcher's ≤8 questions, and the brief's path goes to `spec-creator` first
+  (for a feature), then to the `implementation-planner`.
+- **Spec stage** for every feature, before research and planning: `spec-creator`
+  pass 1 returns ≤8 blocking questions and writes no file; after the user
+  answers, pass 2 writes the spec (`Status: draft`). The main session sets
+  `approved` only on the user's explicit yes with *Open questions* empty, then
+  **asks** whether to run research (default yes), then the `implementation-planner` gets the
+  spec path. A bug fix, verifier/reviewer follow-up, no-behaviour-change refactor or tooling
+  plan skips it with `no spec: <reason>`. When its plan becomes `done` (a `complete`
+  verification, or `complete — needs sign-off` once the user has accepted the
+  listed items) the main session sets the spec to `implemented`; it also keeps the spec's
+  Changelog.
 - Research before planning is **repo-mode only** (≤8 questions to the
   `researcher`). External research runs for the questions pass 1's *Risks &
   open questions* lists, after the user answers *Decisions needed* and before
   pass 2, as a separate researcher run.
-- By default the `planner` writes **pass 1**: a decisions-only draft
-  (`docs/plans/NN-kebab-name.md`, `Status: draft`, ending
+- The `implementation-planner` writes **pass 1** for every non-trivial plan: a
+  requirements review (`TQn` clarifying questions, `GAPn` spec gaps, `RECn`
+  recommendations, plus an execution-mode row in *Decisions needed*) inside a
+  decisions-only draft (`docs/plans/NN-kebab-name.md`, `Status: draft`, ending
   `Steps: pending decisions`) plus its index row (`draft (decisions)`), and
-  returns only a summary (path, *Decisions needed*, research questions). It
-  skips straight to the full plan only when the prompt says
-  `single pass: <reason>` — every product choice is already fixed, or the plan
-  is trivial (≤1 package, ≤3 files). **Pass 2** resumes the same planner
-  (fallback: a fresh run with the plan path) once decisions are recorded. In
-  both passes the planner writes no other file. Later correction rounds edit the plan file in place
+  returns only a summary (path, review ids, *Decisions needed*, research
+  questions). It skips straight to the full plan only when the prompt says
+  `single pass: <reason>`, and only for a trivial plan (≤1 package, ≤3 files),
+  which gets `Execution: single-agent`. A `GAPn` and any user-visible `RECn`
+  go to `spec-creator` before pass 2 (the main session sets an approved spec
+  back to `draft`, writes the Changelog entry, re-approves). The main session
+  records the chosen mode as the header line `Execution: <multi-agent |
+  single-agent>`. **Pass 2** resumes the same implementation-planner
+  (fallback: a fresh run with the plan path) once every `TQn` is answered and
+  every `GAPn` closed. In both passes the implementation-planner writes no other file. Later correction rounds edit the plan file in place
   and return only the changed
   sections. The `Status:` line and *Decisions recorded* belong to the **main
   session**.
@@ -93,10 +111,13 @@ that package's `AGENTS.md`, which loads automatically when you work in its folde
   approval.
 - Only after the user's explicit, final approval does the main session set
   `Status: approved`. Nothing is implemented from a `draft`.
-- `implementer` gets the plan **path** plus one step group per run (`G1`, then
-  `G2`, …), and the status moves to `in-progress`. It runs only the integration
-  tests related to its group; after the last group the main session runs the
-  full `.it` suite once, then hands the same path — and that run's result — to
+- `implementer` gets the plan **path** and the status moves to `in-progress`.
+  `multi-agent` (also a plan with no `Execution:` line): one step group per run
+  (`G1`, then `G2`, …), then `test-writer`, with the reviewers per their rules.
+  `single-agent`: one run with `all`, then `plan-verifier`, with the reviewers
+  on their own triggers. It runs only the integration tests related to its
+  work; after the last run the main session runs the full `.it` suite once in
+  both modes, then hands the same path — and that run's result — to
   `plan-verifier`. The status becomes `done` after a `complete` verification,
   or after `complete — needs sign-off` once the user has accepted the listed
   unverified items; never on its own.
@@ -108,7 +129,7 @@ that package's `AGENTS.md`, which loads automatically when you work in its folde
 - Hand-offs between groups go **into the plan**, not into prompts: the main
   session appends each implementer's *Handoff to the next group* — and its
   `## Skills` table, the `plan-verifier`'s source for the `SK` items — under
-  `## Handoffs → G<n>` below `<!-- implementer-brief:end -->`, and the next
+  `## Handoffs → G<n>` (`## Handoffs → all` for a `single-agent` plan) below `<!-- implementer-brief:end -->`, and the next
   prompt is just the plan path and the group. Never paste more than ~10 lines of
   one agent's report into another agent's prompt; cite gap ids and paths.
 - Gaps from the verifier or either reviewer go back to `implementer`
@@ -151,7 +172,7 @@ that package's `AGENTS.md`, which loads automatically when you work in its folde
 - Architecture and the end-to-end review flow → `README.md`
 - Test strategy, unit/integration split, CI path filters → `TESTING.md`
 - Built-in agent prompts → `docs/README.md`
-- Cross-package feature specs → `specs/README.md`
+- Feature specs (root `specs/` cross-package, `<pkg>/specs/` single-package) → `specs/README.md`
 - Hard-won gotchas: cross-package → `INSIGHTS.md`, package-local → `<pkg>/INSIGHTS.md`
   (the log) and `<pkg>/insights/gotchas.md` (the rules in force)
 - Package deep-dives → `server/docs/architecture.md`, `client/docs/ui-architecture.md`,

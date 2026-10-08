@@ -34,7 +34,14 @@
       "memoryPulled": "Memory pulled",
       "specsRead": "Specs read",
       "items": "{count, plural, one {# item} other {# items}}",
-      "none": "none"
+      "none": "none",
+      "skipped": "{path} — {reason}",
+      "skipReason": {
+        "missing": "not found in the clone",
+        "outside_search_roots": "outside the search roots",
+        "outside_clone": "outside the clone",
+        "too_large": "too large"
+      }
     },
     "stat": {
       "duration": "DURATION",
@@ -48,7 +55,7 @@
       "addedTokens": "+{count} tok",
       "memory": "Memory (dynamic)",
       "repoMap": "Repo skeleton — repo-intel (dynamic)",
-      "specs": "Project context (dynamic)",
+      "specs": "Project context — attached specs (untrusted)",
       "callers": "Callers of changed symbols — repo-intel (dynamic)",
       "user": "User / diff (dynamic)",
       "copy": "Copy",

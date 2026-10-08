@@ -1,24 +1,67 @@
 {
   "title": "Project Context",
-  "chunks": "{count} chunks",
-  "reindex": "Re-index",
-  "indexing": "Indexing…",
-  "resync": "Resync",
-  "resyncing": "Resyncing…",
-  "indexStatus": "Index status: {status}",
-  "loadError": "Couldn’t load specs",
-  "kb": "{kb}kb",
-  "empty": {
-    "title": "No spec files yet",
-    "body": "Drop your PRDs, tech specs, and acceptance criteria under .devdigest/specs/. Every agent and the PR brief read them as grounding context."
+  "preview": {
+    "loadError": "Could not load this document.",
+    "refused": "This document cannot be previewed: it is too large or outside the repository's search roots.",
+    "empty": "This document is empty."
   },
-  "mode": {
-    "preview": "preview",
-    "edit": "edit"
+  "picker": {
+    "count": "{attached}/{listed} attached",
+    "tokens": "≈ {tokens} tokens",
+    "filterPlaceholder": "Filter documents…",
+    "filterLabel": "Filter documents",
+    "noMatches": "No document matches the filter.",
+    "preview": "Preview {path}",
+    "reorder": "Reorder {path}",
+    "notInRepo": "not in this repo",
+    "via": "via {skill}",
+    "viaTitle": "Inherited from skill {skill}; detach it there.",
+    "tokensValue": "{tokens} tok",
+    "saveFailed": "Could not save the attached documents. Your change was undone.",
+    "truncated": "Showing the first documents only; narrow the search roots to see the rest.",
+    "empty": {
+      "title": "No context documents in this repo",
+      "body": "Nothing in this repository matches its search roots, or it has not been cloned yet.",
+      "cta": "Open Project Context"
+    },
+    "types": {
+      "specs": "specs",
+      "docs": "docs",
+      "insights": "insights",
+      "other": "other"
+    }
   },
-  "editor": {
-    "loadError": "Couldn’t load spec",
+  "page": {
+    "crumbRepo": "Repository",
+    "subtitle": "The Markdown documents agents can carry into a review. Read-only — edit them in the repository.",
+    "loadError": "Could not load the context documents.",
+    "docCount": "{count, plural, one {# document} other {# documents}}",
+    "refresh": "Refresh",
+    "selectHint": "Select a document to preview it.",
+    "usedBy": "{count, plural, one {Used by # agent} other {Used by # agents}}",
+    "notCloned": {
+      "title": "Repository not cloned yet",
+      "body": "Context documents are read from the local clone. Sync the repository first."
+    },
+    "noMatches": {
+      "title": "No documents match the search roots",
+      "body": "Nothing in this repository matches its search roots. Adjust them below."
+    }
+  },
+  "roots": {
+    "loadError": "Could not load the search roots.",
+    "title": "Search roots",
+    "default": "default",
+    "hint": "One glob per line. Only Markdown files matching a glob are listed; dot-folders and node_modules are always skipped.",
+    "label": "Search roots, one glob per line",
     "save": "Save",
-    "saving": "Saving…"
+    "reset": "Reset to default",
+    "saveFailed": "Could not save the search roots."
+  },
+  "footer": {
+    "count": "{count, plural, one {# document} other {# documents}}",
+    "tokens": "≈ {tokens} tokens",
+    "lastSync": "Last sync {when}",
+    "neverSynced": "Never synced"
   }
 }

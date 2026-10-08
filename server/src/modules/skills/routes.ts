@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { SkillSource, SkillType } from '@devdigest/shared';
+import { ContextPathsBody, SkillSource, SkillType } from '@devdigest/shared';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
 import { NotFoundError } from '../../platform/errors.js';
@@ -80,9 +80,6 @@ const DiffQuery = z.object({
 // `.default({})` so a body-less POST is legal: the client's `api.post`
 // omits the body entirely when there is no message to send.
 const RestoreBody = z.object({ message: z.string().min(1).optional() }).default({});
-
-/** The whole ordered set, like `POST /agents/:id/skills` — order is meaning. */
-const SetContextBody = z.object({ paths: z.array(z.string().min(1)) });
 
 export default async function skillsRoutes(appBase: FastifyInstance) {
   const app = appBase.withTypeProvider<ZodTypeProvider>();
@@ -188,7 +185,7 @@ export default async function skillsRoutes(appBase: FastifyInstance) {
 
   app.put(
     '/skills/:id/context',
-    { schema: { params: IdParams, body: SetContextBody } },
+    { schema: { params: IdParams, body: ContextPathsBody } },
     async (req) => {
       const { workspaceId } = await getContext(app.container, req);
       const links = await service.setContextLinks(workspaceId, req.params.id, req.body.paths);

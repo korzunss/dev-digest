@@ -13,16 +13,19 @@ const TRACE: RunTrace = {
   raw_output: '{"verdict":"request_changes"}',
   memory_pulled: [{ pr: 471, text: "rate-limit public endpoints" }],
   specs_read: [],
+  specs_skipped: [],
   log: [
     { t: "00.10", kind: "info", msg: "Starting review with agent Security" },
     { t: "00.90", kind: "result", msg: "Citation grounding: 2/2 passed" },
   ],
 };
 
-vi.mock("../../../../../../../lib/hooks/trace", () => ({
+vi.mock("../../../../../../../lib/hooks/trace", async (importActual) => ({
+  ...(await importActual<typeof import("../../../../../../../lib/hooks/trace")>()),
   useRunTrace: () => ({ data: TRACE, isLoading: false }),
 }));
-vi.mock("../../../../../../../lib/hooks/reviews", () => ({
+vi.mock("../../../../../../../lib/hooks/reviews", async (importActual) => ({
+  ...(await importActual<typeof import("../../../../../../../lib/hooks/reviews")>()),
   useRunEvents: () => ({ events: [], running: false }),
 }));
 
@@ -77,5 +80,55 @@ describe("Run trace — COST tile (spec 001)", () => {
       />,
     );
     expect(screen.getByText("~$0.06")).toBeInTheDocument();
+  });
+});
+
+describe("Run trace — project context (spec 008)", () => {
+  it("lists a skipped document with its reason and labels the specs block", () => {
+    renderWithIntl(
+      <TraceBody
+        trace={{
+          ...TRACE,
+          specs_read: ["specs/a.md"],
+          specs_skipped: [{ path: "docs/big.md", reason: "too_large" }],
+          prompt_assembly: { ...TRACE.prompt_assembly, specs: "<untrusted>x</untrusted>", specs_tokens: 12 },
+        }}
+        findings={[]}
+      />,
+    );
+    expect(screen.getByText("docs/big.md — too large")).toBeInTheDocument();
+    // Prompt assembly starts collapsed.
+    fireEvent.click(screen.getByText("Prompt assembly"));
+    expect(screen.getByText("Project context — attached specs (untrusted)")).toBeInTheDocument();
+  });
+
+  it("a trace without specs_skipped renders no skipped line", () => {
+    const { specs_skipped: _omit, ...legacy } = TRACE;
+    renderWithIntl(<TraceBody trace={legacy} findings={[]} />);
+    expect(screen.queryByText(/ — /)).not.toBeInTheDocument();
+  });
+
+  it("renders every read and skipped document without a React key warning", () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    renderWithIntl(
+      <TraceBody
+        trace={{
+          ...TRACE,
+          specs_read: ["specs/a.md", "specs/b.md"],
+          specs_skipped: [
+            { path: "docs/big.md", reason: "too_large" },
+            { path: "docs/huge.md", reason: "too_large" },
+          ],
+        }}
+        findings={[]}
+      />,
+    );
+    expect(screen.getByText("specs/a.md")).toBeInTheDocument();
+    expect(screen.getByText("specs/b.md")).toBeInTheDocument();
+    expect(screen.getByText("docs/big.md — too large")).toBeInTheDocument();
+    expect(screen.getByText("docs/huge.md — too large")).toBeInTheDocument();
+    const keyWarnings = errors.mock.calls.filter((c) => String(c[0]).includes("unique \"key\""));
+    expect(keyWarnings).toHaveLength(0);
+    errors.mockRestore();
   });
 });

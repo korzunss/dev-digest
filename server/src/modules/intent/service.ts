@@ -213,6 +213,58 @@ export class IntentService {
   }
 
   /**
+   * Link extraction + the linked-issue reads (best-effort, never invented on
+   * failure). Shared by classification and the PR Brief (spec 010). Failure
+   * reasons stay the three classes from `classifyFailure`, never `err.message`.
+   */
+  async readLinkedIssues(
+    pull: PullRow,
+    repo: RepoRow,
+    signal?: AbortSignal,
+  ): Promise<{
+    issues: IntentPromptIssue[];
+    failed: { ref: string; reason: string }[];
+    links: ReturnType<typeof extractIntentLinks>;
+    outcomes: ({ ref: string; ok: true; chars: number } | { ref: string; ok: false; reason: string })[];
+  }> {
+    const repoRef = toRepoRef(repo);
+    const links = extractIntentLinks(pull.body, {
+      host: forgeHostOf(repo.provider as ForgeProvider, repo.apiBase),
+      owner: repo.owner,
+      name: repo.name,
+      provider: repo.provider as ForgeProvider,
+    });
+    const issues: IntentPromptIssue[] = [];
+    const failed: { ref: string; reason: string }[] = [];
+    const outcomes: ({ ref: string; ok: true; chars: number } | { ref: string; ok: false; reason: string })[] = [];
+
+    const forgeClient =
+      links.issues.length > 0 ? await this.deps.forge(repoRef).catch(() => undefined) : undefined;
+
+    for (const link of links.issues) {
+      signal?.throwIfAborted();
+      if (!forgeClient) {
+        const reason = 'unreachable';
+        failed.push({ ref: link.ref, reason });
+        outcomes.push({ ref: link.ref, ok: false, reason });
+        continue;
+      }
+      try {
+        const issueRef = { ...repoRef, owner: link.owner, name: link.name, path: `${link.owner}/${link.name}` };
+        const issue = await withTimeout(forgeClient.getIssue(issueRef, link.number), SOURCE_TIMEOUT_MS);
+        const body = issue.body ?? '';
+        issues.push({ ref: link.ref, title: issue.title, body });
+        outcomes.push({ ref: link.ref, ok: true, chars: body.length });
+      } catch (err) {
+        const reason = classifyFailure(err);
+        failed.push({ ref: link.ref, reason });
+        outcomes.push({ ref: link.ref, ok: false, reason });
+      }
+    }
+    return { issues, failed, links, outcomes };
+  }
+
+  /**
    * Steps 1-9 of spec 006 S10: resolve the model, gather files + linked
    * issues/docs (best-effort, never invented on failure), call the
    * classifier, cap confidence, persist, log. Shared by `classify` (manual)
@@ -230,16 +282,8 @@ export class IntentService {
 
     const files = await this.fileSummaries(pull, repo, opts.diff, signal);
     signal?.throwIfAborted();
-    const links = extractIntentLinks(pull.body, {
-      host: forgeHostOf(repo.provider as ForgeProvider, repo.apiBase),
-      owner: repo.owner,
-      name: repo.name,
-      provider: repo.provider as ForgeProvider,
-    });
-
     const sources: IntentSource[] = [];
     const missingContext: MissingContext[] = [];
-    const issues: IntentPromptIssue[] = [];
     const docs: IntentPromptDoc[] = [];
     const unavailable: IntentUnavailableSource[] = [];
 
@@ -253,29 +297,15 @@ export class IntentService {
     }
     sources.push({ kind: 'file_list', ref: `${files.length} file(s)`, status: 'ok', chars: files.length });
 
-    const forgeClient =
-      links.issues.length > 0 ? await this.deps.forge(repoRef).catch(() => undefined) : undefined;
-
-    for (const link of links.issues) {
-      signal?.throwIfAborted();
-      if (!forgeClient) {
-        const reason = 'unreachable';
-        sources.push({ kind: 'linked_issue', ref: link.ref, status: 'failed', reason });
-        missingContext.push({ kind: 'linked_issue', ref: link.ref, reason });
-        unavailable.push({ kind: 'linked_issue', ref: link.ref, reason });
-        continue;
-      }
-      try {
-        const issueRef = { ...repoRef, owner: link.owner, name: link.name, path: `${link.owner}/${link.name}` };
-        const issue = await withTimeout(forgeClient.getIssue(issueRef, link.number), SOURCE_TIMEOUT_MS);
-        const body = issue.body ?? '';
-        issues.push({ ref: link.ref, title: issue.title, body });
-        sources.push({ kind: 'linked_issue', ref: link.ref, status: 'ok', chars: body.length });
-      } catch (err) {
-        const reason = classifyFailure(err);
-        sources.push({ kind: 'linked_issue', ref: link.ref, status: 'failed', reason });
-        missingContext.push({ kind: 'linked_issue', ref: link.ref, reason });
-        unavailable.push({ kind: 'linked_issue', ref: link.ref, reason });
+    const linked = await this.readLinkedIssues(pull, repo, signal);
+    const { links, issues } = linked;
+    for (const o of linked.outcomes) {
+      if (o.ok) {
+        sources.push({ kind: 'linked_issue', ref: o.ref, status: 'ok', chars: o.chars });
+      } else {
+        sources.push({ kind: 'linked_issue', ref: o.ref, status: 'failed', reason: o.reason });
+        missingContext.push({ kind: 'linked_issue', ref: o.ref, reason: o.reason });
+        unavailable.push({ kind: 'linked_issue', ref: o.ref, reason: o.reason });
       }
     }
 
