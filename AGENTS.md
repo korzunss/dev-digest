@@ -155,6 +155,10 @@ that package's `AGENTS.md`, which loads automatically when you work in its folde
 - `server/clones/**` — runtime checkouts of imported repos. **Exclude it from
   every search/grep**: it contains full copies of other repos (and of this one),
   so matches there are noise.
+- `.claude/skills/*/evals/fixtures/**` — skill-eval inputs with **deliberately
+  seeded** bugs, scored against `evals/expected-findings.json` by line number.
+  Exclude them from searches, never fix or reformat them, and don't report them
+  as findings. Edit them only to change an eval, together with its answer key.
 - `**/.env` — local secrets.
 - **Lock files — never hand-edit.** They are generated and carry integrity
   hashes. Change `package.json`, then reinstall with that package's own manager
