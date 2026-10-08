@@ -229,6 +229,12 @@ that path; it's runtime data, and the next resync overwrites it.
 
 ## Tool & Library Notes
 
+### 2026-10-08 — correction: a subagent transcript's `output_tokens` is far too low, so its weighted total can't be trusted
+**Symptom:** in a zod-skill A/B run (12 general-purpose subagents), the deduplicated transcript `usage.output_tokens` came to 29–353 per agent. Every one of those agents had written a 60–160 line `.ts` file through `Write`, which alone takes well over 1k output tokens. Taking the last line or the max line per `message.id` gave the same sums.
+**Cause:** the transcript stores `usage` as it stood when the message was first streamed, so `output_tokens` misses the content that came after (inferred: it holds for every message checked). The input side (`input` / `cache_read` / `cache_creation`) looks plausible. This changes the 2026-10-05 entry below: its weight `5·output` multiplies a figure that is too small, so its "weighted tokens" mostly measure context size.
+**Rule:** use transcript usage only for the input/cache split. Don't compare runs by output or by the weighted total until `output_tokens` is checked against a known-size `Write`. For skill-creator benchmarks, `total_tokens` is the notification's `subagent_tokens` (its documented contract).
+**Evidence:** `~/.claude/projects/-Users-sergey--projects-www-ai-dev-digest/98568580-…/subagents/agent-a5e91214e530a3b24.jsonl`: 7 messages, output sum 100, one of them a `Write` of a 161-line `schemas.ts` · notification `subagent_tokens` 59 637 for the same agent
+
 ### 2026-10-07 — prove a refactored `.mjs` script prints the same output by running the old version straight from a git ref
 **Symptom:** plan 29 moved the weights out of `.claude/skills/sdd/scripts/flags.mjs`; "output unchanged" needed the pre-refactor script, but writing a copy into the tree breaks the reviewers' read-only proof.
 **Cause:** `node -e` takes the script text, but then `process.argv[1]` is the first extra argument, not a script path, so the old script's argument parsing shifts by one.

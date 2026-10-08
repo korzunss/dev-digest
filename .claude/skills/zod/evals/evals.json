@@ -1,0 +1,19 @@
+{
+  "skill_name": "zod",
+  "evals": [
+    {
+      "id": 1,
+      "name": "list-query-and-patch-body",
+      "prompt": "Our Fastify API uses zod ^3.25 (zod 3, imported as `import { z } from 'zod'`), TypeScript strict. I need the validation layer for two endpoints, in ONE file `schemas.ts`.\n\n1. `GET /reviews` query string, e.g. `?page=2&limit=50&status=open,closed&includeArchived=false&since=2026-01-01`. page defaults to 1, limit defaults to 20 and is capped at 100, status is a comma-separated list of `open|closed|draft` (optional), includeArchived is an optional boolean flag that defaults to false, since is an optional date. Export it as `ListReviewsQuery`.\n2. `PATCH /agents/:id` JSON body: the agent has `name` (1-80 chars, trimmed), `model` (non-empty string), `temperature` (0..2), `enabled` (boolean), `tags` (array of up to 10 non-empty strings). PATCH may send any subset, but an empty body or unknown keys must be rejected. Export it as `UpdateAgentBody`.\n\nAlso export the TS types for both, and a `formatZodError(error: ZodError)` helper that returns `{ fieldErrors: Record<string, string[]> }` with every failing field (not just the first) so we can send it back in a 400.\n\nDon't wire Fastify, just the schemas file.",
+      "expected_output": "A single schemas.ts using zod 3 APIs that coerces query strings correctly (including a real 'false' boolean), splits and validates the status list, rejects empty/unknown-key PATCH bodies, and reports all field errors.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "name": "llm-findings-parser",
+      "prompt": "We get code-review findings back from an LLM as a raw string. Write `findings.ts` (zod ^3.25, `import { z } from 'zod'`, TS strict) that exports a `Finding` schema, its TS type, and `parseFindings(raw: string): { findings: Finding[]; dropped: number }`.\n\nThe model is supposed to return a JSON array, but sometimes wraps it in a ```json fence, and sometimes returns garbage. Each finding has `severity` (CRITICAL | WARNING | SUGGESTION — the model often writes it lowercase, normalise it) and `title` (non-empty), plus a location that depends on `kind`:\n- `kind: \"line\"` → `file` (non-empty), `line` (integer >= 1), optional `endLine` which must be >= `line`\n- `kind: \"file\"` → `file`\n- `kind: \"general\"` → no location\n\nOne bad finding must not kill the batch: keep the valid ones, count the invalid ones in `dropped`. `parseFindings` must never throw — unparseable output or a non-array just yields `{ findings: [], dropped: 0 }`.",
+      "expected_output": "A findings.ts with a discriminated union on kind, a cross-field endLine>=line check, case-insensitive severity, per-item validation that keeps valid findings, fence stripping, and no throws.",
+      "files": []
+    }
+  ]
+}
