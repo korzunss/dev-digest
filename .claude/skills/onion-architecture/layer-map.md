@@ -69,7 +69,7 @@ Each implements a port. Tool → adapter:
 
 - **May import:** the SDK/driver it wraps, the port it implements, shared types.
 - **Must NOT import:** `modules/**` (an adapter must not know about a feature).
-- **Exception:** `adapters/depgraph` imports `modules/repo-intel/constants.js` — a tracked
+- **Exception:** `adapters/astgrep` imports `modules/repo-intel/constants.js` — a tracked
   infra→module edge; the clean fix is relocating those constants.
 
 ### 4b. Persistence — `db/**` + `modules/<name>/repository.ts`

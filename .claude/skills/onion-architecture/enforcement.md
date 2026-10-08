@@ -1,4 +1,9 @@
-# Enforcement — the dependency-cruiser gate
+# Enforcement — the dependency-cruiser gate (proposed)
+
+> **Status: not installed.** Neither `server/.dependency-cruiser.cjs` nor the `depcruise` scripts
+> exist yet. The counts below were never reproduced in this repo, so don't cite them; check
+> edges as SKILL.md "Enforcement — how to check today" describes. Installing this config, and
+> re-baselining against the real graph, is its own change.
 
 This is what turns the dependency rule from "remember to" into "the build fails otherwise."
 `dependency-cruiser` is **already** in `server/package.json` (today used only as the
@@ -85,7 +90,7 @@ module.exports = {
       name: 'adapters-dont-know-modules',
       comment:
         'Infrastructure must not depend on a feature. ' +
-        'Exception: adapters/depgraph reads repo-intel/constants — move those constants out to remove it.',
+        'Exception: adapters/astgrep reads repo-intel/constants — move those constants out to remove it.',
       severity: 'error',
       from: { path: '^src/adapters/' },
       to: { path: '^src/modules/', pathNot: '^src/modules/repo-intel/constants' },
@@ -117,7 +122,7 @@ module.exports = {
 
 ```bash
 cd server
-npm run depcruise        # baseline today: 0 errors, 15 warnings
+npm run depcruise        # once installed; re-baseline first
 npm run depcruise:all    # also walks reviewer-core as a root for the core-is-pure rule
 ```
 
@@ -127,7 +132,7 @@ to typecheck/tests; optionally add a pre-commit hook so bad edges never land.
 
 ## Severity rationale — adopt as a ratchet, not a big-bang
 
-This was validated against the real graph (`125 modules, 376 dependencies`). The strict rules
+The original draft claimed a validation run (`125 modules, 376 dependencies`) that was never reproducible here. The strict rules
 that the codebase **already** satisfies are `error`; the rules with genuine existing
 violations start at `warn` (a burn-down baseline) so the gate is adoptable immediately, then
 get promoted to `error` as each backlog is cleared.
@@ -135,9 +140,9 @@ get promoted to `error` as each backlog is cleared.
 - **`error` (clean today — keep them blocking):** `core-is-pure`, `services-depend-on-ports`,
   `routes-are-thin`, `adapters-dont-know-modules`. A new violation here fails CI.
 - **`warn` (real drift, burn down then promote):**
-  - `db-confined-to-repositories` — **8** files query `db/schema` outside a repository.
+  - `db-confined-to-repositories` — the files listed in SKILL.md query `db/schema` outside a repository.
     Promote to `error` once each is moved into a `repository`.
-  - `no-cross-module-internals` — **2** edges: `pulls/routes.ts → reviews/helpers.ts`
+  - `no-cross-module-internals` — about 20 edges (SKILL.md lists them), among them `pulls/routes.ts → reviews/helpers.ts`
     (move the shared `findingRowToDto` mapper into `_shared`) and
     `repos/service.ts → repo-intel/constants.ts` (relocate the shared constant). Promote after.
   - `no-circular` — cycles via `platform/container.ts` (the "service takes `Container`" DI
@@ -150,7 +155,7 @@ get promoted to `error` as each backlog is cleared.
 | Exception | Why it exists | Clean fix |
 |-----------|---------------|-----------|
 | `repo-intel/service` may import adapters (`pathNot` on `services-depend-on-ports`) | repo-intel is the indexer subsystem, reached via the `container.repoIntel` facade — it *is* infrastructure | none needed; keep the facade boundary intact |
-| `adapters/depgraph` → `repo-intel/constants` (`pathNot` on `adapters-dont-know-modules`) | shares `SUPPORTED_EXT` | move the shared constant to `platform/` or `_shared`, then delete the `pathNot` |
+| `adapters/astgrep` → `repo-intel/constants` (`pathNot` on `adapters-dont-know-modules`) | shares `SUPPORTED_EXT`, `MAX_SIGNATURE_CHARS` | move the shared constant to `platform/` or `_shared`, then delete the `pathNot` |
 
 When you remove an exception (or burn down a `warn` backlog) in code, tighten the config in the
 same change — an exception or lenient severity that outlives its cause silently re-opens the
