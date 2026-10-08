@@ -90,7 +90,7 @@ module.exports = {
       name: 'adapters-dont-know-modules',
       comment:
         'Infrastructure must not depend on a feature. ' +
-        'Exception: adapters/astgrep reads repo-intel/constants — move those constants out to remove it.',
+        'Exception: adapters/astgrep and adapters/depgraph read repo-intel/constants — move those constants out to remove it.',
       severity: 'error',
       from: { path: '^src/adapters/' },
       to: { path: '^src/modules/', pathNot: '^src/modules/repo-intel/constants' },
@@ -155,7 +155,7 @@ get promoted to `error` as each backlog is cleared.
 | Exception | Why it exists | Clean fix |
 |-----------|---------------|-----------|
 | `repo-intel/service` may import adapters (`pathNot` on `services-depend-on-ports`) | repo-intel is the indexer subsystem, reached via the `container.repoIntel` facade — it *is* infrastructure | none needed; keep the facade boundary intact |
-| `adapters/astgrep` → `repo-intel/constants` (`pathNot` on `adapters-dont-know-modules`) | shares `SUPPORTED_EXT`, `MAX_SIGNATURE_CHARS` | move the shared constant to `platform/` or `_shared`, then delete the `pathNot` |
+| `adapters/astgrep`, `adapters/depgraph` → `repo-intel/constants` (`pathNot` on `adapters-dont-know-modules`) | share `SUPPORTED_EXT` (astgrep also `MAX_SIGNATURE_CHARS`) | move the shared constant to `platform/` or `_shared`, then delete the `pathNot` |
 
 When you remove an exception (or burn down a `warn` backlog) in code, tighten the config in the
 same change — an exception or lenient severity that outlives its cause silently re-opens the

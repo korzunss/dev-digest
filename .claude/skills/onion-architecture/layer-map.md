@@ -69,8 +69,8 @@ Each implements a port. Tool → adapter:
 
 - **May import:** the SDK/driver it wraps, the port it implements, shared types.
 - **Must NOT import:** `modules/**` (an adapter must not know about a feature).
-- **Exception:** `adapters/astgrep` imports `modules/repo-intel/constants.js` — a tracked
-  infra→module edge; the clean fix is relocating those constants.
+- **Exception:** `adapters/astgrep` and `adapters/depgraph` import `modules/repo-intel/constants.js`
+  — tracked infra→module edges; the clean fix is relocating those constants.
 
 ### 4b. Persistence — `db/**` + `modules/<name>/repository.ts`
 Drizzle ORM + `postgres` (pgvector). The repository is the **only** code touching the schema.
