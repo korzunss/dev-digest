@@ -1,16 +1,14 @@
-diff --git a/server/src/modules/blast/score.ts b/server/src/modules/blast/score.ts
-index eeeeeee..fffffff 100644
---- a/server/src/modules/blast/score.ts
-+++ b/server/src/modules/blast/score.ts
-@@ -1,10 +1,12 @@
- export interface BlastRow {
-   id: string;
-   score: number;
+diff --git a/server/src/modules/blast/helpers.ts b/server/src/modules/blast/helpers.ts
+index 7c2d9e4..a18f5b0 100644
+--- a/server/src/modules/blast/helpers.ts
++++ b/server/src/modules/blast/helpers.ts
+@@ -1,7 +1,7 @@
+ import type { BlastRadius } from '@devdigest/shared';
+ import type { BlastResult } from '../repo-intel/types.js';
+ 
+-function sortedUnion(lists: string[][]): string[] {
+-  return [...new Set(lists.flat())].sort();
++function sortedUnion(groups: string[][]): string[] {
++  return [...new Set(groups.flat())].sort();
  }
-
--export function summarize(rows: BlastRow[]) {
--  return rows.map((r) => ({ id: r.id, score: r.score }));
-+// Renamed locals for readability; behaviour unchanged.
-+export function summarize(rows: BlastRow[]) {
-+  return rows.map((row) => ({ id: row.id, score: row.score }));
- }
+ 

@@ -41,7 +41,7 @@ export const cases: AgentCase[] = [
     kind: "quality",
     prompt: reviewPrompt("checkout-service.diff"),
     practices: [
-      "does not report the unused optional `reply?: FastifyReply` parameter as a separate runtime, security or API-design finding beyond the import/dependency-rule violation itself",
+      "reports the `reply?: FastifyReply` parameter, if at all, only as part of the layering/dependency-rule issue (A1) — not as a separate runtime, security or API-design finding",
       "stays scoped to structural/layering/DI findings and does not comment on naming, style or test coverage",
     ],
     threshold: 1.0,
@@ -52,8 +52,8 @@ export const cases: AgentCase[] = [
     kind: "quality",
     prompt: reviewPrompt("reviewer-core-gate.diff"),
     practices: [
-      "flags the `import { readFileSync } from 'node:fs'` added to reviewer-core/src/pipeline/run.ts as a violation (reviewer-core must do no I/O except the injected LLMProvider)",
-      "flags that runPipeline now returns `deduped` directly, skipping the mandatory `groundFindings()` gate before emitting findings",
+      "flags the `import { readFileSync } from 'node:fs'` (and the readFileSync call) added to reviewer-core/src/review/run.ts as a violation (reviewer-core must do no I/O except the injected LLMProvider)",
+      "flags that `finalFindings` now starts from `merged.findings` instead of `ground.kept`, so findings that `groundFindings()` dropped still reach the review — the grounding gate is bypassed",
       "names the documented rule for the fs-import finding: reviewer-core purity (check A2) with its source (CLAUDE.md, reviewer-core/AGENTS.md or reviewer-core/docs/pipeline.md) — not only a prose description",
       "names the documented rule for the skipped-gate finding: the grounding gate (check A11) with its source (reviewer-core/AGENTS.md, reviewer-core/docs/pipeline.md or reviewer-core/INSIGHTS.md) — not only a prose description",
       "quotes the offending line verbatim as evidence for each finding, not a paraphrase",

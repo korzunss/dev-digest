@@ -1,20 +1,20 @@
-diff --git a/reviewer-core/src/pipeline/run.ts b/reviewer-core/src/pipeline/run.ts
-index ccccccc..ddddddd 100644
---- a/reviewer-core/src/pipeline/run.ts
-+++ b/reviewer-core/src/pipeline/run.ts
-@@ -1,4 +1,5 @@
- import type { PipelineInput, Finding } from "./types.js";
-+import { readFileSync } from "node:fs";
- import { draftFindings } from "./draft.js";
- import { dedupe } from "./dedupe.js";
- import { groundFindings } from "./ground.js";
-@@ -6,9 +7,10 @@ import { groundFindings } from "./ground.js";
- export async function runPipeline(input: PipelineInput): Promise<Finding[]> {
-   const llm = input.llm;
-+  const prompt = readFileSync(input.promptPath, "utf8");
-   const drafted = await draftFindings(input, llm);
-   const deduped = dedupe(drafted);
--  const grounded = await groundFindings(deduped, input.diff);
--  return grounded;
-+  return deduped;
- }
+diff --git a/reviewer-core/src/review/run.ts b/reviewer-core/src/review/run.ts
+index 4b1c2e7..9d0f3a1 100644
+--- a/reviewer-core/src/review/run.ts
++++ b/reviewer-core/src/review/run.ts
+@@ -19,4 +19,5 @@ import { callWithDeadline, describeRouting, type FailedCallUsage } from './llm-call.js';
+ import { LlmOutputInvalidError, LlmOutputTruncatedError } from '../llm/errors.js';
+ import { buildRepoContext, type RepoRuleSet } from './repo-rules.js';
+ import { applyScopeFilter, ScopedReview, type ScopedFinding } from './scope.js';
++import { readFileSync } from 'node:fs';
+ 
+@@ -489,7 +490,8 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutcome> {
+   emit('result', `Citation grounding: ${grounding}`);
+ 
++  const rulesOverride = readFileSync('.devdigest/review-rules.md', 'utf8');
+   // Out-of-scope filter (spec 006 D6) — runs ONLY on grounding survivors, and
+   // can only remove a finding, never add one back. No intent ⇒ skipped
+   // entirely, so a review without intent is byte-identical to before.
+-  let finalFindings: Finding[] = ground.kept;
++  let finalFindings: Finding[] = merged.findings;
+   if (input.intent) {
