@@ -63,11 +63,25 @@ function main(): void {
   console.log(`A = ${labelA}  sha ${a.git_sha}${a.dirty ? "-dirty" : ""}  (${a.times} runs)`);
   console.log(`B = ${labelB}  sha ${b.git_sha}${b.dirty ? "-dirty" : ""}  (${b.times} runs)`);
 
-  const nodeids = [...new Set([...Object.keys(a.tests), ...Object.keys(b.tests)])].sort();
-  for (const id of nodeids) {
-    const ta = a.tests[id];
-    const tb = b.tests[id];
-    const shortId = id.split(" > ").slice(-1)[0];
+  // Pair tests by case name (the last nodeid segment), not the full nodeid: the nodeid carries the
+  // eval file and describe label, so two agents graded on shared cases (strict vs lite) would never
+  // pair. Fall back to the full nodeid when a side has two tests with the same case name.
+  const caseName = (id: string) => id.split(" > ").slice(-1)[0];
+  const uniqueNames = (f: RepeatFile) => {
+    const names = Object.keys(f.tests).map(caseName);
+    return new Set(names).size === names.length;
+  };
+  const key = uniqueNames(a) && uniqueNames(b) ? caseName : (id: string) => id;
+  const byKey = (f: RepeatFile) =>
+    Object.fromEntries(Object.entries(f.tests).map(([id, t]) => [key(id), t]));
+  const testsA = byKey(a);
+  const testsB = byKey(b);
+
+  const ids = [...new Set([...Object.keys(testsA), ...Object.keys(testsB)])].sort();
+  for (const id of ids) {
+    const ta = testsA[id];
+    const tb = testsB[id];
+    const shortId = caseName(id);
     rateRow("\n  ", shortId, ta?.pass, tb?.pass);
 
     const practiceTexts = [...new Set([...Object.keys(ta?.practices ?? {}), ...Object.keys(tb?.practices ?? {})])];
