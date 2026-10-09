@@ -1,0 +1,8 @@
+[
+  { "from": "client", "to": "server", "label": "HTTP API :3001",
+    "evidence": { "file": "client/src/lib/api.ts", "contains": "localhost:3001" } },
+  { "from": "mcp-server", "to": "server", "label": "HTTP API :3001",
+    "evidence": { "file": "mcp-server/src/index.ts", "contains": "127.0.0.1:3001" } },
+  { "from": "e2e", "to": "client", "label": "browser :3000",
+    "evidence": { "file": "e2e/run.ts", "contains": "localhost:3000" } }
+]

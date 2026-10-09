@@ -139,6 +139,16 @@ Plan 05's pass-1 size cap was an HTML comment one line **after** the closing
 fence in `planner.md`, so the copied template never carried it; plan-verifier
 flagged it as partial (S1/P1). Place such rules as comments inside the fence,
 before its last line.
+**Extension (2026-10-08):** skills behave the same way, and real numbers in a worked
+example leak as facts. In the `dependency-checker` quality evals (`skillTask` = SKILL.md
+only), the chat-summary example said "6 packages · 1.3 GB", and an answer about pasted data
+with 4 packages wrote "6 packages" in its Key numbers. The prose said `flowchart`, but with
+no literal diagram skeleton the model drew `graph LR`, which failed the
+`` ```mermaid ``/`flowchart`
+grounding. Fix that worked (3/3 cases on the re-run): write examples with `<placeholders>`,
+not this repo's numbers, and give the diagram as a literal fenced skeleton. Evidence:
+`.claude/skills/dependency-checker/SKILL.md` → *Chat summary format*, *When the data is
+given to you instead* · `cd evals && pnpm run eval:skills dependency-checker`.
 
 ### 2026-09-26 — the onion skill's `depcruise` gate and its baseline are not real
 **Symptom:** the planner and architecture-reviewer both reached for
@@ -427,6 +437,12 @@ of the type or a tsconfig `paths` problem.
 _Nothing yet._
 
 ## Open Questions
+
+### 2026-10-08 — the `dependency-checker` eval asks for "three zod versions" while its data has two
+**Symptom:** the practice "the three different zod versions across server, client, and reviewer-core are called out explicitly as version drift" fails for answers that call out the drift correctly. The judge's evidence quotes a correct finding (`zod 3.23.8 vs 3.22.4`).
+**Cause:** `REPO_DATA` in the case file lists `zod@3.23.8` (server), `zod@3.22.4` (client) and `zod@3.23.8` (reviewer-core). That is two distinct versions in three packages, and the sentence "three different resolved zod versions" contradicts its own list. An accurate skill cannot satisfy the practice.
+**Rule:** don't tune `SKILL.md` to chase this practice. Either give reviewer-core a third version (e.g. `3.24.1`) in `REPO_DATA`, or reword the practice to "zod drift across the three packages". That is an eval change, so the user decides.
+**Evidence:** `evals/skills/dependency-checker/dependency-checker.cases.ts` (`REPO_DATA` zod lines, case 3 practices) · `cd evals && pnpm run eval:skills dependency-checker` → case 3, 1 FAIL out of 5, all 3 tests passing
 
 ### 2026-10-04 — does `spec-creator` pass 1 over-classify display details as blocking?
 **Symptom:** in the plan 20 smoke test (T1, feature "show the run's total token count in the review header") pass 1 returned B1–B5 as blocking; B3 (in/out split in a tooltip) and B4 (show cost too) are display details that fit an inline `[NEEDS CLARIFICATION: Qn]` in the draft.
