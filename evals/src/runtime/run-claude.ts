@@ -25,12 +25,25 @@ export interface Result {
   filesRead: string[];
   numTurns: number;
   isError: boolean;
+  /**
+   * Write attempts stopped by `blockTools`, as "<Tool> <file_path>". Captured in the PreToolUse
+   * hook, so it also sees attempts made inside subagents, which the main stream never shows.
+   */
+  writeAttempts: string[];
   metrics: Metrics;
 }
 
 export interface RunOptions {
   systemPrompt?: string;
   allowedTools?: string[];
+  /** Tools the session may not use at all — the only real restriction under bypassPermissions. */
+  disallowedTools?: string[];
+  /**
+   * Tools the model can see and call, but whose every call is denied by a PreToolUse hook and
+   * logged to `writeAttempts`. Unlike `disallowedTools` (removed from the model's tool list, so
+   * an attempt is invisible), this lets a case assert "it did not even try to write X".
+   */
+  blockTools?: string[];
   maxTurns?: number;
   cwd?: string;
   model?: string;
@@ -59,15 +72,43 @@ export async function runClaude(prompt: string, opts: RunOptions = {}): Promise<
     systemPrompt = (systemPrompt ?? "") + directive;
   }
 
+  const writeAttempts: string[] = [];
+  const blockTools = opts.blockTools ?? [];
   const options: Options = {
     model: opts.model ?? EVAL_MODEL,
     maxTurns: opts.maxTurns ?? MAX_TURNS,
     permissionMode: "bypassPermissions", // safe: evals only read/plan and tools are allow-listed
     systemPrompt,
     allowedTools,
+    ...(opts.disallowedTools ? { disallowedTools: opts.disallowedTools } : {}),
     cwd: opts.cwd ?? REPO_ROOT,
     // Default: do NOT load on-disk config — isolates the injected artifact. workflowTask overrides.
     settingSources: opts.settingSources ?? [],
+    ...(blockTools.length
+      ? {
+          hooks: {
+            PreToolUse: [
+              {
+                matcher: blockTools.join("|"),
+                hooks: [
+                  async (input) => {
+                    const i = input as { tool_name?: string; tool_input?: { file_path?: string; notebook_path?: string } };
+                    const path = i.tool_input?.file_path ?? i.tool_input?.notebook_path ?? "";
+                    writeAttempts.push(`${i.tool_name} ${path}`.trim());
+                    return {
+                      hookSpecificOutput: {
+                        hookEventName: "PreToolUse" as const,
+                        permissionDecision: "deny" as const,
+                        permissionDecisionReason: "Read-only eval session: writes are blocked.",
+                      },
+                    };
+                  },
+                ],
+              },
+            ],
+          },
+        }
+      : {}),
     env: subscriptionEnv(),
   };
 
@@ -160,6 +201,7 @@ export async function runClaude(prompt: string, opts: RunOptions = {}): Promise<
     filesRead: reads,
     numTurns,
     isError,
+    writeAttempts,
     metrics: { durationMs, inputTokens, outputTokens, toolCallCount },
   };
 }

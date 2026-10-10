@@ -26,6 +26,13 @@ export const COST_REGRESSION_RATIO = 1.25; // candidate mean tokens > 125% of ba
 export const SPAWN_TOOLS = new Set(["Task", "Agent"]);
 // workflowTask runs against the LIVE repo with bypassPermissions — keep this read-only.
 export const WORKFLOW_ALLOWED_TOOLS = ["Read", "Grep", "Glob", "Task", "Agent", "Skill"];
+// Under bypassPermissions allowedTools only pre-approves; it does not restrict. Without these a
+// workflow session (and the subagents it launches) used Write/Edit/Bash and wrote to
+// server/INSIGHTS.md and docs/ideas/ during an eval run.
+// Removed from the model's tool list outright:
+export const WORKFLOW_DISALLOWED_TOOLS = ["NotebookEdit", "Bash"];
+// Left visible but denied by a PreToolUse hook, so a case can see that the model TRIED to write:
+export const WORKFLOW_BLOCKED_TOOLS = ["Write", "Edit", "MultiEdit"];
 
 // --- Output verbosity -------------------------------------------------------
 // Set EVAL_QUIET to suppress per-run trace/verdict spam during multi-run aggregation.

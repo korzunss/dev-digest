@@ -65,11 +65,17 @@ export type WorkflowCase =
       expectSubagents?: string[];
       expectSkills?: string[];
       expectFilesRead?: string[];
+      /** Negatives: none of these subagents may be launched (e.g. no spec-creator for a bug fix). */
+      expectNotSubagents?: string[];
+      /** Negatives: no read path may contain any of these substrings (e.g. server/clones/). */
+      expectNotRead?: string[];
+      /** Negatives: no Write/Edit attempt (blocked or not) on a path containing these substrings. */
+      expectNoWriteTo?: string[];
       maxTurns?: number;
     };
 
 /** Did a skill engage? Either an explicit Skill tool-call, or reading its SKILL.md. */
-export function activated(result: Result, skill: string): boolean {
+export function activated(result: Pick<Result, "skillsInvoked" | "filesRead">, skill: string): boolean {
   const bySkill = result.skillsInvoked.some((s) => s === skill || s.endsWith(`:${skill}`));
   const byRead = result.filesRead.some((f) => f.includes(`skills/${skill}/SKILL.md`));
   return bySkill || byRead;
@@ -116,6 +122,14 @@ export const runSkillCases = (skill: string, cases: SkillCase[]) => runQualityCa
 export const runAgentCases = (agent: string, cases: AgentCase[]) => runQualityCases(agent, cases, agentTask);
 
 export function runWorkflowCases(cases: WorkflowCase[]): void {
+  // Each branch collects its failures as messages first, records the outcome from them, then
+  // asserts. Recording `passed` explicitly keeps eval:repeat honest: without it a workflow record
+  // fell back to "did the session end without an error", which ignored every expectation.
+  const finish = (name: string, result: Result, failures: string[]) => {
+    record(name, { result, passed: failures.length === 0 });
+    expect(failures, failures.join("\n")).toEqual([]);
+  };
+
   for (const c of cases) {
     test(c.name, async () => {
       if (c.kind === "dispatch") {
@@ -126,22 +140,27 @@ export function runWorkflowCases(cases: WorkflowCase[]): void {
           stopWhen: (p) => p.subagents.includes(expect1),
         });
         logTrace(c.name, result);
-        try {
-          expect(result.subagents, `subagents: ${result.subagents.join(", ")}`).toContain(c.expectSubagent);
-        } finally {
-          record(c.name, { result });
-        }
+        const failures = result.subagents.includes(c.expectSubagent)
+          ? []
+          : [`subagent ${c.expectSubagent} not launched | subagents: ${result.subagents.join(", ")}`];
+        finish(c.name, result, failures);
       } else if (c.kind === "activation") {
-        const result = await workflowTask(c.prompt, { maxTurns: c.maxTurns });
+        // A positive stops as soon as the skill engages. Hitting maxTurns (isError) is not a
+        // failure here: the assertion is only whether the skill engaged.
+        const result = await workflowTask(c.prompt, {
+          maxTurns: c.maxTurns,
+          stopWhen: c.shouldActivate ? (p) => activated(p, c.skill) : undefined,
+        });
         logTrace(c.name, result);
-        try {
-          expect(
-            activated(result, c.skill),
-            `skills: ${result.skillsInvoked.join(", ")} | reads: ${result.filesRead.join(", ")}`,
-          ).toBe(c.shouldActivate);
-        } finally {
-          record(c.name, { result });
-        }
+        const got = activated(result, c.skill);
+        const failures =
+          got === c.shouldActivate
+            ? []
+            : [
+                `skill ${c.skill} activated=${got}, expected ${c.shouldActivate} | skills: ` +
+                  `${result.skillsInvoked.join(", ")} | reads: ${result.filesRead.join(", ")}`,
+              ];
+        finish(c.name, result, failures);
       } else if (c.kind === "trace") {
         // One session, many asserts — every provided expectation is checked against the same trace.
         // Stop as soon as ALL expectations are satisfied (e.g. doc read + subagent launched), so a
@@ -149,37 +168,39 @@ export function runWorkflowCases(cases: WorkflowCase[]): void {
         const subs = c.expectSubagents ?? [];
         const skls = c.expectSkills ?? [];
         const files = c.expectFilesRead ?? [];
-        const skillEngaged = (p: { skillsInvoked: string[]; filesRead: string[] }, skill: string) =>
-          p.skillsInvoked.some((s) => s === skill || s.endsWith(`:${skill}`)) ||
-          p.filesRead.some((f) => f.includes(`skills/${skill}/SKILL.md`));
+        const notSubs = c.expectNotSubagents ?? [];
+        const notFiles = c.expectNotRead ?? [];
+        const noWrite = c.expectNoWriteTo ?? [];
+        // With no positive expectation `every` over empty lists is vacuously true, which would stop a
+        // negatives-only case after its first tool call — such a case runs to its natural end instead.
+        const hasPositive = subs.length + skls.length + files.length > 0;
+        const violated = (p: { subagents: string[]; filesRead: string[] }) =>
+          notSubs.some((s) => p.subagents.includes(s)) || p.filesRead.some((r) => notFiles.some((f) => r.includes(f)));
         const result = await workflowTask(c.prompt, {
           maxTurns: c.maxTurns,
           stopWhen: (p) =>
-            subs.every((s) => p.subagents.includes(s)) &&
-            skls.every((s) => skillEngaged(p, s)) &&
-            files.every((f) => p.filesRead.some((r) => r.includes(f))),
+            violated(p) ||
+            (hasPositive &&
+              subs.every((s) => p.subagents.includes(s)) &&
+              skls.every((s) => activated(p, s)) &&
+              files.every((f) => p.filesRead.some((r) => r.includes(f)))),
         });
         logTrace(c.name, result);
-        try {
-          for (const sub of c.expectSubagents ?? []) {
-            expect(result.subagents, `subagents: ${result.subagents.join(", ")}`).toContain(sub);
-          }
-          for (const skill of c.expectSkills ?? []) {
-            expect(
-              activated(result, skill),
-              `skill ${skill} not engaged | skills: ${result.skillsInvoked.join(", ")} | reads: ${result.filesRead.join(", ")}`,
-            ).toBe(true);
-          }
-          for (const file of c.expectFilesRead ?? []) {
-            expect(
-              result.filesRead.some((f) => f.includes(file)),
-              `${file} not read | reads: ${result.filesRead.join(", ")}`,
-            ).toBe(true);
-          }
-          expect(result.isError).toBe(false);
-        } finally {
-          record(c.name, { result });
-        }
+        const reads = result.filesRead.join(", ");
+        const failures = [
+          ...subs
+            .filter((s) => !result.subagents.includes(s))
+            .map((s) => `subagent ${s} not launched | subagents: ${result.subagents.join(", ")}`),
+          ...skls
+            .filter((s) => !activated(result, s))
+            .map((s) => `skill ${s} not engaged | skills: ${result.skillsInvoked.join(", ")} | reads: ${reads}`),
+          ...files.filter((f) => !result.filesRead.some((r) => r.includes(f))).map((f) => `${f} not read | reads: ${reads}`),
+          ...notSubs.filter((s) => result.subagents.includes(s)).map((s) => `subagent ${s} must not be launched`),
+          ...notFiles.flatMap((f) => result.filesRead.filter((r) => r.includes(f)).map((r) => `must not read ${r}`)),
+          ...noWrite.flatMap((f) => result.writeAttempts.filter((w) => w.includes(f)).map((w) => `must not try to write: ${w}`)),
+          ...(result.isError ? [`session ended with an error (e.g. maxTurns ${c.maxTurns ?? "default"} hit)`] : []),
+        ];
+        finish(c.name, result, failures);
       } else {
         // contrast: treatment (real harness) vs control (empty tmpdir, no on-disk config).
         const tools = c.tools ?? ["Read", "Grep", "Glob"];
@@ -193,15 +214,12 @@ export function runWorkflowCases(cases: WorkflowCase[]): void {
         });
         logTrace(`${c.name} [treatment]`, treatment);
         logTrace(`${c.name} [control]`, control);
-        try {
-          const treatmentRead = treatment.filesRead.some((f) => f.includes(c.expectFileRead));
-          const controlRead = control.filesRead.some((f) => f.includes(c.expectFileRead));
-          expect(treatmentRead, `treatment reads: ${treatment.filesRead.join(", ")}`).toBe(true);
-          expect(controlRead, `control reads: ${control.filesRead.join(", ")}`).toBe(false);
-        } finally {
-          record(`${c.name} [treatment]`, { result: treatment });
-          record(`${c.name} [control]`, { result: control });
-        }
+        const treatmentRead = treatment.filesRead.some((f) => f.includes(c.expectFileRead));
+        const controlRead = control.filesRead.some((f) => f.includes(c.expectFileRead));
+        record(`${c.name} [treatment]`, { result: treatment, passed: treatmentRead });
+        record(`${c.name} [control]`, { result: control, passed: !controlRead });
+        expect(treatmentRead, `treatment reads: ${treatment.filesRead.join(", ")}`).toBe(true);
+        expect(controlRead, `control reads: ${control.filesRead.join(", ")}`).toBe(false);
       }
     });
   }

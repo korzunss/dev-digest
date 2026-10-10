@@ -66,6 +66,7 @@ export async function runOpenRouter(prompt: string, opts: RunOptions = {}): Prom
     filesRead: [],
     numTurns: 1,
     isError,
+    writeAttempts: [],
     metrics: { durationMs: Date.now() - started, inputTokens, outputTokens, toolCallCount: 0 },
   };
 }
