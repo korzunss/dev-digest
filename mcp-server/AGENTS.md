@@ -3,6 +3,10 @@
 A local **stdio MCP server**: a thin HTTP client over the DevDigest API that gives
 Claude Code five review tools. Package manager: **pnpm**.
 
+**First step of any task here**, before planning, searching or editing: read
+`insights/gotchas.md` (the rules in force for this package) and name the items that
+bear on the task, or say none do. This is the root `CLAUDE.md` session protocol.
+
 ## Commands
 
 `pnpm test` (vitest, hermetic, <1 s) · `pnpm typecheck` — typecheck is the build;
