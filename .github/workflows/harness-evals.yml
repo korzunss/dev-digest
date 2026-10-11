@@ -1,0 +1,264 @@
+# Harness evals (evals/) on OpenRouter. Only the suites a PR touches run (evals/scripts/ci-detect.mjs).
+# Task model defaults to DeepSeek V4 Flash; switch per run via workflow_dispatch inputs or the repo
+# variables EVAL_MODEL / EVAL_JUDGE_MODEL. Model jobs need the OPENROUTER_API_KEY Actions secret and
+# are skipped (green, with a notice) when it is unavailable (fork PRs) or their suite list is empty.
+# Never pull_request_target: fork code must not see the secret.
+name: harness-evals
+
+on:
+  pull_request:
+    paths:
+      - '.claude/**'
+      - 'CLAUDE.md'
+      - '**/AGENTS.md'
+      - '**/CLAUDE.md'
+      - '**/insights/gotchas.md'
+      - 'evals/**'
+      - '.github/workflows/harness-evals.yml'
+  workflow_dispatch:
+    inputs:
+      model:
+        description: 'Task model (OpenRouter slug); empty = repo variable EVAL_MODEL or the default'
+        type: string
+        default: ''
+      judge_model:
+        description: 'Judge model (OpenRouter slug); empty = repo variable EVAL_JUDGE_MODEL or the default'
+        type: string
+        default: ''
+      scope:
+        description: 'all = every suite that has evals; changed = diff against the default branch'
+        type: choice
+        options: [all, changed]
+        default: all
+
+permissions:
+  contents: read
+
+concurrency:
+  group: harness-evals-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  EVAL_BACKEND: openrouter
+  EVAL_MODEL: ${{ inputs.model || vars.EVAL_MODEL || 'deepseek/deepseek-v4-flash' }}
+  EVAL_JUDGE_MODEL: ${{ inputs.judge_model || vars.EVAL_JUDGE_MODEL || 'deepseek/deepseek-v4-pro' }}
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      skills: ${{ steps.changes.outputs.skills }}
+      agents: ${{ steps.changes.outputs.agents }}
+      run_workflow: ${{ steps.changes.outputs.run_workflow }}
+      has_key: ${{ steps.key.outputs.has_key }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check OPENROUTER_API_KEY
+        id: key
+        env:
+          HAS_KEY: ${{ secrets.OPENROUTER_API_KEY != '' }}
+        run: |
+          echo "has_key=$HAS_KEY" >> "$GITHUB_OUTPUT"
+          if [ "$HAS_KEY" != "true" ]; then
+            echo "::notice::OPENROUTER_API_KEY not available (fork PR or unset) — model evals skipped"
+          fi
+
+      - name: Detect suites
+        id: changes
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          SCOPE: ${{ inputs.scope }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            CHANGED_FILES="$(git diff --name-only "$BASE_SHA...$HEAD_SHA")"
+          elif [ "$SCOPE" = "all" ]; then
+            CI_DETECT_ALL=1
+            export CI_DETECT_ALL
+          else
+            CHANGED_FILES="$(git diff --name-only "origin/$DEFAULT_BRANCH...HEAD")"
+          fi
+          export CHANGED_FILES
+          node evals/scripts/ci-detect.mjs
+
+  static:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: evals
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: evals/pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm typecheck
+
+      - run: pnpm eval:quality
+
+      - run: pnpm exec vitest run src/records/stats.test.ts
+
+  skills:
+    needs: detect
+    if: needs.detect.outputs.has_key == 'true' && needs.detect.outputs.skills != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      max-parallel: 1
+      fail-fast: false
+      matrix:
+        suite: ${{ fromJSON(needs.detect.outputs.skills) }}
+    defaults:
+      run:
+        working-directory: evals
+    env:
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: evals/pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Run skill evals
+        env:
+          SUITE: ${{ matrix.suite }}
+        run: pnpm exec vitest run "skills/$SUITE/"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: harness-evals-skills-${{ matrix.suite }}
+          path: evals/results
+          if-no-files-found: ignore
+
+  agents:
+    needs: detect
+    if: needs.detect.outputs.has_key == 'true' && needs.detect.outputs.agents != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      max-parallel: 1
+      fail-fast: false
+      matrix:
+        suite: ${{ fromJSON(needs.detect.outputs.agents) }}
+    defaults:
+      run:
+        working-directory: evals
+    env:
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      OPENROUTER_BASE_URL: http://localhost:4000
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: evals/pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Start LiteLLM proxy
+        run: pnpm proxy:up
+
+      - name: Run agent evals
+        env:
+          SUITE: ${{ matrix.suite }}
+        run: pnpm exec vitest run "agents/$SUITE/"
+
+      - name: Proxy logs
+        if: failure()
+        run: docker compose -f proxy/docker-compose.yml logs --tail 100
+
+      - name: Stop LiteLLM proxy
+        if: always()
+        run: pnpm proxy:down
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: harness-evals-agents-${{ matrix.suite }}
+          path: evals/results
+          if-no-files-found: ignore
+
+  workflow:
+    needs: detect
+    if: needs.detect.outputs.has_key == 'true' && needs.detect.outputs.run_workflow == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: evals
+    env:
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      OPENROUTER_BASE_URL: http://localhost:4000
+    steps:
+      - uses: actions/checkout@v4
+
+      # The sandbox snapshots the tree with `git stash create`, which needs a committer identity.
+      - name: Git identity
+        run: |
+          git config --global user.email "harness-evals@users.noreply.github.com"
+          git config --global user.name "harness-evals"
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: evals/pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Start LiteLLM proxy
+        run: pnpm proxy:up
+
+      - name: Run workflow evals
+        run: pnpm eval:workflow
+
+      - name: Proxy logs
+        if: failure()
+        run: docker compose -f proxy/docker-compose.yml logs --tail 100
+
+      - name: Stop LiteLLM proxy
+        if: always()
+        run: pnpm proxy:down
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: harness-evals-workflow
+          path: evals/results
+          if-no-files-found: ignore

@@ -188,60 +188,54 @@ workflow cases:
 
 ### Wiring it into GitHub Actions (per-PR)
 
-The engine is CI-ready: bring the proxy up as a step, wait for it, run the tier, tear it down. Put
-the OpenRouter key in the repo's **Actions secrets** as `OPENROUTER_API_KEY` (Settings → Secrets and
-variables → Actions). Create `.github/workflows/<name>.yml` in your repo:
+The workflow is `.github/workflows/harness-evals.yml`. It runs the harness evals on the OpenRouter
+backend and only runs the suites a PR actually touches.
 
-```yaml
-name: evals
-on:
-  pull_request:
-    paths: ['evals/**', '.claude/**', 'CLAUDE.md']   # only when the harness/artifacts change
+**Triggers.** `pull_request` with a `paths:` filter over the harness (`.claude/**`, `CLAUDE.md`,
+`**/AGENTS.md`, `**/CLAUDE.md`, `**/insights/gotchas.md`, `evals/**`, the workflow file itself), and
+`workflow_dispatch` with the inputs `model`, `judge_model` and `scope` (`all` = every suite that has
+evals, the default; `changed` = diff against the default branch). There is no `push` trigger and
+never `pull_request_target`, so fork code cannot see the secret.
 
-permissions:
-  contents: read
+**Jobs.**
 
-jobs:
-  workflow-evals:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: evals
-    env:
-      EVAL_BACKEND: openrouter
-      OPENROUTER_BASE_URL: http://localhost:4000
-      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}   # repo Actions secret
-      EVAL_MODEL: google/gemini-2.5-flash
-      EVAL_JUDGE_MODEL: google/gemini-2.5-flash
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with: { version: 10 }
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-          cache-dependency-path: evals/pnpm-lock.yaml
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm typecheck
+| Job | Runs | Proxy |
+|-----|------|-------|
+| `detect` | `git diff --name-only <base>...<head>` fed to `scripts/ci-detect.mjs`; checks the secret | no |
+| `static` | `pnpm typecheck`, `pnpm eval:quality`, `src/records/stats.test.ts` (no model, always runs) | no |
+| `skills` | matrix over changed skills with evals, content tier, `max-parallel: 1` | no (direct OpenRouter) |
+| `agents` | matrix over changed agents with evals, tool tier, `max-parallel: 1` | LiteLLM |
+| `workflow` | `pnpm eval:workflow` when the harness itself changed | LiteLLM |
 
-      # --- the engine ---
-      - run: docker compose -f proxy/docker-compose.yml up -d   # OPENROUTER_API_KEY from job env
-      - run: pnpm proxy:wait                                     # block until the proxy answers
-      - run: pnpm eval:workflow                                  # or eval:agents / eval:skills / eval
-      - if: failure()
-        run: docker compose -f proxy/docker-compose.yml logs --tail 100
-      - if: always()
-        run: docker compose -f proxy/docker-compose.yml down
+Every model job is blocking (no `continue-on-error`) and uploads `evals/results` as an artifact
+(`if: always()`). DeepSeek V4 Flash on the tool tiers is unmeasured (the verified-model table above
+lists `deepseek/deepseek-chat` failing dispatch), so a red `agents` or `workflow` job may mean the
+model, not the harness; switch the model (below) before debugging the artifact.
+
+**Model switch.** `EVAL_MODEL` resolves `inputs.model` → repo variable `EVAL_MODEL` → default
+`deepseek/deepseek-v4-flash`; `EVAL_JUDGE_MODEL` resolves `inputs.judge_model` → repo variable
+`EVAL_JUDGE_MODEL` → default `deepseek/deepseek-v4-pro`. Repo variables: Settings → Secrets and
+variables → Actions → Variables.
+
+**Secret.** `OPENROUTER_API_KEY` (Actions secret). It is exposed only to the model jobs. When it is
+unavailable (fork PRs, or unset) `detect` emits a `::notice` and the model jobs are skipped, not failed.
+
+**Change → suite rules** (`scripts/ci-detect.mjs`):
+- `.claude/skills/<n>/**` or `evals/skills/<n>/**` → `evals/skills/<n>` (if it has `*.eval.ts`).
+- `.claude/agents/<n>.md` or `evals/agents/<n>/**` → `evals/agents/<n>`.
+- Workflow tier: root `CLAUDE.md` / `AGENTS.md`, nested `*/AGENTS.md`, `*/CLAUDE.md`,
+  `*/insights/gotchas.md` (outside `.claude/`), `.claude/settings.json`, any agent definition,
+  `evals/workflow/**`, `evals/src/**`. A skill change triggers it only when the skill's name appears as
+  a token in `evals/workflow/*.cases.ts`.
+- A changed skill or agent with no evals is not run and does not fail: the log has
+  `SKIP <tier> <name> (no evals)` plus a `::notice` annotation. An empty suite list skips its job.
+
+**Reproduce detection locally** (from `evals/`):
+
+```bash
+CHANGED_FILES=$'.claude/agents/architecture-reviewer.md' node scripts/ci-detect.mjs
+CI_DETECT_ALL=1 node scripts/ci-detect.mjs      # every suite that has evals
 ```
-
-Notes:
-- ubuntu runners ship Docker + `docker compose`, so no extra setup is needed.
-- The proxy container reads `OPENROUTER_API_KEY` straight from the job `env` (which is fed by the
-  secret) — you don't pass it to `docker compose` explicitly.
-- Because tool tiers cost real tokens, gate on `paths:` (only when the harness/artifacts change) and
-  keep the case count small. For a stricter gate, split into a required `eval:agents`/`eval:skills`
-  job and a non-blocking `eval:workflow` job (activation flakiness, above).
 
 ## Module layout — `src/` (the engine)
 
@@ -522,6 +516,7 @@ Cheap and orthogonal; the `TrendReporter` keeps writing test-level outcome rows 
 | `EVAL_MAX_TURNS` | `8` | max agent turns per case |
 | `EVAL_CONFIG` | `candidate` | `benchmark` sets this to `baseline` to skip artifact injection |
 | `EVAL_QUIET` | unset | suppress per-run trace spam during multi-run aggregation |
+| `CI_DETECT_ALL` | unset | `1`/`true`: `scripts/ci-detect.mjs` ignores `CHANGED_FILES` and selects every suite that has evals |
 
 ## Records, statistics, flags
 
