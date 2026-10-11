@@ -103,12 +103,16 @@ export const cases: WorkflowCase[] = [
   // --- trace (1 session): /sdd — a feature starts at the spec stage -----------------------------
   {
     kind: "trace",
-    name: "a new feature request goes to spec-creator first",
+    // CLAUDE.md allows an optional brainstormer stage before the spec for a goal with no chosen
+    // approach, and a PDF export with no chosen approach qualifies — so either is a correct first
+    // step (wf-baseline run 2 went brainstormer, then asked the user, and failed a spec-only check).
+    // What must not happen is skipping straight to planning or implementation.
+    name: "a new feature request starts at brainstormer or spec-creator, not implementation",
     prompt:
       "Хочу нову фічу: експорт готового рев'ю в PDF з кнопкою на сторінці рев'ю. " +
       "Почни роботу над нею так, як це прописано в процесі цього репо.",
-    expectSubagents: ["spec-creator"],
-    expectNotSubagents: ["implementer"],
+    expectAnySubagent: ["brainstormer", "spec-creator"],
+    expectNotSubagents: ["implementer", "implementation-planner"],
     // /sdd may run the optional brainstormer first, so spec-creator can come a dozen turns in.
     maxTurns: 30,
   },
@@ -124,7 +128,8 @@ export const cases: WorkflowCase[] = [
       "Знайди причину і скажи, як її виправити. Файли не редагуй.",
     expectNotSubagents: ["spec-creator", "brainstormer"],
     expectNotRead: ["server/clones/"],
-    maxTurns: 25,
+    // 25 was hit at 26 in wf-baseline while the negative itself held; a bug hunt reads a lot.
+    maxTurns: 35,
   },
 
   // --- trace (1 session): API-route task — deep-dive routing + reviewer dispatch ----------------

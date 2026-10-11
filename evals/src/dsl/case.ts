@@ -65,6 +65,8 @@ export type WorkflowCase =
       expectSubagents?: string[];
       expectSkills?: string[];
       expectFilesRead?: string[];
+      /** At least ONE of these subagents must be launched (e.g. brainstormer or spec-creator). */
+      expectAnySubagent?: string[];
       /** Negatives: none of these subagents may be launched (e.g. no spec-creator for a bug fix). */
       expectNotSubagents?: string[];
       /** Negatives: no read path may contain any of these substrings (e.g. server/clones/). */
@@ -168,12 +170,13 @@ export function runWorkflowCases(cases: WorkflowCase[]): void {
         const subs = c.expectSubagents ?? [];
         const skls = c.expectSkills ?? [];
         const files = c.expectFilesRead ?? [];
+        const anySubs = c.expectAnySubagent ?? [];
         const notSubs = c.expectNotSubagents ?? [];
         const notFiles = c.expectNotRead ?? [];
         const noWrite = c.expectNoWriteTo ?? [];
         // With no positive expectation `every` over empty lists is vacuously true, which would stop a
         // negatives-only case after its first tool call — such a case runs to its natural end instead.
-        const hasPositive = subs.length + skls.length + files.length > 0;
+        const hasPositive = subs.length + skls.length + files.length + anySubs.length > 0;
         const violated = (p: { subagents: string[]; filesRead: string[] }) =>
           notSubs.some((s) => p.subagents.includes(s)) || p.filesRead.some((r) => notFiles.some((f) => r.includes(f)));
         const result = await workflowTask(c.prompt, {
@@ -182,6 +185,7 @@ export function runWorkflowCases(cases: WorkflowCase[]): void {
             violated(p) ||
             (hasPositive &&
               subs.every((s) => p.subagents.includes(s)) &&
+              (anySubs.length === 0 || anySubs.some((s) => p.subagents.includes(s))) &&
               skls.every((s) => activated(p, s)) &&
               files.every((f) => p.filesRead.some((r) => r.includes(f)))),
         });
@@ -191,6 +195,9 @@ export function runWorkflowCases(cases: WorkflowCase[]): void {
           ...subs
             .filter((s) => !result.subagents.includes(s))
             .map((s) => `subagent ${s} not launched | subagents: ${result.subagents.join(", ")}`),
+          ...(anySubs.length && !anySubs.some((s) => result.subagents.includes(s))
+            ? [`none of ${anySubs.join(" / ")} launched | subagents: ${result.subagents.join(", ")}`]
+            : []),
           ...skls
             .filter((s) => !activated(result, s))
             .map((s) => `skill ${s} not engaged | skills: ${result.skillsInvoked.join(", ")} | reads: ${reads}`),
