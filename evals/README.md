@@ -290,9 +290,10 @@ src/
 
 ## Case layout — where your tests, prompts, and fixtures live
 
-> The package ships with **no example cases** — `skills/`, `agents/`, and `workflow/` are yours to
-> fill. The names below (`onion-architecture`, `architecture-reviewer`, …) are **illustrations of
-> the format only**, not files in the repo. Create your own with `pnpm eval:scaffold`.
+> The repo ships these suites: skills `dependency-checker`, `onion-architecture`,
+> `engineering-insights`; agents `architecture-reviewer`, `architecture-reviewer-lite`,
+> `security-reviewer`, `plan-verifier`; and the `workflow` review pipeline. Add your own with
+> `pnpm eval:scaffold`.
 
 You bring your own skills/agents, so **you scaffold cases, not hand-copy files**:
 
@@ -454,6 +455,8 @@ pnpm eval:benchmark skills/engineering-insights -n 5    # a skill
 pnpm eval:benchmark agents/architecture-reviewer -n 5   # an agent
 ```
 
+Committed benchmark summaries live in `evals/docs/benchmarks/` (the raw `results/` are gitignored).
+
 **candidate vs baseline** — the whole idea. The benchmark runs the *same test case* in two
 configurations:
 
@@ -576,7 +579,8 @@ tokens > 125% of baseline), `missing_data` (a config has zero records for a test
 
 Sessions run with `permissionMode: "bypassPermissions"`, so `workflowTask` keeps a **read-only
 allow-list** (`Read, Grep, Glob, Task, Agent, Skill` — no `Bash`/`Write`/`Edit`). Don't copy the
-bypass pattern into a context that grants write tools.
+bypass pattern into a context that grants write tools. `agentTask` likewise removes `Bash`,
+`Write`, `Edit`, `MultiEdit` and `NotebookEdit` via `disallowedTools`.
 
 ## Deferred (recorded so it isn't rediscovered)
 

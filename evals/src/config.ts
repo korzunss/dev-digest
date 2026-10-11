@@ -33,6 +33,9 @@ export const WORKFLOW_ALLOWED_TOOLS = ["Read", "Grep", "Glob", "Task", "Agent", 
 export const WORKFLOW_DISALLOWED_TOOLS = ["NotebookEdit", "Bash"];
 // Left visible but denied by a PreToolUse hook, so a case can see that the model TRIED to write:
 export const WORKFLOW_BLOCKED_TOOLS = ["Write", "Edit", "MultiEdit"];
+// agentTask runs from the live REPO_ROOT under bypassPermissions, where allowedTools restricts
+// nothing (root INSIGHTS.md 2026-10-11) — remove Bash and every mutating tool outright.
+export const AGENT_DISALLOWED_TOOLS = ["Bash", "Write", "Edit", "MultiEdit", "NotebookEdit"];
 
 // --- Output verbosity -------------------------------------------------------
 // Set EVAL_QUIET to suppress per-run trace/verdict spam during multi-run aggregation.

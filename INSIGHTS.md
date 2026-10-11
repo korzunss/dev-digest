@@ -75,6 +75,12 @@ write-up here. That keeps `AGENTS.md` short without losing the reasoning.
 
 ## What Doesn't Work
 
+### 2026-10-11 — "no Bash/Write/Edit in `trace.tools`" does not prove an agent eval left the repo alone
+**Symptom:** plan 32 added `disallowedTools` (Bash, Write, Edit, MultiEdit, NotebookEdit) to `agentTask`. Its M1 gate checked with `jq` that no `agents/*` record lists those tools in `trace.tools`, and every record passed.
+**Cause:** `runClaude` collects `tool_use` blocks from the main stream only, so tool calls made inside a subagent never reach `trace.tools`. `agentTask` still offers `Task`/`Agent` (and `WebFetch`/`WebSearch`) under `bypassPermissions`. Whether the SDK's `disallowedTools` also binds a spawned subagent was not checked.
+**Rule:** for an agent eval, prove isolation with the repo's `git status --porcelain` before vs after the run, as `workflowTask` does. Treat a clean `trace.tools` as evidence about the main session only. Until `Task`/`Agent` are disallowed in `agentTask`, assume a subagent may write.
+**Evidence:** `evals/src/runtime/run-claude.ts:30-33` (only `writeAttempts`, set by the hook, sees subagent calls) · `evals/src/config.ts:38` · `evals/src/tasks.ts:44` · plan 32 M1 log (before/after status diff: unchanged) · security-reviewer manual check, plan 32 Verification log
+
 ### 2026-10-11 — `allowedTools` and a PreToolUse deny hook do not keep an SDK workflow eval read-only
 **Symptom:** `pnpm eval:repeat workflow` sessions wrote to the repo: a fabricated pgvector entry in `server/INSIGHTS.md` + `server/insights/gotchas.md` (the engineering-insights activation case) and an idea brief in `docs/ideas/` (the feature case: brainstormer, then the main session saved the brief per CLAUDE.md). After `Write`/`Edit` got a deny hook, one run still landed a `Write` + `Edit` pair: the trace listed both tools, `write_attempts` was empty, so the hook was never called.
 **Cause:** under `permissionMode: "bypassPermissions"` the SDK's `allowedTools` only pre-approves the listed tools; it restricts nothing. A hook is fail-open: when it does not fire, the tool just runs. The miss did not reproduce in 8 targeted probes (write before and after a subagent, after `brainstormer`, from Claude Code and from a plain terminal).
@@ -263,6 +269,16 @@ that path; it's runtime data, and the next resync overwrites it.
 **Evidence:** `CLAUDE.md` → "Do not touch"; `.gitignore` → `clones/`
 
 ## Tool & Library Notes
+
+### 2026-10-11 — a Claude Code background command dies at 2 h, and `eval:benchmark -n 5` can take longer
+**Symptom:** `pnpm eval:benchmark skills/onion-architecture -n 5` (80 Haiku sessions plus a Sonnet judge, subscription) was started as a background command. It was killed with exit 143 during baseline run 5/5, when only 4 of its 8 records had been written, and no `benchmark.md` was produced. Single runs took 10–17 minutes each.
+**Cause:** a background Bash command has a hard limit of 7 200 000 ms. `benchmark.ts` writes its report only after all 2×N runs, although each run appends its records to `records.jsonl` as it goes.
+**Rule:**
+- Estimate first: cases × runs × 2 × ~1.5 min. If that is over ~100 min, split the work, for example by running `-n 3` twice.
+- To recover a killed run, keep its records. Re-run only the missing configuration run, using the exact per-run invocation: `EVAL_CONFIG=<config> EVAL_QUIET=1 pnpm exec vitest run --reporter=dot <pattern>`.
+- Then rebuild the report from `records.jsonl`. Take the records from the benchmark's start line, drop the partial `run_id`, and pass them through the same `aggregate`/`byConfig`/`computeFlags` path as `benchmark.ts` (a scratch copy with only the record source changed).
+- Run long jobs under `caffeinate -dimsu` so the Mac does not sleep.
+**Evidence:** `evals/src/records/benchmark.ts:96-106` · plan 32 *Handoffs → M2* (partial run `20261011T184647`, rebuilt report `evals/results/benchmarks/2026-10-11T19-03-26-504Z/`)
 
 ### 2026-10-11 — the LiteLLM `main-stable` image refuses to start without a master key
 **Symptom:** in CI the `agents` and `workflow` jobs of `harness-evals.yml` failed at `Start LiteLLM proxy` with `error: proxy did not become healthy`. The container log said `LiteLLM proxy refused to start: no master key is set, so every request would be accepted without authentication.` The same config had worked earlier in no-auth mode.

@@ -8,7 +8,7 @@
  *     SYSTEMIC effect: does a skill activate, does a subagent dispatch, does CLAUDE.md matter.
  */
 
-import { IS_BASELINE, WORKFLOW_ALLOWED_TOOLS, WORKFLOW_BLOCKED_TOOLS, WORKFLOW_DISALLOWED_TOOLS } from "./config.js";
+import { AGENT_DISALLOWED_TOOLS, IS_BASELINE, WORKFLOW_ALLOWED_TOOLS, WORKFLOW_BLOCKED_TOOLS, WORKFLOW_DISALLOWED_TOOLS } from "./config.js";
 import { runClaude, type Result, type RunOptions } from "./runtime/run-claude.js";
 import { createSandbox } from "./runtime/sandbox.js";
 import { REPO_ROOT } from "./artifacts/paths.js";
@@ -34,11 +34,14 @@ export function skillTask(prompt: string, skillName: string, opts: RunOptions = 
  * or downgrade every finding to `cannot-verify`. So we hand it exactly the tools it declares in
  * frontmatter and let it run from REPO_ROOT (runClaude's default cwd), the way production does.
  * Both conditions (candidate + baseline) get the same tools so the measured lift stays fair.
+ * The agent keeps its declared read tools; Bash and the mutating tools are removed outright via
+ * disallowedTools (not merely left off allowedTools, which restricts nothing under
+ * bypassPermissions), and a case cannot re-enable them through opts.
  */
 export function agentTask(prompt: string, agentName: string, opts: RunOptions = {}) {
   const systemPrompt = IS_BASELINE ? undefined : agentContent(agentName);
   const allowedTools = agentTools(agentName);
-  return runClaude(prompt, { allowedTools, ...opts, systemPrompt });
+  return runClaude(prompt, { allowedTools, ...opts, disallowedTools: AGENT_DISALLOWED_TOOLS, systemPrompt });
 }
 
 /**
