@@ -172,10 +172,14 @@ and the full table → `evals/README.md` (*Which change → which run*).
 - `server/clones/**` — runtime checkouts of imported repos. **Exclude it from
   every search/grep**: it contains full copies of other repos (and of this one),
   so matches there are noise.
-- `.claude/skills/*/evals/fixtures/**` — skill-eval inputs with **deliberately
-  seeded** bugs, scored against `evals/expected-findings.json` by line number.
+- `.claude/skills/*/evals/fixtures/**`, `evals/agents/*/fixtures/**` and
+  `evals/skills/*/fixtures/**` — eval inputs, many with **deliberately seeded**
+  bugs or incomplete patches. The skill ones are scored against
+  `evals/expected-findings.json` by line number; the harness ones are inlined
+  into prompts and scored by the case's `practices` in `evals/<tier>/<name>/*.cases.ts`.
   Exclude them from searches, never fix or reformat them, and don't report them
-  as findings. Edit them only to change an eval, together with its answer key.
+  as findings. Edit them only to change an eval, together with its answer key
+  or case.
 - `**/.env` — local secrets.
 - **Lock files — never hand-edit.** They are generated and carry integrity
   hashes. Change `package.json`, then reinstall with that package's own manager

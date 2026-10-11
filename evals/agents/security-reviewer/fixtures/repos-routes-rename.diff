@@ -1,0 +1,20 @@
+diff --git a/server/src/modules/repos/routes.ts b/server/src/modules/repos/routes.ts
+index 3b1f6a2..9e0a4c1 100644
+--- a/server/src/modules/repos/routes.ts
++++ b/server/src/modules/repos/routes.ts
+@@ -29,13 +29,13 @@ export default async function reposRoutes(appBase: FastifyInstance) {
+ 
+   app.post('/repos', { schema: { body: RepoInput } }, async (req, reply) => {
+     const { workspaceId, userId } = await getContext(app.container, req);
+-    const { repo, created } = await service.add(
++    const { repo: addedRepo, created } = await service.add(
+       workspaceId,
+       userId,
+       req.body.url,
+       req.body.provider,
+     );
+     reply.status(created ? 201 : 200);
+-    return repo;
++    return addedRepo;
+   });
+ 
