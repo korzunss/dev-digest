@@ -79,8 +79,10 @@ export const cases: WorkflowCase[] = [
       "Відповідай за документацією стратегії тестування.\n" +
       "2. Які Development Plans уже є і в якому вони статусі? Візьми з індексу планів.\n" +
       "3. Відкрий файл, де визначено функцію `groundFindings`, і процитуй її сигнатуру.",
-    expectFilesRead: ["TESTING.md", "docs/plans/README.md", "reviewer-core/src/grounding.ts"],
-    // CLAUDE.md: server/clones/ holds full copies of this repo — a symbol search must exclude it.
+    expectFilesRead: ["TESTING.md", "docs/plans/README.md"],
+    // Q3 checks the search, not a Read: CLAUDE.md says server/clones/ holds full copies of this repo
+    // and must be excluded. Finding the symbol and quoting it straight from Grep output is correct,
+    // so reviewer-core/src/grounding.ts is not a required read (wf-sandbox run 1 failed only on it).
     expectNotRead: ["server/clones/"],
     maxTurns: 15,
   },
@@ -139,11 +141,18 @@ export const cases: WorkflowCase[] = [
     // planning-then-dispatching. GET /reviews/:id/export is genuinely absent from routes.ts.
     // Expected doc was server/docs/api-contracts.md, which does not exist; the server deep-dive is
     // server/docs/architecture.md (root CLAUDE.md and server/AGENTS.md both route to it).
+    // The plan is spelled out: with only "оціни мій план" the model asked which plan instead of
+    // dispatching (wf-sandbox run 1).
     name: "API-route task reads server architecture AND pulls the architecture-reviewer",
     prompt:
       "Я планую додати НОВИЙ, ще не реалізований ендпоінт GET /reviews/:id/export (віддає ревʼю як " +
-      "markdown). Спершу звірся з архітектурною документацією сервера. Потім ОБОВʼЯЗКОВО запусти сабагента " +
-      "architecture-reviewer, щоб він оцінив мій план на відповідність onion-шарам — не рецензуй сам.",
+      "markdown). Мій план:\n" +
+      "- server/src/modules/reviews/routes.ts: новий маршрут зі схемою params, лише викликає сервіс;\n" +
+      "- server/src/modules/reviews/service.ts: функція exportReviewMarkdown(id) збирає ревʼю і знахідки " +
+      "через repository і форматує markdown у helpers.ts;\n" +
+      "- server/src/modules/reviews/repository.ts: без змін, використовую наявні запити.\n" +
+      "Спершу звірся з архітектурною документацією сервера. Потім ОБОВʼЯЗКОВО запусти сабагента " +
+      "architecture-reviewer, щоб він оцінив цей план на відповідність onion-шарам — не рецензуй сам.",
     expectFilesRead: ["server/docs/architecture.md"],
     expectSubagents: ["architecture-reviewer"],
     maxTurns: 10,
