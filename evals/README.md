@@ -207,18 +207,22 @@ never `pull_request_target`, so fork code cannot see the secret.
 | `agents` | matrix over changed agents with evals, tool tier, `max-parallel: 1` | LiteLLM |
 | `workflow` | `pnpm eval:workflow` when the harness itself changed | LiteLLM |
 
-Every model job is blocking (no `continue-on-error`) and uploads `evals/results` as an artifact
-(`if: always()`). DeepSeek V4 Flash on the tool tiers is unmeasured (the verified-model table above
-lists `deepseek/deepseek-chat` failing dispatch), so a red `agents` or `workflow` job may mean the
-model, not the harness; switch the model (below) before debugging the artifact.
+Eval failures in `skills` / `agents` / `workflow` are non-blocking for now: the eval step has
+step-level `continue-on-error`, a failure shows as a `::warning` annotation plus a job-summary line,
+the job stays green and `evals/results` is still uploaded (`if: always()`). `detect` and `static`
+stay blocking. Blocking returns by a later decision. DeepSeek V4 Flash on the tool tiers is
+unmeasured (the verified-model table above lists `deepseek/deepseek-chat` failing dispatch), so a
+warning from `agents` or `workflow` may mean the model, not the harness; switch the model (below)
+before debugging the artifact.
 
 **Model switch.** `EVAL_MODEL` resolves `inputs.model` → repo variable `EVAL_MODEL` → default
 `deepseek/deepseek-v4-flash`; `EVAL_JUDGE_MODEL` resolves `inputs.judge_model` → repo variable
 `EVAL_JUDGE_MODEL` → default `deepseek/deepseek-v4-pro`. Repo variables: Settings → Secrets and
 variables → Actions → Variables.
 
-**Secret.** `OPENROUTER_API_KEY` (Actions secret). It is exposed only to the model jobs. When it is
-unavailable (fork PRs, or unset) `detect` emits a `::notice` and the model jobs are skipped, not failed.
+**Secret.** `OPENROUTER_API_KEY` (Actions secret). It is exposed only to the model jobs. On a fork PR
+(no secrets) `detect` emits a `::notice` and the model jobs are skipped. On a same-repo PR or a manual
+dispatch without the key, `detect` fails with an `::error`.
 
 **Change → suite rules** (`scripts/ci-detect.mjs`):
 - `.claude/skills/<n>/**` or `evals/skills/<n>/**` → `evals/skills/<n>` (if it has `*.eval.ts`).
@@ -227,6 +231,9 @@ unavailable (fork PRs, or unset) `detect` emits a `::notice` and the model jobs 
   `*/insights/gotchas.md` (outside `.claude/`), `.claude/settings.json`, any agent definition,
   `evals/workflow/**`, `evals/src/**`. A skill change triggers it only when the skill's name appears as
   a token in `evals/workflow/*.cases.ts`.
+- CI engine change (the workflow file, `evals/scripts/**`, `evals/proxy/**`, `evals/package.json`,
+  `evals/pnpm-lock.yaml`) → every suite with evals plus the workflow tier, same as `CI_DETECT_ALL`;
+  the log has an `engine-change:` line.
 - A changed skill or agent with no evals is not run and does not fail: the log has
   `SKIP <tier> <name> (no evals)` plus a `::notice` annotation. An empty suite list skips its job.
 

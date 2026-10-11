@@ -1,7 +1,8 @@
 # Harness evals (evals/) on OpenRouter. Only the suites a PR touches run (evals/scripts/ci-detect.mjs).
 # Task model defaults to DeepSeek V4 Flash; switch per run via workflow_dispatch inputs or the repo
 # variables EVAL_MODEL / EVAL_JUDGE_MODEL. Model jobs need the OPENROUTER_API_KEY Actions secret and
-# are skipped (green, with a notice) when it is unavailable (fork PRs) or their suite list is empty.
+# are skipped when their suite list is empty. Without the key a fork PR skips them (notice only); a
+# same-repo PR or a manual dispatch fails `detect`. Eval failures are non-blocking (warning only).
 # Never pull_request_target: fork code must not see the secret.
 name: harness-evals
 
@@ -61,10 +62,17 @@ jobs:
         id: key
         env:
           HAS_KEY: ${{ secrets.OPENROUTER_API_KEY != '' }}
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          BASE_REPO: ${{ github.repository }}
         run: |
           echo "has_key=$HAS_KEY" >> "$GITHUB_OUTPUT"
           if [ "$HAS_KEY" != "true" ]; then
-            echo "::notice::OPENROUTER_API_KEY not available (fork PR or unset) — model evals skipped"
+            if [ "$EVENT_NAME" = "workflow_dispatch" ] || { [ "$EVENT_NAME" = "pull_request" ] && [ "$HEAD_REPO" = "$BASE_REPO" ]; }; then
+              echo "::error title=harness evals::OPENROUTER_API_KEY is not set — add it under Settings → Secrets and variables → Actions"
+              exit 1
+            fi
+            echo "::notice::OPENROUTER_API_KEY not available (fork PR) — model evals skipped"
           fi
 
       - name: Detect suites
@@ -145,9 +153,22 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: Run skill evals
+        id: evals
+        continue-on-error: true
+        timeout-minutes: 15
         env:
           SUITE: ${{ matrix.suite }}
         run: pnpm exec vitest run "skills/$SUITE/"
+
+      - name: Report eval failure
+        if: always() && steps.evals.outcome == 'failure'
+        env:
+          TIER: skills
+          SUITE: ${{ matrix.suite }}
+        run: |
+          MSG="$TIER evals failed${SUITE:+ for $SUITE} — non-blocking for now (D1); see the results artifact"
+          echo "::warning title=harness evals::$MSG"
+          echo "$MSG" >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -191,12 +212,25 @@ jobs:
         run: pnpm proxy:up
 
       - name: Run agent evals
+        id: evals
+        continue-on-error: true
+        timeout-minutes: 22
         env:
           SUITE: ${{ matrix.suite }}
         run: pnpm exec vitest run "agents/$SUITE/"
 
+      - name: Report eval failure
+        if: always() && steps.evals.outcome == 'failure'
+        env:
+          TIER: agents
+          SUITE: ${{ matrix.suite }}
+        run: |
+          MSG="$TIER evals failed${SUITE:+ for $SUITE} — non-blocking for now (D1); see the results artifact"
+          echo "::warning title=harness evals::$MSG"
+          echo "$MSG" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Proxy logs
-        if: failure()
+        if: always() && (failure() || steps.evals.outcome == 'failure')
         run: docker compose -f proxy/docker-compose.yml logs --tail 100
 
       - name: Stop LiteLLM proxy
@@ -246,10 +280,22 @@ jobs:
         run: pnpm proxy:up
 
       - name: Run workflow evals
+        id: evals
+        continue-on-error: true
+        timeout-minutes: 35
         run: pnpm eval:workflow
 
+      - name: Report eval failure
+        if: always() && steps.evals.outcome == 'failure'
+        env:
+          TIER: workflow
+        run: |
+          MSG="$TIER evals failed${SUITE:+ for $SUITE} — non-blocking for now (D1); see the results artifact"
+          echo "::warning title=harness evals::$MSG"
+          echo "$MSG" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Proxy logs
-        if: failure()
+        if: always() && (failure() || steps.evals.outcome == 'failure')
         run: docker compose -f proxy/docker-compose.yml logs --tail 100
 
       - name: Stop LiteLLM proxy

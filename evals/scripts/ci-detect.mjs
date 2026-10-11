@@ -13,6 +13,10 @@
  *   .claude/agents/*.md, evals/workflow/**, evals/src/**,
  *   or a touched skill whose name is a token in evals/workflow/*.cases.ts.
  *
+ * A CI-engine change (D5) — .github/workflows/harness-evals.yml, evals/scripts/**, evals/proxy/**,
+ * evals/package.json, evals/pnpm-lock.yaml — runs EVERY suite that has evals plus the workflow tier
+ * (same selection as CI_DETECT_ALL) and logs an "engine-change:" line per matched category.
+ *
  * $CI_DETECT_ALL=1|true ignores $CHANGED_FILES and selects every suite that has evals.
  * Paths under server/clones/ or node_modules/ are dropped before matching.
  *
@@ -94,6 +98,7 @@ let agents;
 let skippedSkills = [];
 let skippedAgents = [];
 let runWorkflow;
+let engineMode = false;
 const info = [];
 
 if (allMode) {
@@ -113,6 +118,21 @@ if (allMode) {
   agents = agentNames.filter((n) => hasEvals("agents", n));
   skippedAgents = agentNames.filter((n) => !hasEvals("agents", n));
 
+  // D5: a change to the CI engine itself must exercise every suite. Labels are fixed strings.
+  const engineCategories = [
+    [".github/workflows/harness-evals.yml", (f) => f === ".github/workflows/harness-evals.yml"],
+    ["evals/scripts/**", (f) => f.startsWith("evals/scripts/")],
+    ["evals/proxy/**", (f) => f.startsWith("evals/proxy/")],
+    ["evals/package.json", (f) => f === "evals/package.json"],
+    ["evals/pnpm-lock.yaml", (f) => f === "evals/pnpm-lock.yaml"],
+  ];
+  for (const [label, test] of engineCategories) {
+    if (changed.some(test)) {
+      engineMode = true;
+      info.push(`engine-change: ${label} → running every suite with evals (D5)`);
+    }
+  }
+
   const skillTriggers = skillNames.filter(mentioned);
   for (const n of skillNames.filter((n) => !mentioned(n) && hasEvals("skills", n))) {
     info.push(
@@ -130,7 +150,11 @@ if (allMode) {
     /^evals\/workflow\//.test(f) ||
     /^evals\/src\//.test(f);
 
-  runWorkflow = changed.some(harnessFile) || skillTriggers.length > 0;
+  runWorkflow = engineMode || changed.some(harnessFile) || skillTriggers.length > 0;
+  if (engineMode) {
+    skills = allWithEvals("skills");
+    agents = allWithEvals("agents");
+  }
 }
 
 const hasSuites = skills.length > 0 || agents.length > 0 || runWorkflow;
@@ -147,7 +171,7 @@ write("has_suites", String(hasSuites));
 
 // Human-readable summary in the step log.
 console.error("── eval change detection ──");
-console.error(`mode          : ${allMode ? "all" : "changed"}`);
+console.error(`mode          : ${allMode ? "all" : engineMode ? "engine" : "changed"}`);
 console.error(`changed files : ${changed.length}`);
 console.error(`skills → run  : ${skills.join(", ") || "(none)"}`);
 console.error(`agents → run  : ${agents.join(", ") || "(none)"}`);
