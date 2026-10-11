@@ -1,5 +1,5 @@
 # Development Plan: harness evals in GitHub Actions on OpenRouter (DeepSeek V4 Flash)
-Status: in-progress
+Status: done
 Save as: docs/plans/31-harness-evals-ci.md
 Spec: none (tooling: CI workflow for the evals/ package)
 Execution: single-agent
@@ -274,3 +274,5 @@ Note: the implementer did not read `.claude/skills/security/SKILL.md` although S
 - 2026-10-11 security-reviewer (fix-2): PASS, no findings.
 - 2026-10-11 implementer fix mode SK1: skill read, S8 re-checked against A02/A03/A04/A07/A10, no code change; Skills row updated.
 - 2026-10-11 plan-verifier delta (fix-2, SK1): **complete — needs sign-off** — 19/22 met, no gaps; needs sign-off: D10 (proxy start on a runner), R3; R4 n/a.
+- 2026-10-11 real Actions runs on PR #21 (6ca27f4): run 1 — every model job 401 `User not found` from OpenRouter (invalid secret value, also on the direct skills tier; green only because non-blocking); user replaced the secret. Run 2 — proxy up on the runner, key accepted, all jobs completed: workflow 7/9 (TESTING.md routing miss; engineering-insights activation hit max turns 8; the subagent-dispatch case passed), architecture-reviewer 1/4 (3 × vitest `testTimeout` 240000 ms, not wrong answers), eval failures reported as `::warning`. D10 / AC5 (same-repo path) / D1 rev 2 / D5 confirmed.
+- 2026-10-11 **user sign-off**: remaining not-verifiable items accepted (fork-PR skip, actionlint, R3, R4). Plan closed as done. Follow-up, not in this plan: a CI-only test timeout for slower OpenRouter models (`evals/vitest.config.ts` `testTimeout: 240_000`).
