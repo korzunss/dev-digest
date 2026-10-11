@@ -83,6 +83,8 @@ export function record(label: string, data: RecordData): void {
       skills: result.skillsInvoked,
       reads: result.filesRead,
       write_attempts: result.writeAttempts,
+      files_changed: result.filesChanged,
+      sdk_debug_log: result.debugLog,
     },
     output_file: outputFile,
     ...extra,

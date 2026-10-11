@@ -5,7 +5,9 @@
 
 import { query, type Options } from "@anthropic-ai/claude-agent-sdk";
 import { EVAL_MODEL, MAX_TURNS, SPAWN_TOOLS } from "../config.js";
-import { REPO_ROOT } from "../artifacts/paths.js";
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
+import { REPO_ROOT, RESULTS_DIR } from "../artifacts/paths.js";
 import { subscriptionEnv } from "./env.js";
 
 export interface Metrics {
@@ -30,6 +32,10 @@ export interface Result {
    * hook, so it also sees attempts made inside subagents, which the main stream never shows.
    */
   writeAttempts: string[];
+  /** Repo-relative paths the session actually changed — set only for sandboxed (workflow) runs. */
+  filesChanged?: string[];
+  /** SDK debug log of this session, when EVAL_SDK_DEBUG is set. */
+  debugLog?: string;
   metrics: Metrics;
 }
 
@@ -74,6 +80,14 @@ export async function runClaude(prompt: string, opts: RunOptions = {}): Promise<
 
   const writeAttempts: string[] = [];
   const blockTools = opts.blockTools ?? [];
+  // EVAL_SDK_DEBUG=1 → one SDK debug log per session under results/sdk-debug/, so a hook that
+  // silently did not fire leaves evidence (whether the CLI sent the hook request at all).
+  let debugLog: string | undefined;
+  if (process.env.EVAL_SDK_DEBUG) {
+    const dir = join(RESULTS_DIR, "sdk-debug");
+    mkdirSync(dir, { recursive: true });
+    debugLog = join(dir, `${new Date().toISOString().replace(/[-:.]/g, "")}-${Math.random().toString(36).slice(2, 8)}.log`);
+  }
   const options: Options = {
     model: opts.model ?? EVAL_MODEL,
     maxTurns: opts.maxTurns ?? MAX_TURNS,
@@ -84,6 +98,7 @@ export async function runClaude(prompt: string, opts: RunOptions = {}): Promise<
     cwd: opts.cwd ?? REPO_ROOT,
     // Default: do NOT load on-disk config — isolates the injected artifact. workflowTask overrides.
     settingSources: opts.settingSources ?? [],
+    ...(debugLog ? { debug: true, debugFile: debugLog } : {}),
     ...(blockTools.length
       ? {
           hooks: {
@@ -202,6 +217,7 @@ export async function runClaude(prompt: string, opts: RunOptions = {}): Promise<
     numTurns,
     isError,
     writeAttempts,
+    debugLog,
     metrics: { durationMs, inputTokens, outputTokens, toolCallCount },
   };
 }

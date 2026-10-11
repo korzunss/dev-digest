@@ -9,7 +9,9 @@
  */
 
 import { IS_BASELINE, WORKFLOW_ALLOWED_TOOLS, WORKFLOW_BLOCKED_TOOLS, WORKFLOW_DISALLOWED_TOOLS } from "./config.js";
-import { runClaude, type RunOptions } from "./runtime/run-claude.js";
+import { runClaude, type Result, type RunOptions } from "./runtime/run-claude.js";
+import { createSandbox } from "./runtime/sandbox.js";
+import { REPO_ROOT } from "./artifacts/paths.js";
 import { runContent } from "./runtime/dispatch.js";
 import { skillContent, agentContent, agentTools } from "./artifacts/load.js";
 
@@ -44,16 +46,38 @@ export function agentTask(prompt: string, agentName: string, opts: RunOptions = 
  * Use for workflow-level evals: skill activation, subagent dispatch, CLAUDE.md effect.
  * Ignores EVAL_CONFIG — the workflow tier has its own control-vs-treatment design.
  *
- * Safety: allowedTools alone does not restrict under bypassPermissions, so Bash is removed and
- * every Write/Edit call is denied by a hook (and logged as a write attempt) — a fresh session
- * could otherwise take real actions in the repo.
+ * Safety, three layers — allowedTools alone does not restrict under bypassPermissions:
+ *   1. the session runs in a throwaway worktree of the current tree (runtime/sandbox.ts), so a
+ *      write that gets through lands in the copy; `filesChanged` lists it;
+ *   2. Bash is removed and every Write/Edit is denied by a hook and logged as a write attempt —
+ *      the hook once failed to fire, which is why layer 1 exists;
+ *   3. the real repo's git status is compared before/after; a change there throws.
+ * Paths in the returned trace are rewritten from the worktree back to REPO_ROOT.
  */
-export function workflowTask(prompt: string, opts: RunOptions = {}) {
-  return runClaude(prompt, {
-    allowedTools: WORKFLOW_ALLOWED_TOOLS,
-    ...opts,
-    disallowedTools: WORKFLOW_DISALLOWED_TOOLS,
-    blockTools: WORKFLOW_BLOCKED_TOOLS,
-    settingSources: ["project"],
-  });
+export async function workflowTask(prompt: string, opts: RunOptions = {}): Promise<Result> {
+  const box = createSandbox();
+  let result: Result | undefined;
+  try {
+    result = await runClaude(prompt, {
+      allowedTools: WORKFLOW_ALLOWED_TOOLS,
+      ...opts,
+      cwd: box.dir,
+      disallowedTools: WORKFLOW_DISALLOWED_TOOLS,
+      blockTools: WORKFLOW_BLOCKED_TOOLS,
+      settingSources: ["project"],
+    });
+    result = {
+      ...result,
+      filesRead: result.filesRead.map(box.relocate),
+      // A path already under REPO_ROOT (not the worktree) means the session aimed at the real
+      // repo by absolute path — flag it, since relocate() would otherwise make both look alike.
+      writeAttempts: result.writeAttempts.map((w) =>
+        w.includes(`${REPO_ROOT}/`) ? `${w} [targets the REAL repo]` : box.relocate(w),
+      ),
+      filesChanged: box.changedFiles(),
+    };
+  } finally {
+    box.dispose(); // throws if the real repo changed — overrides the result on purpose
+  }
+  return result;
 }

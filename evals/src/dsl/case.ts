@@ -69,7 +69,7 @@ export type WorkflowCase =
       expectNotSubagents?: string[];
       /** Negatives: no read path may contain any of these substrings (e.g. server/clones/). */
       expectNotRead?: string[];
-      /** Negatives: no Write/Edit attempt (blocked or not) on a path containing these substrings. */
+      /** Negatives: no Write/Edit attempt (blocked or not) and no actual change in the sandbox on a path containing these substrings. */
       expectNoWriteTo?: string[];
       maxTurns?: number;
     };
@@ -198,6 +198,7 @@ export function runWorkflowCases(cases: WorkflowCase[]): void {
           ...notSubs.filter((s) => result.subagents.includes(s)).map((s) => `subagent ${s} must not be launched`),
           ...notFiles.flatMap((f) => result.filesRead.filter((r) => r.includes(f)).map((r) => `must not read ${r}`)),
           ...noWrite.flatMap((f) => result.writeAttempts.filter((w) => w.includes(f)).map((w) => `must not try to write: ${w}`)),
+          ...noWrite.flatMap((f) => (result.filesChanged ?? []).filter((w) => w.includes(f)).map((w) => `must not change: ${w}`)),
           ...(result.isError ? [`session ended with an error (e.g. maxTurns ${c.maxTurns ?? "default"} hit)`] : []),
         ];
         finish(c.name, result, failures);
