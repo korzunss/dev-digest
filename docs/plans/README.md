@@ -122,3 +122,4 @@ result to the verifier.
 | [28-pr-brief](28-pr-brief.md) | done | [010](../../specs/010-pr-brief.md) | shared (`brief.ts` contract; client mirror), server (new `modules/brief`, `_shared` helpers), client (OverviewTab PR Brief block, DiffTab navigation, hooks, `brief` i18n) |
 | [29-workflow-retro-skill](29-workflow-retro-skill.md) | done | none (tooling skill) | `.claude/skills/workflow-retro` (new), `.claude/skills/README.md`, `.claude/skills/sdd` (`cost` + `usage-weights.mjs`, `state` skips `retro:`, selftest, §4/§5 + `stages.md` text) |
 | [30-retro-fact-prefix](30-retro-fact-prefix.md) | done | none (plan 29 tooling follow-up) | `.claude/skills/sdd` (`state` skips `retro-fact:`, selftest case, `stages.md`), `.claude/skills/workflow-retro/SKILL.md` (step 5 + cite rule) |
+| [31-harness-evals-ci](31-harness-evals-ci.md) | done | none (tooling: CI for evals/) | `evals/scripts/ci-detect.mjs`, `.github/workflows/harness-evals.yml` (new), `evals/README.md` |

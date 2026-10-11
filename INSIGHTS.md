@@ -264,6 +264,12 @@ that path; it's runtime data, and the next resync overwrites it.
 
 ## Tool & Library Notes
 
+### 2026-10-11 — the LiteLLM `main-stable` image refuses to start without a master key
+**Symptom:** in CI the `agents` and `workflow` jobs of `harness-evals.yml` failed at `Start LiteLLM proxy` with `error: proxy did not become healthy`. The container log said `LiteLLM proxy refused to start: no master key is set, so every request would be accepted without authentication.` The same config had worked earlier in no-auth mode.
+**Cause:** `ghcr.io/berriai/litellm:main-stable` is a moving tag, and a newer build now enforces a master key at boot (`enforce_master_key_boot_verdict`).
+**Rule:** set `LITELLM_MASTER_KEY` to the `OPENROUTER_API_KEY` value in `evals/proxy/docker-compose.yml`. The eval clients already send that key as Bearer, so no code changes. Pin the image by digest (`tag@sha256:…` pulls by digest; the tag is only a label) and bump it by hand. When probing the proxy, use POST, because GET `/v1/messages` returns 405. Only a missing key gives 401 `No api key passed in`; a wrong key gives 400 `No connected db.` (no DB is configured); a valid key is forwarded to OpenRouter.
+**Evidence:** `evals/proxy/docker-compose.yml` · commit `6ca27f4` · local `docker run … main-stable` reproduced the boot refusal · plan 31 D7
+
 ### 2026-10-08 — correction: a subagent transcript's `output_tokens` is far too low, so its weighted total can't be trusted
 **Symptom:** in a zod-skill A/B run (12 general-purpose subagents), the deduplicated transcript `usage.output_tokens` came to 29–353 per agent. Every one of those agents had written a 60–160 line `.ts` file through `Write`, which alone takes well over 1k output tokens. Taking the last line or the max line per `message.id` gave the same sums.
 **Cause:** the transcript stores `usage` as it stood when the message was first streamed, so `output_tokens` misses the content that came after (inferred: it holds for every message checked). The input side (`input` / `cache_read` / `cache_creation`) looks plausible. This changes the 2026-10-05 entry below: its weight `5·output` multiplies a figure that is too small, so its "weighted tokens" mostly measure context size.
@@ -432,6 +438,22 @@ tree looks right in exactly the case the index is wrong.
 
 ## Recurring Errors & Fixes
 
+### 2026-10-11 — a green `harness-evals` run can mean nothing ran, or every eval failed
+**Symptom:** on PR #21:
+- Run 1 skipped every model job. A local `git diff main...HEAD` showed 144 changed files, so the detector should have selected suites, and the first guess was a missing secret.
+- After the eval steps became non-blocking, every job was green although every case had failed with `401 … OpenrouterException {"message":"User not found."}`. The tool-tier cases each burned ~3 minutes (`1 turns · 182799ms · 0→0 tok`), while the direct skills tier failed in 2 s.
+- Once the key worked, 3 of 4 `architecture-reviewer` cases failed with `Test timed out in 240000ms`.
+**Cause:**
+- Run 1: the PR's base was `L06_lab`, not `main`, and its real diff was 5 files that mapped to no suite.
+- Run 2: OpenRouter's `User not found` means the key value is invalid; the proxy and the code were fine.
+- Run 3: `evals/vitest.config.ts` sets `testTimeout: 240_000`, which was sized for Haiku on the subscription; DeepSeek through the proxy needs longer.
+**Rule:** read a `harness-evals` run from its logs, not from its check icons:
+- For skipped jobs, reproduce detection with the PR's own base: `CHANGED_FILES="$(git diff --name-only <base_sha>...<head_sha>)" node evals/scripts/ci-detect.mjs`. Find the base in the PR, not by assuming `main`.
+- For a green job, open the eval step and look for `::warning … non-blocking` and the `Tests N failed` line.
+- `401 User not found` from the skills tier means: replace the `OPENROUTER_API_KEY` secret.
+- A `Test timed out in 240000ms` is a time limit, not a wrong answer. Do not score it as model quality.
+**Evidence:** `.github/workflows/harness-evals.yml` · `evals/scripts/ci-detect.mjs` · `evals/vitest.config.ts:9` · PR #21 runs on `65e331c` and `6ca27f4` · plan 31 Verification log
+
 ### 2026-10-04 — an implementer hand-back can be the single word "placeholder" although the edits landed
 **Symptom:** in plan 20 the implementer's hand-back was literally `placeholder` twice (G1, and the AC8a fix-mode run) — no step table, no Done-when output, no handoff — while the files were in fact edited. Asking for "the full report before handing back" in the prompt did not prevent the second one.
 **Cause:** the agent called its hand-back before writing the report (its own words when resumed); the run is short (5–8 tool uses), so nothing in the transcript forces the report.
@@ -459,7 +481,11 @@ of the type or a tsconfig `paths` problem.
 
 ## Session Notes
 
-_Nothing yet._
+### 2026-10-11 — plan 31: harness evals on GitHub Actions with DeepSeek V4 Flash
+Harness evals now run on every PR that touches the harness (`.github/workflows/harness-evals.yml`), on OpenRouter, with Flash as the task model and Pro as the judge. Eval failures are non-blocking for now (plan 31 D1 rev 2). The first full run, n=1, on V4 Flash:
+- workflow tier: 7/9; the subagent-dispatch case passed, so unlike `deepseek/deepseek-chat` in the README table, V4 Flash does dispatch subagents;
+- `architecture-reviewer`: 1/4, with all 3 failures being the 240 s timeout.
+Before making the evals blocking again, raise the CI test timeout and measure with `eval:repeat`.
 
 ## Open Questions
 

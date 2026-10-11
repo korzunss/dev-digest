@@ -6,17 +6,23 @@
 #   pnpm --dir evals proxy:up      # foreground
 #   pnpm --dir evals proxy:down    # stop
 #
+# Auth: the moving main-stable tag refuses to start without a master key, so LITELLM_MASTER_KEY is
+# set to OPENROUTER_API_KEY. Clients already send that key as Bearer (ANTHROPIC_AUTH_TOKEN in
+# src/runtime/env.ts, apiKey in src/runtime/run-openrouter.ts), so no code change is needed.
+# The image is pinned by digest and the port binds to loopback only.
+#
 # Exposes http://localhost:4000 speaking BOTH Anthropic (/v1/messages) and OpenAI
 # (/chat/completions) formats. Point OPENROUTER_BASE_URL at it to route every eval tier there.
 
 services:
   litellm:
-    image: ghcr.io/berriai/litellm:main-stable
+    image: ghcr.io/berriai/litellm:main-stable@sha256:60947db020b57e204823d3fbc8bb295c85be890d7c9adcc77fb4f5fc2fe410b2
     container_name: devdigest-eval-litellm
     ports:
-      - "4000:4000"
+      - "127.0.0.1:4000:4000"
     environment:
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:?set OPENROUTER_API_KEY in the environment}
+      LITELLM_MASTER_KEY: ${OPENROUTER_API_KEY:?set OPENROUTER_API_KEY in the environment}
     volumes:
       - ./litellm.config.yaml:/app/config.yaml:ro
     command: ["--config", "/app/config.yaml", "--port", "4000", "--num_workers", "1"]
