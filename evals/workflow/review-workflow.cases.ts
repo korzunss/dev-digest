@@ -30,6 +30,10 @@ export const cases: WorkflowCase[] = [
     // Q1 is only in the code of adapters/secrets/local.ts; Q2 only in the repo-intel README,
     // which only server/AGENTS.md routes to ("за документацією модуля" is needed: without it the
     // model answers Q2 from service.ts). Gotchas = session protocol.
+    // Known signal, not flakiness: the routing reads hold every run, but server/insights/gotchas.md
+    // is skipped in about half of them (code-level questions send the model straight to code), even
+    // after the gotchas-first line at the top of server/AGENTS.md. A red run here usually means
+    // that, so check the failure message before touching the case.
     name: "server task follows the protocol and the routing in server/AGENTS.md",
     prompt:
       "Два питання по server/ цього репо, файли не редагуй — відповідай з посиланнями на файли й рядки:\n" +

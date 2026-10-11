@@ -59,6 +59,12 @@ write-up here. That keeps `AGENTS.md` short without losing the reasoning.
 
 ## What Works
 
+### 2026-10-11 — a doc-routing eval question must be unanswerable from the always-loaded docs
+**Symptom:** the server routing trace passed 1/5: the model answered "which file and key holds the self-hosted GitLab token" and "where does a contract change start" correctly but never opened `adapters/secrets/local.ts` or `vendor/shared`.
+**Cause:** both answers sit verbatim in docs that load into every session (`server/AGENTS.md`, `server/insights/gotchas.md`, root `CLAUDE.md`), so reading the routed file is unnecessary. The same goes for anything a `Grep` hit already shows, such as a function signature.
+**Rule:** ask for a fact that exists only in the routed file (`local.ts` silently treats a missing or corrupt secrets file as empty and caches it; the repo-intel README lists the facade methods wired in the starter). Name the source kind ("за документацією модуля") when code holds a competing answer, or the model answers from `service.ts`. Check each fact with `grep` against CLAUDE.md, the package AGENTS.md and gotchas before using it. After the rewrite, both routed files were read in every run. Two side lessons: a dispatch case needs the thing to review in the prompt (with "оціни мій план" and no plan, the model asked which plan), and `/sdd` allows `brainstormer` before `spec-creator`, so a feature case must accept either first step.
+**Evidence:** `evals/workflow/review-workflow.cases.ts` (server, API-route, feature cases with their comments) · `evals/results/repeat-wf-gotchas-n5.json` · commits `47fd5e8`, `aaca7d8`
+
 ### 2026-10-05 — checkpoint the working tree without a commit: temp index + `write-tree` + a tree ref
 **Symptom:** R3 and delta reviews need a baseline, but the user does not want commits during a pipeline run, and `git add` on the real index re-stages over the approved text (2026-09-30 entry) and changes `git status`, which reviewers use as their read-only proof.
 **Cause:** an approved state has to live somewhere addressable that is neither a commit nor the real index.
@@ -68,6 +74,12 @@ write-up here. That keeps `AGENTS.md` short without losing the reasoning.
 **Addendum 2026-10-06 (plan 28):** a read-only reviewer cannot run `sdd.sh delta` against the working tree — with no second tree it calls `make_tree ""` (`sdd.sh:405`), which writes git objects, so plan-verifier and architecture-reviewer refused it in four delta passes. Give them the recipe in the prompt instead: `git diff --name-status <ref>` for tracked files plus `git show <ref>:<f> | diff - <f>` per untracked file (in plan 28, 38 `D` entries came down to 3 real changes).
 
 ## What Doesn't Work
+
+### 2026-10-11 — `allowedTools` and a PreToolUse deny hook do not keep an SDK workflow eval read-only
+**Symptom:** `pnpm eval:repeat workflow` sessions wrote to the repo: a fabricated pgvector entry in `server/INSIGHTS.md` + `server/insights/gotchas.md` (the engineering-insights activation case) and an idea brief in `docs/ideas/` (the feature case: brainstormer, then the main session saved the brief per CLAUDE.md). After `Write`/`Edit` got a deny hook, one run still landed a `Write` + `Edit` pair: the trace listed both tools, `write_attempts` was empty, so the hook was never called.
+**Cause:** under `permissionMode: "bypassPermissions"` the SDK's `allowedTools` only pre-approves the listed tools; it restricts nothing. A hook is fail-open: when it does not fire, the tool just runs. The miss did not reproduce in 8 targeted probes (write before and after a subagent, after `brainstormer`, from Claude Code and from a plain terminal).
+**Rule:** isolation, not tool lists, is the guard. `workflowTask` runs every session in a throwaway worktree of the current tree (`git stash create` or HEAD) and compares the real repo's `git status` before and after, failing on any new change. `disallowedTools` removes tools a case never needs (`Bash`). The hook stays only to log write attempts. To debug a hook, run with `EVAL_SDK_DEBUG=1`: the per-session log under `evals/results/sdk-debug/` shows `Hook denied tool use for Write` when it fired. Revert anything an eval session wrote; never keep it.
+**Evidence:** `evals/src/runtime/sandbox.ts` · `evals/src/tasks.ts:57` (`workflowTask`) · `evals/src/config.ts:33-35` · the wf-baseline run-2 record of the feature case (`tools: Read, Grep, Agent, Write, Edit`, `write_attempts: []`) · commits `0d1de7d`, `265bda3`
 
 ### 2026-10-09 — the upstream `evals/agents/architecture-reviewer` cases graded a different agent than ours
 **Symptom:** the imported cases required rule ids `inward-only-dependencies`, `di-discipline`, `reviewer-core-zero-io`, `reviewer-core-ground-findings-gate`; none exists in `.claude/agents/architecture-reviewer.md` (its rules are check ids `A1`…`A13` + a source doc), so those practices fail for every variant. Their prompt said only "Audit this diff", while the agent's Step 0 builds the diff from `git` and `agentTask` strips `Bash` — the agent can answer `Status: blocked`.
@@ -219,6 +231,12 @@ whole-file equality — that check is red today and will stay red.
 `'openai' | 'anthropic'` where the server's is `… | 'openrouter'`
 
 ## Codebase Patterns
+
+### 2026-10-11 — an eval record's outcome falls back to "the session did not error" unless the case passes `passed`
+**Symptom:** `eval:repeat workflow` showed the server case 2/2 while it had read none of its expected files, and activation cases 0/2 while the skill had engaged both times (they hit `maxTurns` 4).
+**Cause:** `record()` derives `outcome` from a grounding gate or a judge verdict; workflow cases have neither, so it fell back to `!result.isError`, and the `expect` calls after it never reached the stats.
+**Rule:** a runner branch without a judge collects its failures first, calls `record(name, { result, passed })`, then asserts (the `finish` helper in `runWorkflowCases`). Any new case kind must pass `passed` too, or `eval:repeat` and `eval:delta` report session health, not the assertions.
+**Evidence:** `evals/src/records/record.ts:52` · `evals/src/dsl/case.ts:130` (`finish`) · commit `0d1de7d`
 
 ### 2026-09-26 — a feature model's default lives in three places, not two
 **Symptom:** changing `review_intent`'s default model (spec 006, D2-B) in
