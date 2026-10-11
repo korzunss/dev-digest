@@ -49,5 +49,5 @@ Also: vitest filters match by substring; `eval:repeat` works around it in
 ## Read on demand
 
 - Usage, case format, safety → `README.md`
-- Evidence → `docs/results-2026-10.md`, `docs/benchmarks/`; stats design → `docs/eval-stats-upgrade.md`
+- Evidence → `docs/results-2026-10.md`, `docs/benchmarks/`; open follow-ups → `docs/backlog.md`; stats design → `docs/eval-stats-upgrade.md`
 - Plans → `../docs/plans/31-harness-evals-ci.md`, `32-evals-coverage.md`, `33-evals-follow-ups.md`
