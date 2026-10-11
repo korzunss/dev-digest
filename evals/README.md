@@ -579,8 +579,11 @@ tokens > 125% of baseline), `missing_data` (a config has zero records for a test
 
 Sessions run with `permissionMode: "bypassPermissions"`, so `workflowTask` keeps a **read-only
 allow-list** (`Read, Grep, Glob, Task, Agent, Skill` — no `Bash`/`Write`/`Edit`). Don't copy the
-bypass pattern into a context that grants write tools. `agentTask` likewise removes `Bash`,
-`Write`, `Edit`, `MultiEdit` and `NotebookEdit` via `disallowedTools`.
+bypass pattern into a context that grants write tools. `agentTask` removes `Bash`, `Write`,
+`Edit`, `MultiEdit`, `NotebookEdit`, `Task`, `Agent`, `WebFetch` and `WebSearch` **by name** via
+`disallowedTools`; other SDK built-ins (e.g. `Monitor`, `REPL`, `Workflow`) and MCP are not
+denied, so this is not a full sandbox. Prove an agent eval left the repo alone with `git status --porcelain` before
+vs after, not with `trace.tools` (subagent tool calls never reach it).
 
 ## Deferred (recorded so it isn't rediscovered)
 
