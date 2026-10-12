@@ -26,3 +26,8 @@ export function filterRows(rows: Skill[], search: string): Skill[] {
     (s) => s.name.toLowerCase().includes(q) || s.description.toLowerCase().includes(q),
   );
 }
+
+/** Same ids in the same order — order is part of the value (it orders the prompt blocks). */
+export function sameOrder(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((id, i) => id === b[i]);
+}

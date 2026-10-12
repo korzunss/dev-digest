@@ -180,7 +180,7 @@ export class EvalPipelineRepository {
     return row!;
   }
 
-  /** Stores one case result and bumps the run's counters, in one transaction. */
+  /** Stores one case result, bumps the run's counters and sets the case's last result, in one transaction. */
   async recordCaseResult(runId: string, r: CaseResultInsert): Promise<void> {
     try {
       await this.writeCaseResult(runId, r);
@@ -211,6 +211,13 @@ export class EvalPipelineRepository {
           casesErrored: sql`${t.evalSuiteRuns.casesErrored} + ${r.status === 'errored' ? 1 : 0}`,
         })
         .where(eq(t.evalSuiteRuns.id, runId));
+      // Same transaction: the case's last result follows the suite run (spec 011 AC-19/20).
+      if (r.caseId !== null) {
+        await tx
+          .update(t.evalSuiteCases)
+          .set({ lastResult: r.result })
+          .where(eq(t.evalSuiteCases.id, r.caseId));
+      }
     });
   }
 

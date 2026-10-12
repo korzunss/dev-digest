@@ -658,6 +658,7 @@ export class EvalPipelineService {
     const result = await this.deps.promote.promote(workspaceId, run.agentId, {
       config,
       skillIds: recorded.filter((id) => existing.has(id)),
+      message: `Promoted v${run.agentVersion} from an eval run`,
     });
     return { agent_id: run.agentId, version: result.version };
   }

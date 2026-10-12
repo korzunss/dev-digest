@@ -116,6 +116,23 @@ d('eval pipeline: suite runs, compare, promote (Testcontainers pg)', () => {
     expect((await json({ method: 'GET', url: `/agents/${agentId}/eval?period=bogus` })).status).toBe(422);
   });
 
+  it('sets each case\'s last_result to the suite run\'s result, so the passing count follows it (AC-19, AC-20)', async () => {
+    const run = await getRun(run2);
+    const cases = (await json({ method: 'GET', url: `/agents/${agentId}/eval-cases` })).body as {
+      id: string;
+      last_result: { status: string } | null;
+    }[];
+    expect(cases).toHaveLength(8);
+    for (const c of cases) {
+      const entry = run.results.find((r: { case_id: string }) => r.case_id === c.id);
+      expect(entry).toBeDefined();
+      expect(c.last_result).not.toBeNull();
+      expect(c.last_result).toEqual(entry.result);
+    }
+    expect(cases.filter((c) => c.last_result?.status === 'passed')).toHaveLength(EXPECTED_NEW.passed);
+    expect(run.cases_passed).toBe(EXPECTED_NEW.passed);
+  });
+
   it('records the attached skills on a run and sends their bodies to the model (AC-75)', async () => {
     const skill = await json({
       method: 'POST',
@@ -162,6 +179,7 @@ d('eval pipeline: suite runs, compare, promote (Testcontainers pg)', () => {
     expect((await json({ method: 'GET', url: `/agents/${agentId}/skills` })).body).toHaveLength(0);
     const after = (await json({ method: 'GET', url: `/agents/${agentId}/versions` })).body;
     expect(after).toHaveLength(before.length + 1); // past versions are kept
+    expect(after[0].message).toBe(`Promoted v1 from an eval run`);
 
     // The compare now offers promote for a run of an older version than the current one.
     const cmp = (await json({ method: 'GET', url: `/eval-runs/compare?a=${run2}&b=${run3}` })).body;
@@ -289,6 +307,14 @@ d('eval pipeline: suite runs, compare, promote (Testcontainers pg)', () => {
       .where(eq(t.evalCaseResults.suiteRunId, started.body.id));
     expect(rows).toHaveLength(2);
     expect(rows.filter((r) => r.caseId === null).map((r) => r.caseName)).toEqual([victim.name]);
+    const after = (await json({ method: 'GET', url: `/agents/${id}/eval-cases` })).body as {
+      id: string;
+      last_result: unknown;
+    }[];
+    expect(after.map((c) => c.id)).not.toContain(victim.id);
+    const survivor = rows.find((r) => r.caseId === cases[1]!.id);
+    expect(survivor).toBeDefined();
+    expect(after.find((c) => c.id === cases[1]!.id)?.last_result).toEqual(survivor!.result);
   });
 
   // SF1: "Run all agents" is paid and has no id, so a cross-origin no-cors POST must not start it.

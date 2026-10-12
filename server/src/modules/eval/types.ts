@@ -90,7 +90,7 @@ export interface EvalPromotePort {
   promote(
     workspaceId: string,
     agentId: string,
-    input: { config: Record<string, unknown>; skillIds: string[] },
+    input: { config: Record<string, unknown>; skillIds: string[]; message?: string },
   ): Promise<{ version: number }>;
 }
 

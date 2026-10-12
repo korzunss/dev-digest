@@ -124,36 +124,36 @@ export function useAgentSkills(agentId: string | null | undefined) {
 }
 
 /**
- * Attach / detach / reorder in one call: the whole ordered id list is posted,
- * because order is part of the value (it is the order of the blocks in the
- * assembled prompt), not a separate operation.
+ * Replace the attached skill set in one call: the whole ordered id list is
+ * posted, because order is part of the value (it is the order of the blocks in
+ * the assembled prompt), not a separate operation.
+ *
+ * Edits are staged in the Skills tab and posted once on Save, so there is no
+ * optimistic write: the cache changes only when the server has answered. The
+ * optional `message` is stored on the version the save creates.
  */
 export function useSetAgentSkills() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ agentId, skillIds }: { agentId: string; skillIds: string[] }) =>
-      api.post<AgentSkillLink[]>(`/agents/${agentId}/skills`, { skill_ids: skillIds }),
-    // Written to the cache BEFORE the request, not after it. Reordering is a
-    // repeated keypress: the next press recomputes from this list, so waiting
-    // for the round-trip means the second press reads the pre-first order and
-    // is silently lost. Optimism here is correctness, not polish.
-    onMutate: async ({ agentId, skillIds }) => {
-      await qc.cancelQueries({ queryKey: ["agent-skills", agentId] });
-      const previous = qc.getQueryData<AgentSkillLink[]>(["agent-skills", agentId]);
-      qc.setQueryData<AgentSkillLink[]>(
-        ["agent-skills", agentId],
-        skillIds.map((skill_id, order) => ({ agent_id: agentId, skill_id, order })),
-      );
-      return { previous };
-    },
-    onError: (_err, { agentId }, context) => {
-      // Put the server's order back; the global error toast reports why.
-      if (context?.previous) qc.setQueryData(["agent-skills", agentId], context.previous);
-    },
+    mutationFn: ({
+      agentId,
+      skillIds,
+      message,
+    }: {
+      agentId: string;
+      skillIds: string[];
+      message?: string;
+    }) =>
+      api.post<AgentSkillLink[]>(
+        `/agents/${agentId}/skills`,
+        message ? { skill_ids: skillIds, message } : { skill_ids: skillIds },
+      ),
     onSuccess: (data, { agentId }) => {
       qc.setQueryData(["agent-skills", agentId], data);
-      // The agent card shows the attached count.
+      // The agent card shows the attached count; a changed set is a new version.
       qc.invalidateQueries({ queryKey: ["agents"] });
+      qc.invalidateQueries({ queryKey: ["agent", agentId] });
+      qc.invalidateQueries({ queryKey: ["agent-versions", agentId] });
     },
   });
 }

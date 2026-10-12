@@ -6,29 +6,45 @@
 import React from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Button, Dropdown, ErrorState, Skeleton, Icon, Badge } from "@devdigest/ui";
+import { useTranslations } from "next-intl";
+import { ConfirmModal } from "@/components/confirm-modal";
 import { AppShell } from "../../../components/app-shell";
 import { AgentCard } from "../_components/AgentCard";
 import { AgentEditor } from "./_components/AgentEditor";
+import { TABS } from "./_components/AgentEditor/constants";
 import { useAgents, useAgent, useUpdateAgent } from "../../../lib/hooks/agents";
 import { ApiError } from "../../../lib/api";
 
-const VALID_TABS = ["config", "skills", "context", "evals"];
+const VALID_TABS: readonly string[] = TABS.map((tb) => tb.key);
 
 export default function AgentEditorPage() {
   const params = useParams<{ id: string }>();
   const search = useSearchParams();
   const router = useRouter();
   const { id } = params;
+  const t = useTranslations("agents");
 
   const { data: agents } = useAgents();
   const { data: agent, isLoading, isError, error, refetch } = useAgent(id);
   const update = useUpdateAgent();
 
   const tab = VALID_TABS.includes(search.get("tab") ?? "") ? search.get("tab")! : "config";
-  const setTab = (t: string) => {
+  // Staged, unsaved edits on the Skills tab. While set, anything that would
+  // leave them (a tab switch, another agent card) asks first.
+  const [skillsDirty, setSkillsDirty] = React.useState(false);
+  const [pendingNav, setPendingNav] = React.useState<(() => void) | null>(null);
+  const guarded = (go: () => void) => {
+    if (skillsDirty) setPendingNav(() => go);
+    else go();
+  };
+  const goTab = (next: string) => {
     const sp = new URLSearchParams(search.toString());
-    sp.set("tab", t);
+    sp.set("tab", next);
     router.replace(`/agents/${id}?${sp.toString()}`);
+  };
+  const setTab = (next: string) => {
+    if (next === tab) return;
+    guarded(() => goTab(next));
   };
 
   const crumb = [
@@ -86,7 +102,9 @@ export default function AgentEditorPage() {
                 ag={a}
                 active={a.id === id}
                 skillCount={a.skill_count ?? undefined}
-                onClick={() => router.push(`/agents/${a.id}?tab=${tab}`)}
+                onClick={() => {
+                  if (a.id !== id) guarded(() => router.push(`/agents/${a.id}?tab=${tab}`));
+                }}
                 onToggle={(enabled) => update.mutate({ id: a.id, patch: { enabled } })}
               />
             ))}
@@ -115,11 +133,24 @@ export default function AgentEditorPage() {
               </div>
             </div>
             <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
-              <AgentEditor agent={agent} tab={tab} onTab={setTab} />
+              <AgentEditor agent={agent} tab={tab} onTab={setTab} onSkillsDirtyChange={setSkillsDirty} />
             </div>
           </div>
         )}
       </div>
+      {pendingNav && (
+        <ConfirmModal
+          title={t("skills.discardTitle")}
+          body={t("skills.discardBody")}
+          confirmLabel={t("skills.discardConfirm")}
+          onClose={() => setPendingNav(null)}
+          onConfirm={() => {
+            const go = pendingNav;
+            setPendingNav(null);
+            go();
+          }}
+        />
+      )}
     </AppShell>
   );
 }

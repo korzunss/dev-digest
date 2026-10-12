@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, inArray } from 'drizzle-orm';
 import type { DbExecutor } from '../../db/client.js';
 import * as t from '../../db/schema.js';
+import { buildAgentSnapshotConfig } from '../../db/agent-snapshot.js';
 import type { CiFailOn, Provider, ReviewStrategy } from '@devdigest/shared';
 import { DEFAULT_AGENT_DESCRIPTION, INITIAL_AGENT_VERSION } from './constants.js';
 import { isConfigChange } from './helpers.js';
@@ -136,7 +137,7 @@ export class AgentsRepository {
     workspaceId: string,
     id: string,
     patch: UpdateAgent,
-    opts: { bumpVersion?: boolean } = {},
+    opts: { bumpVersion?: boolean; message?: string } = {},
   ): Promise<AgentRow | undefined> {
     const existing = await this.getById(workspaceId, id);
     if (!existing) return undefined;
@@ -165,27 +166,22 @@ export class AgentsRepository {
       .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.id, id)))
       .returning();
 
-    if (configChanged && row) await this.snapshotVersion(row, nextVersion);
+    if (configChanged && row) await this.snapshotVersion(row, nextVersion, opts.message);
     return row;
   }
 
-  private async snapshotVersion(row: AgentRow, version: number): Promise<void> {
-    const skills = await this.skillIdsForAgent(row.id);
+  private async snapshotVersion(row: AgentRow, version: number, message?: string): Promise<void> {
+    const linked = await this.linkedSkills(row.id);
     await this.db
       .insert(t.agentVersions)
       .values({
         agentId: row.id,
         version,
-        configJson: {
-          provider: row.provider,
-          model: row.model,
-          system_prompt: row.systemPrompt,
-          output_schema: row.outputSchema,
-          strategy: row.strategy,
-          ci_fail_on: row.ciFailOn,
-          repo_intel: row.repoIntel,
-          skills,
-        },
+        message: message ?? null,
+        configJson: buildAgentSnapshotConfig(
+          row,
+          linked.map((l) => ({ id: l.skill.id, name: l.skill.name })),
+        ),
       })
       .onConflictDoNothing();
   }
@@ -208,6 +204,18 @@ export class AgentsRepository {
       .from(t.agentVersions)
       .where(and(eq(t.agentVersions.agentId, agentId), eq(t.agentVersions.version, version)));
     return row;
+  }
+
+  /** Current names of the skills in `ids` that exist in the workspace (tenant-scoped). */
+  async skillNamesByIds(workspaceId: string, ids: string[]): Promise<Map<string, string>> {
+    const names = new Map<string, string>();
+    if (ids.length === 0) return names;
+    const rows = await this.db
+      .select({ id: t.skills.id, name: t.skills.name })
+      .from(t.skills)
+      .where(and(eq(t.skills.workspaceId, workspaceId), inArray(t.skills.id, ids)));
+    for (const r of rows) names.set(r.id, r.name);
+    return names;
   }
 
   // ---- agent_skills link table (A2 owns the agent side) -------------------

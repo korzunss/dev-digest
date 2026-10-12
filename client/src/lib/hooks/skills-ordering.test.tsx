@@ -54,50 +54,31 @@ afterEach(() => {
 });
 
 describe("useSetAgentSkills", () => {
-  it("writes the new order to the cache before the request resolves", async () => {
+  it("does not touch the cache before the server answers (edits are staged in the tab)", async () => {
     const qc = client();
-    qc.setQueryData(["agent-skills", "ag1"], [link("a", 0), link("b", 1), link("c", 2)]);
-    // Never resolves during the assertion: the point is what the cache holds
-    // while the request is still in flight.
+    const original = [link("a", 0), link("b", 1), link("c", 2)];
+    qc.setQueryData(["agent-skills", "ag1"], original);
     post.mockReturnValue(new Promise(() => {}));
 
     const { result } = renderHook(() => useSetAgentSkills(), { wrapper: wrapper(qc) });
     act(() => result.current.mutate({ agentId: "ag1", skillIds: ["c", "a", "b"] }));
 
-    await waitFor(() =>
-      expect(
-        qc.getQueryData<AgentSkillLink[]>(["agent-skills", "ag1"])!.map((l) => l.skill_id),
-      ).toEqual(["c", "a", "b"]),
-    );
-  });
-
-  it("renumbers order so a second move reads positions, not just ids", async () => {
-    const qc = client();
-    qc.setQueryData(["agent-skills", "ag1"], [link("a", 0), link("b", 1)]);
-    post.mockReturnValue(new Promise(() => {}));
-
-    const { result } = renderHook(() => useSetAgentSkills(), { wrapper: wrapper(qc) });
-    act(() => result.current.mutate({ agentId: "ag1", skillIds: ["b", "a"] }));
-
-    await waitFor(() =>
-      expect(qc.getQueryData<AgentSkillLink[]>(["agent-skills", "ag1"])).toEqual([
-        { agent_id: "ag1", skill_id: "b", order: 0 },
-        { agent_id: "ag1", skill_id: "a", order: 1 },
-      ]),
-    );
-  });
-
-  it("puts the server's order back when the request fails", async () => {
-    const qc = client();
-    const original = [link("a", 0), link("b", 1)];
-    qc.setQueryData(["agent-skills", "ag1"], original);
-    post.mockRejectedValue(new Error("500"));
-
-    const { result } = renderHook(() => useSetAgentSkills(), { wrapper: wrapper(qc) });
-    act(() => result.current.mutate({ agentId: "ag1", skillIds: ["b", "a"] }));
-
-    await waitFor(() => expect(result.current.isError).toBe(true));
+    await waitFor(() => expect(post).toHaveBeenCalled());
     expect(qc.getQueryData<AgentSkillLink[]>(["agent-skills", "ag1"])).toEqual(original);
+  });
+
+  it("posts the optional version note only when there is one", async () => {
+    const qc = client();
+    post.mockResolvedValue([]);
+
+    const { result } = renderHook(() => useSetAgentSkills(), { wrapper: wrapper(qc) });
+    act(() => result.current.mutate({ agentId: "ag1", skillIds: ["a"], message: "why" }));
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(post).toHaveBeenLastCalledWith("/agents/ag1/skills", { skill_ids: ["a"], message: "why" });
+
+    act(() => result.current.mutate({ agentId: "ag1", skillIds: ["a"] }));
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(2));
+    expect(post).toHaveBeenLastCalledWith("/agents/ag1/skills", { skill_ids: ["a"] });
   });
 
   it("takes the server's answer as final once it arrives", async () => {

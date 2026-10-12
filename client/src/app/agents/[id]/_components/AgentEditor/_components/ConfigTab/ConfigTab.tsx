@@ -3,11 +3,14 @@
 import React from "react";
 import { useTranslations } from "next-intl";
 import { FormField, TextInput, SelectInput, SearchableSelect, Textarea, Toggle, Button } from "@devdigest/ui";
+import { AGENT_NOTE_MAX } from "../../constants";
 import type { Agent, CiFailOn, Provider, ReviewStrategy } from "@devdigest/shared";
 import { useUpdateAgent, useProviderModels } from "../../../../../../../lib/hooks/agents";
 import { useToast } from "../../../../../../../lib/toast";
 import { toModelOptions } from "../../../../../../../lib/model-label";
 import { CI_FAIL_ON_VALUES, OUTPUT_SCHEMA_VALUE, PROVIDER_OPTIONS, STRATEGY_VALUES } from "./constants";
+import { NoteField } from "./NoteField";
+import { noteToSend, wouldCreateVersion } from "./helpers";
 import { s } from "./styles";
 
 /** Config tab — name/description/provider/model/system-prompt + enabled toggle. */
@@ -15,6 +18,8 @@ export function ConfigTab({ agent }: { agent: Agent }) {
   const t = useTranslations("agents");
   const toast = useToast();
   const update = useUpdateAgent();
+  // The header toggle has its own mutation so it never disables Save or shows a save note.
+  const toggle = useUpdateAgent();
   const [name, setName] = React.useState(agent.name);
   const [description, setDescription] = React.useState(agent.description);
   const [provider, setProvider] = React.useState<Provider>(agent.provider);
@@ -23,20 +28,11 @@ export function ConfigTab({ agent }: { agent: Agent }) {
   const [strategy, setStrategy] = React.useState<ReviewStrategy>(agent.strategy);
   const [ciFailOn, setCiFailOn] = React.useState<CiFailOn>(agent.ci_fail_on);
   const [repoIntel, setRepoIntel] = React.useState(agent.repo_intel);
-  const [enabled, setEnabled] = React.useState(agent.enabled);
+  const [note, setNote] = React.useState("");
 
-  // Reset local form when switching agents.
-  React.useEffect(() => {
-    setName(agent.name);
-    setDescription(agent.description);
-    setProvider(agent.provider);
-    setModel(agent.model);
-    setSystemPrompt(agent.system_prompt);
-    setStrategy(agent.strategy);
-    setCiFailOn(agent.ci_fail_on);
-    setRepoIntel(agent.repo_intel);
-    setEnabled(agent.enabled);
-  }, [agent.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  // No reset effect: AgentEditor remounts this tab per agent + version, so the form
+  // always starts from the stored config. `enabled` is not part of the form; the
+  // toggle below writes it straight away, so a Save can never revert it.
 
   const { data: models } = useProviderModels(provider);
   // Show the price (USD per 1M in/out tokens) in the label when the provider
@@ -52,6 +48,17 @@ export function ConfigTab({ agent }: { agent: Agent }) {
   const strategyOptions = STRATEGY_VALUES.map((v) => ({ value: v, label: t(`config.strategyOptions.${v}`) }));
   const ciFailOnOptions = CI_FAIL_ON_VALUES.map((v) => ({ value: v, label: t(`config.ciFailOnOptions.${v}`) }));
 
+  // The note only makes sense when this save would create a version.
+  const createsVersion = wouldCreateVersion(agent, {
+    provider,
+    model,
+    system_prompt: systemPrompt,
+    strategy,
+    ci_fail_on: ciFailOn,
+    repo_intel: repoIntel,
+  });
+  const noteTooLong = createsVersion && note.trim().length > AGENT_NOTE_MAX;
+
   const save = () =>
     update.mutate(
       {
@@ -65,13 +72,16 @@ export function ConfigTab({ agent }: { agent: Agent }) {
           strategy,
           ci_fail_on: ciFailOn,
           repo_intel: repoIntel,
-          enabled,
         },
+        message: noteToSend(createsVersion, note),
       },
       {
         // Failures are surfaced by the global mutation error toast; confirm the
         // save with a success toast (not just the inline "Saved (vN)" note).
-        onSuccess: (data) => toast.success(t("config.savedToast", { version: data.version })),
+        onSuccess: (data) => {
+          setNote("");
+          toast.success(t("config.savedToast", { version: data.version }));
+        },
       },
     );
 
@@ -81,7 +91,11 @@ export function ConfigTab({ agent }: { agent: Agent }) {
         <h2 style={s.h2}>{t("config.title")}</h2>
         <label style={s.enabledLabel}>
           {t("config.enabled")}
-          <Toggle on={enabled} onChange={setEnabled} size={16} />
+          <Toggle
+            on={agent.enabled}
+            onChange={(enabled) => toggle.mutate({ id: agent.id, patch: { enabled } })}
+            size={16}
+          />
         </label>
       </div>
       <FormField label={t("config.name")} required>
@@ -133,8 +147,9 @@ export function ConfigTab({ agent }: { agent: Agent }) {
       <FormField label={t("config.outputSchema")}>
         <SelectInput value={OUTPUT_SCHEMA_VALUE} options={[OUTPUT_SCHEMA_VALUE]} />
       </FormField>
+      {createsVersion && <NoteField value={note} onChange={setNote} tooLong={noteTooLong} />}
       <div style={s.actions}>
-        <Button kind="primary" icon="Check" onClick={save} disabled={update.isPending}>
+        <Button kind="primary" icon="Check" onClick={save} disabled={update.isPending || noteTooLong}>
           {update.isPending ? t("config.saving") : t("config.save")}
         </Button>
         {update.isSuccess && (
