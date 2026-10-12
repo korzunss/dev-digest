@@ -67,11 +67,11 @@ function renderModal(cmp: EvalCompare | Error, onClose = vi.fn()) {
 describe("CompareRunsModal", () => {
   it("shows old → new with signed deltas, the prompt diff as plain text, and the skill difference", async () => {
     renderModal(CMP);
-    expect(await screen.findByText("v6 → v7")).toBeInTheDocument();
+    expect(await screen.findByText("Compare runs · v6 → v7")).toBeInTheDocument();
     expect(screen.getByText("78%")).toBeInTheDocument();
     expect(screen.getByText("82%")).toBeInTheDocument();
-    expect(screen.getByText("4 pts")).toBeInTheDocument();
-    expect(screen.getAllByText("2 pts").length).toBe(1); // precision down 2
+    expect(screen.getByText("▲ 4pt")).toBeInTheDocument();
+    expect(screen.getAllByText("▼ 2pt").length).toBe(1); // precision down 2
     expect(screen.getByText("$0.21")).toBeInTheDocument();
     // The diff keeps its markers and renders prompt text as text, never as markup.
     const added = screen.getByText("<b>Flag unused imports</b> as suggestions.");
@@ -89,7 +89,7 @@ describe("CompareRunsModal", () => {
       newer: run("r7", 7, { metrics: { recall: 0.82, precision: null, citation_accuracy: 0.95 } }),
       deltas: { recall: 0.04, precision: null, citation_accuracy: 0.01, cost_usd: 0.02 },
     });
-    expect(await screen.findByText("v6 → v7")).toBeInTheDocument();
+    expect(await screen.findByText("Compare runs · v6 → v7")).toBeInTheDocument();
     expect(screen.getAllByText("n/a").length).toBeGreaterThanOrEqual(2); // precision: old and new
     expect(screen.queryByText("–")).toBeNull();
     expect(screen.queryByText("0%")).toBeNull();

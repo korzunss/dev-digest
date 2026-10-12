@@ -12,7 +12,7 @@ import { ApiError } from "@/lib/api";
 import { useToast } from "@/lib/toast";
 import { useEvalCompare, usePromoteEvalRun } from "@/lib/hooks/eval";
 import { formatCostUsd } from "@/lib/format-cost";
-import { toPercent } from "../../../helpers";
+import { METRIC_COLORS, toPercent } from "../../../helpers";
 import { MetricDelta } from "./MetricDelta";
 import { PromptDiff } from "./PromptDiff";
 import { SkillsDiff } from "./SkillsDiff";
@@ -111,13 +111,14 @@ export function CompareRunsModal({
     );
   };
 
-  const metric = (label: string, from: number | null, to: number | null, delta: number | null) => (
+  const metric = (label: string, from: number | null, to: number | null, delta: number | null, color: string) => (
     <MetricDelta
       label={label}
+      color={color}
       from={toPercent(from) == null ? detail("na") : `${toPercent(from)}%`}
       to={toPercent(to) == null ? detail("na") : `${toPercent(to)}%`}
       delta={delta}
-      deltaText={delta == null ? null : detail("deltaPoints", { points: deltaPoints(delta) })}
+      deltaText={delta == null ? null : t("pointsShort", { points: deltaPoints(delta) })}
     />
   );
 
@@ -137,27 +138,33 @@ export function CompareRunsModal({
     body = (
       <div style={s.body}>
         <div style={s.tiles}>
-          {metric(t("recall"), older.metrics.recall, newer.metrics.recall, deltas.recall)}
-          {metric(t("precision"), older.metrics.precision, newer.metrics.precision, deltas.precision)}
-          {metric(t("citation"), older.metrics.citation_accuracy, newer.metrics.citation_accuracy, deltas.citation_accuracy)}
+          {metric(t("recall"), older.metrics.recall, newer.metrics.recall, deltas.recall, METRIC_COLORS.recall)}
+          {metric(t("precision"), older.metrics.precision, newer.metrics.precision, deltas.precision, METRIC_COLORS.precision)}
+          {metric(t("citation"), older.metrics.citation_accuracy, newer.metrics.citation_accuracy, deltas.citation_accuracy, METRIC_COLORS.citation_accuracy)}
           <MetricDelta
             label={t("cost")}
             from={formatCostUsd(older.cost_usd)}
             to={formatCostUsd(newer.cost_usd)}
             delta={deltas.cost_usd}
-            deltaText={deltas.cost_usd == null ? null : Math.abs(deltas.cost_usd).toFixed(2)}
+            deltaText={deltas.cost_usd == null ? null : formatCostUsd(Math.abs(deltas.cost_usd))}
             tinted={false}
           />
         </div>
         <div>
-          <div style={s.heading}>{t("promptDiff")}</div>
+          <div style={s.heading}>{t("promptDiffHeading")}</div>
           {data.prompt_diff == null ? (
             <div style={s.note}>{t("samePrompt")}</div>
           ) : (
             <>
               <div style={s.legend}>
-                <span>{t("legendOld", { version: older.agent_version })}</span>
-                <span>{t("legendNew", { version: newer.agent_version })}</span>
+                <span style={s.legendItem}>
+                  <span style={s.swatchOld} />
+                  {t("legendOld", { version: older.agent_version })}
+                </span>
+                <span style={s.legendItem}>
+                  <span style={s.swatchNew} />
+                  {t("legendNew", { version: newer.agent_version })}
+                </span>
               </div>
               <PromptDiff lines={data.prompt_diff} />
             </>
@@ -175,11 +182,11 @@ export function CompareRunsModal({
     <>
       <Modal
         width={860}
-        title={data ? t("title", { older: data.older.agent_version, newer: data.newer.agent_version }) : t("metrics")}
-        subtitle={t("subtitle")}
+        title={data ? t("heading", { older: data.older.agent_version, newer: data.newer.agent_version }) : t("metrics")}
+        subtitle={data ? t("subtitleSet", { count: data.newer.cases_total }) : t("subtitle")}
         onClose={onClose}
         footer={
-          <div style={s.footer}>
+          <div style={s.mainFooter}>
             <Button kind="ghost" onClick={onClose}>
               {t("close")}
             </Button>

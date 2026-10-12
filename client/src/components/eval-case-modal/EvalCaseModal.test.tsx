@@ -107,6 +107,14 @@ describe("EvalCaseModal — a draft seeded from a finding", () => {
     expect(screen.getByRole("link", { name: "Open source finding" })).toHaveAttribute("href", "/repos/r1/pulls/7#finding-f1");
   });
 
+  it("renders the dialog under document.body, not inside the trigger's container", () => {
+    const { container } = renderModal({ draft: draft() });
+    const dialog = screen.getByRole("dialog");
+    expect(container.contains(dialog)).toBe(false);
+    expect(dialog.closest("body")).toBe(document.body);
+    expect(container).toBeEmptyDOMElement();
+  });
+
   it("builds a negative banner for a dismissed finding", () => {
     renderModal({
       draft: draft({

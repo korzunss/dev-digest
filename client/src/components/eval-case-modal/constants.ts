@@ -1,5 +1,5 @@
-/** Wide enough for the diff textarea beside its preview. */
-export const MODAL_WIDTH = 880;
+/** Two columns: input on the left, expected output and result on the right. */
+export const MODAL_WIDTH = 1120;
 
 export const INPUT_TABS = ["diff", "files", "prMeta"] as const;
 export type InputTab = (typeof INPUT_TABS)[number];

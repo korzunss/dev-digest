@@ -8,6 +8,7 @@
 "use client";
 
 import React from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { Button, FormField, Modal, TextInput } from "@devdigest/ui";
@@ -137,7 +138,9 @@ export function EvalCaseModal({ agentId, draft, existing, onClose, onOpenExistin
     : t("subtitleManual");
   const positive = seed?.expect === "must_find";
 
-  return (
+  /* Portal to body: inside a FindingCard the Modal's fixed layer sits in the
+     card's stacking context and sibling cards paint over it. */
+  const tree = (
     <>
       <Modal
         width={MODAL_WIDTH}
@@ -170,6 +173,7 @@ export function EvalCaseModal({ agentId, draft, existing, onClose, onOpenExistin
           </div>
         ) : (
           <div style={s.body}>
+            <div style={s.colLeft}>
             {draft && seed && (
               <div style={positive ? s.bannerPositive : s.bannerNegative}>
                 {t(positive ? "bannerPositive" : "bannerNegative", {
@@ -185,6 +189,8 @@ export function EvalCaseModal({ agentId, draft, existing, onClose, onOpenExistin
             <FormField label={t("inputLabel")}>
               <CaseInputTabs diff={diff} onDiff={setDiff} files={files} prMeta={initial.prMeta} source={initial.source} />
             </FormField>
+            </div>
+            <div style={s.colRight}>
             <ExpectedOutputEditor
               value={expected}
               onChange={setExpected}
@@ -199,6 +205,7 @@ export function EvalCaseModal({ agentId, draft, existing, onClose, onOpenExistin
                 )}
               </div>
             )}
+            </div>
           </div>
         )}
       </Modal>
@@ -208,4 +215,5 @@ export function EvalCaseModal({ agentId, draft, existing, onClose, onOpenExistin
       )}
     </>
   );
+  return typeof document !== "undefined" ? createPortal(tree, document.body) : null;
 }

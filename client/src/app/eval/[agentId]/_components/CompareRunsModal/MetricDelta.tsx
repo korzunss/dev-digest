@@ -13,6 +13,7 @@ export function MetricDelta({
   delta,
   deltaText,
   tinted = true,
+  color,
 }: {
   label: string;
   from: string;
@@ -23,9 +24,11 @@ export function MetricDelta({
   deltaText: string | null;
   /** Colour the delta by direction (metrics); cost stays neutral. */
   tinted?: boolean;
+  /** Colour token for the new value; defaults to the primary text colour. */
+  color?: string;
 }) {
   const dir = deltaDir(delta);
-  const Arrow = dir === "up" ? Icon.ArrowUp : dir === "down" ? Icon.ArrowDown : Icon.Slash;
+  const arrow = dir === "up" ? "▲ " : dir === "down" ? "▼ " : "";
   return (
     <div style={s.tile}>
       <div style={s.tileLabel}>{label}</div>
@@ -34,12 +37,12 @@ export function MetricDelta({
           {from}
         </span>
         <Icon.ArrowRight size={13} style={{ color: "var(--text-muted)" }} />
-        <span className="tnum" style={s.to}>
+        <span className="tnum" style={{ ...s.to, color: color ?? "var(--text-primary)" }}>
           {to}
         </span>
         {deltaText != null && (
           <span className="tnum" style={{ ...s.delta, color: tinted ? COLOR[dir] : "var(--text-muted)" }}>
-            <Arrow size={11} />
+            {arrow}
             {deltaText}
           </span>
         )}

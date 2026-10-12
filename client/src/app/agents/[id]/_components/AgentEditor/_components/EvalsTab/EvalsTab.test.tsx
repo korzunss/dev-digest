@@ -92,14 +92,16 @@ describe("EvalsTab", () => {
   it("shows the latest run's metrics and the case list with results and the passing count", async () => {
     renderTab();
     expect(await screen.findByText("leaked-key")).toBeInTheDocument();
-    expect(screen.getByText("1 / 3")).toBeInTheDocument(); // cases passed card
-    expect(screen.getByText("80")).toBeInTheDocument(); // recall
+    expect(screen.getByText("1/3")).toBeInTheDocument(); // cases passed card
+    expect(screen.getByText("80%")).toBeInTheDocument(); // recall
     expect(screen.getByText("1 / 3 passing")).toBeInTheDocument();
     expect(screen.getAllByText("CRITICAL · secrets")).toHaveLength(2); // c1 and c3
     expect(screen.getByText("empty []")).toBeInTheDocument();
     expect(screen.getByText("expected 0 findings, got 2")).toBeInTheDocument();
-    expect(screen.getByText("never run")).toBeInTheDocument();
-    expect(screen.getByText("failed")).toBeInTheDocument();
+    expect(screen.getByText("never run")).toBeInTheDocument(); // summary line of the never-run case
+    expect(screen.getByRole("img", { name: "never run" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "failed" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "passed · recall 100%" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "View full dashboard" })).toHaveAttribute("href", "/eval/a1");
   });
 
@@ -111,12 +113,12 @@ describe("EvalsTab", () => {
     });
     renderTab();
     await screen.findByText("leaked-key");
-    const card = (label: string) => screen.getByText(label).parentElement!.parentElement!;
-    // recall rose 0.10, citation fell 0.25, precision has no value and no delta.
-    expect(within(card("Recall")).getByText("0.10")).toBeInTheDocument();
-    expect(within(card("Citation accuracy")).getByText("0.25")).toBeInTheDocument();
+    const card = (label: string) => screen.getByText(label).parentElement!;
+    // recall rose 10 points, citation fell 25, precision has no value and no delta.
+    expect(within(card("Recall")).getByText("▲ 10pt")).toBeInTheDocument();
+    expect(within(card("Citation accuracy")).getByText("▼ 25pt")).toBeInTheDocument();
     expect(within(card("Precision")).getByText("n/a")).toBeInTheDocument();
-    expect(within(card("Precision")).queryByText(/^\d+\.\d\d$/)).toBeNull();
+    expect(within(card("Precision")).queryByText(/pt$/)).toBeNull();
     expect(within(card("Precision")).queryByText("–")).toBeNull();
     expect(screen.queryByText("0%")).toBeNull();
   });
@@ -127,9 +129,11 @@ describe("EvalsTab", () => {
     renderTab();
     expect(await screen.findByText(evalMessages.evalsTab.emptyCases)).toBeInTheDocument();
     expect(screen.getByText("No completed suite run yet.")).toBeInTheDocument();
-    // AC-43: a metric with no data reads "n/a" (3 cards), never a dash or 0%.
-    expect(screen.getAllByText("n/a")).toHaveLength(3);
+    // AC-43: a card with no data reads "n/a" (cases passed + 3 metrics), never a dash or 0%.
+    expect(screen.getAllByText("n/a")).toHaveLength(4);
     expect(screen.queryByText("0%")).toBeNull();
+    // An empty suite cannot be started: nothing to run, the server would refuse with suite_empty.
+    expect(screen.getByRole("button", { name: evalMessages.evalsTab.runAll })).toBeDisabled();
   });
 
   it("starts a suite run only after the confirm names the count and model, then shows progress", async () => {

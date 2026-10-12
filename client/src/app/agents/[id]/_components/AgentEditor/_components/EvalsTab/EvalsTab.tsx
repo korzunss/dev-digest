@@ -7,7 +7,7 @@ import React from "react";
 import Link from "next/link";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
-import { Button, ErrorState, MetricCard, Skeleton } from "@devdigest/ui";
+import { Button, ErrorState, Icon, Skeleton } from "@devdigest/ui";
 import type { Agent, EvalSuiteCase } from "@devdigest/shared";
 import { EvalCaseModal } from "@/components/eval-case-modal";
 import { ConfirmModal } from "@/components/confirm-modal";
@@ -22,6 +22,7 @@ import {
   useStartEvalRun,
 } from "@/lib/hooks/eval";
 import { CaseRow } from "./CaseRow";
+import { StatCard } from "./StatCard";
 import { RunConfirm } from "./RunConfirm";
 import { passingCount, startRefusalKey, toPercent } from "./helpers";
 import { s } from "./styles";
@@ -77,10 +78,8 @@ export function EvalsTab({ agent }: { agent: Agent }) {
     const key = err instanceof ApiError ? startRefusalKey(err.code) : null;
     toast.error(key ? t(key, { provider: agent.provider }) : err instanceof Error ? err.message : String(err));
   };
-  const card = (label: string, value: number | null, delta: number | null) => (
-    <div style={s.tile}>
-      <MetricCard label={label} value={value ?? na} suffix={value == null ? undefined : "%"} delta={delta ?? undefined} />
-    </div>
+  const card = (label: string, value: number | null, delta: number | null, color: string) => (
+    <StatCard label={label} value={value ?? na} suffix={value == null ? undefined : "%"} color={value == null ? undefined : color} delta={delta ?? undefined} />
   );
   const accept = () => {
     const c = confirm;
@@ -99,33 +98,29 @@ export function EvalsTab({ agent }: { agent: Agent }) {
     <div style={s.wrap}>
       <div>
         <div style={s.sectionHead}>
-          <span style={s.sectionTitle}>{t("metricsTitle")}</span>
-          <span style={s.caption}>{latest ? t("latestCaption") : t("noRunYet")}</span>
+          <Icon.Gauge size={14} style={s.sectionIcon} />
+          <span style={s.sectionLabel}>{t("metricsTitle")}</span>
+          {!latest && <span style={s.caption}>{t("noRunYet")}</span>}
           <span style={s.spacer} />
-          <Link href={`/eval/${agent.id}`} style={s.caption}>{t("viewDashboard")}</Link>
+          <Link href={`/eval/${agent.id}`} style={s.dashLink}>{t("viewDashboard")}</Link>
         </div>
         <div style={{ ...s.tiles, marginTop: 10 }}>
-          <div style={s.tile}>
-            <MetricCard
-              label={t("casesPassedCard")}
-              value={latest ? `${latest.cases_passed} / ${latest.cases_total}` : "–"}
-            />
-          </div>
-          {card(t("cardRecall"), toPercent(latest?.metrics.recall), deltas.recall)}
-          {card(t("cardPrecision"), toPercent(latest?.metrics.precision), deltas.precision)}
-          {card(t("cardCitation"), toPercent(latest?.metrics.citation_accuracy), deltas.citation_accuracy)}
+          {card(t("cardRecall"), toPercent(latest?.metrics.recall), deltas.recall, "var(--accent)")}
+          {card(t("cardPrecision"), toPercent(latest?.metrics.precision), deltas.precision, "var(--ok)")}
+          {card(t("cardCitation"), toPercent(latest?.metrics.citation_accuracy), deltas.citation_accuracy, "var(--warn)")}
+          <StatCard label={t("casesPassedCard")} value={latest ? `${latest.cases_passed}/${latest.cases_total}` : na} />
         </div>
       </div>
 
       <div style={s.toolbar}>
         <span style={s.sectionTitle}>{t("casesHeading")}</span>
-        <span style={s.caption}>{t("passingCount", { passed: passingCount(list), total: list.length })}</span>
+        <span style={s.pill}>{t("passingCount", { passed: passingCount(list), total: list.length })}</span>
         {running && run && <span style={s.progress}>{t("progress", { done: run.cases_done, total: run.cases_total })}</span>}
         <span style={s.spacer} />
-        <Button kind="secondary" size="sm" icon="Plus" onClick={() => setEditing({ existing: null })}>{t("newCase")}</Button>
-        <Button kind="primary" size="sm" icon="Play" disabled={running || start.isPending} onClick={() => setConfirm({ kind: "runAll" })}>
+        <Button kind="secondary" size="sm" icon="Play" disabled={running || start.isPending || list.length === 0} onClick={() => setConfirm({ kind: "runAll" })}>
           {t("runAll")}
         </Button>
+        <Button kind="primary" size="sm" icon="Plus" onClick={() => setEditing({ existing: null })}>{t("newCase")}</Button>
       </div>
 
       {list.length === 0 ? (

@@ -3,7 +3,22 @@ import type { CSSProperties } from "react";
 /** Co-located styles for the EvalCaseModal family. The Modal primitive hands
     its children no padding, so the body supplies it. */
 export const s = {
-  body: { padding: 24, display: "flex", flexDirection: "column", gap: 4 } satisfies CSSProperties,
+  /* Two columns as in the design; each scrolls on its own inside the Modal's 92% max height. */
+  body: {
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
+    maxHeight: "calc(92vh - 190px)",
+  } satisfies CSSProperties,
+  colLeft: { padding: 24, display: "flex", flexDirection: "column", gap: 4, minWidth: 0, overflowY: "auto" } satisfies CSSProperties,
+  colRight: {
+    padding: 24,
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
+    minWidth: 0,
+    overflowY: "auto",
+    borderLeft: "1px solid var(--border-strong)",
+  } satisfies CSSProperties,
   banner: {
     padding: "10px 14px",
     borderRadius: 8,
