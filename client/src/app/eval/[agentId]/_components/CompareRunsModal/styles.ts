@@ -1,0 +1,41 @@
+import type { CSSProperties } from "react";
+
+/** Co-located styles for CompareRunsModal, PromptDiff, SkillsDiff and MetricDelta. */
+export const s = {
+  body: { padding: "20px 24px", display: "flex", flexDirection: "column", gap: 20 } satisfies CSSProperties,
+  tiles: { display: "flex", gap: 12 } satisfies CSSProperties,
+  tile: {
+    flex: 1,
+    minWidth: 0,
+    border: "1px solid var(--border)",
+    borderRadius: 9,
+    padding: "14px 16px",
+    background: "var(--bg-elevated)",
+  } satisfies CSSProperties,
+  tileLabel: { fontSize: 11, fontWeight: 600, letterSpacing: "0.06em", color: "var(--text-muted)", textTransform: "uppercase" } satisfies CSSProperties,
+  tileRow: { display: "flex", alignItems: "baseline", gap: 8, marginTop: 10, flexWrap: "wrap" } satisfies CSSProperties,
+  from: { fontSize: 16, color: "var(--text-muted)" } satisfies CSSProperties,
+  to: { fontSize: 24, fontWeight: 700 } satisfies CSSProperties,
+  delta: { display: "inline-flex", alignItems: "center", gap: 3, fontSize: 12.5, fontWeight: 600 } satisfies CSSProperties,
+  heading: { fontSize: 12, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: 8 } satisfies CSSProperties,
+  legend: { display: "flex", gap: 14, fontSize: 12.5, color: "var(--text-secondary)", marginBottom: 8 } satisfies CSSProperties,
+  diffBox: {
+    border: "1px solid var(--border)",
+    borderRadius: 8,
+    background: "var(--bg-surface)",
+    padding: "10px 0",
+    maxHeight: 280,
+    overflow: "auto",
+    fontSize: 12.5,
+    lineHeight: 1.6,
+  } satisfies CSSProperties,
+  diffLine: { padding: "0 14px", whiteSpace: "pre-wrap", wordBreak: "break-word" } satisfies CSSProperties,
+  lineAdd: { padding: "0 14px", whiteSpace: "pre-wrap", wordBreak: "break-word", background: "rgba(16, 185, 129, 0.14)" } satisfies CSSProperties,
+  lineDel: { padding: "0 14px", whiteSpace: "pre-wrap", wordBreak: "break-word", background: "rgba(239, 68, 68, 0.14)", textDecoration: "line-through" } satisfies CSSProperties,
+  note: { fontSize: 13.5, color: "var(--text-secondary)" } satisfies CSSProperties,
+  list: { margin: 0, paddingLeft: 18, display: "flex", flexDirection: "column", gap: 3, fontSize: 13.5 } satisfies CSSProperties,
+  footer: { display: "flex", justifyContent: "flex-end", gap: 8 } satisfies CSSProperties,
+  confirmBody: { padding: "18px 24px", display: "flex", flexDirection: "column", gap: 10, fontSize: 13.5, lineHeight: 1.5 } satisfies CSSProperties,
+  warn: { color: "var(--warn)" } satisfies CSSProperties,
+  error: { color: "var(--crit)", fontSize: 13 } satisfies CSSProperties,
+} as const;

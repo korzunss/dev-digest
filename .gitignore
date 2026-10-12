@@ -26,3 +26,10 @@ test-results/
 
 # emdash worktree config (local)
 .emdash.json
+
+# mutation testing (server/)
+server/.stryker-tmp/
+server/reports/
+
+# /pr-self-review local gate state (per developer)
+.pr-self-review.json
