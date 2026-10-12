@@ -1,5 +1,6 @@
-/* CaseRow — one eval case in the Evals tab (AC-19): name, expectation summary,
-   severity · category badge, last result, and the run / edit / delete actions. */
+/* CaseRow — one eval case in an Evals tab, agent or skill (AC-19): name,
+   expectation summary, severity · category badge, last result, the skill
+   version it ran against (AC-83), and the run / edit / delete actions. */
 "use client";
 
 import React from "react";
@@ -27,6 +28,7 @@ export function CaseRow({
   onDelete: () => void;
 }) {
   const t = useTranslations("eval.evalsTab");
+  const skillT = useTranslations("eval.skillTab");
   const r = c.last_result;
   const badge = expectationBadge(c);
   const recall = caseRecall(r);
@@ -48,7 +50,10 @@ export function CaseRow({
       </span>
       <div style={s.rowMain}>
         <div style={s.rowName}>{c.name}</div>
-        <div style={s.rowSummary}>{r ? summary : t("neverRun")}</div>
+        <div style={s.rowSummary}>
+          {r ? summary : t("neverRun")}
+          {r?.skill_version != null && ` · ${skillT("ranOn", { version: r.skill_version })}`}
+        </div>
       </div>
       <Badge mono>{badge ?? t("emptyBadge")}</Badge>
       <div style={s.rowActions}>

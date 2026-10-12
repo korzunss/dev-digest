@@ -12,7 +12,7 @@ import type {
 import type { AppConfig } from './config.js';
 import type { Db } from '../db/client.js';
 import type { AgentRow } from '../db/rows.js';
-import type { EvalAgent } from '../modules/eval/types.js';
+import type { EvalAgent, EvalSkillsPort } from '../modules/eval/types.js';
 import { JobRunner } from './jobs.js';
 import { runBus, type RunBus } from './sse.js';
 import { LocalSecretsProvider } from '../adapters/secrets/local.js';
@@ -46,6 +46,7 @@ import { BlastRepository } from '../modules/blast/repository.js';
 import { ContextService } from '../modules/context/service.js';
 import { EvalPipelineService } from '../modules/eval/pipeline-service.js';
 import { EvalPipelineRepository } from '../modules/eval/repository/pipeline.repo.js';
+import { EvalSkillSuiteService } from '../modules/eval/skill-suite-service.js';
 import { EVAL_CASE_CALL_DEADLINE_MS } from '../modules/eval/constants.js';
 import { ReviewService } from '../modules/reviews/service.js';
 import { AgentsService } from '../modules/agents/service.js';
@@ -120,6 +121,8 @@ export class Container {
   private _brief?: BriefService;
   private _context?: ContextService;
   private _evalPipeline?: EvalPipelineService;
+  private _evalSkillSuite?: EvalSkillSuiteService;
+  private _evalPipelineRepo?: EvalPipelineRepository;
 
   constructor(config: AppConfig, db: Db, private overrides: ContainerOverrides = {}) {
     this.config = config;
@@ -257,7 +260,7 @@ export class Container {
     const skillsRepo = this.skillsRepo;
     const agentsService = new AgentsService(this);
     this._evalPipeline = new EvalPipelineService({
-      repo: new EvalPipelineRepository(this.db),
+      repo: this.evalPipelineRepo,
       agents: {
         getById: async (workspaceId, id) => {
           const row = await agentsRepo.getById(workspaceId, id);
@@ -277,6 +280,8 @@ export class Container {
           ((await agentsRepo.getVersion(agentId, version))?.configJson as Record<string, unknown> | undefined) ??
           null,
       },
+      skills: this.evalSkillsPort,
+      skillCases: this.evalSkillSuite,
       reviews: new ReviewService(this),
       promote: {
         promote: async (workspaceId, agentId, input) => {
@@ -300,6 +305,62 @@ export class Container {
       now: () => new Date(),
     });
     return this._evalPipeline;
+  }
+
+  /** One repository for the agent and skill eval services. */
+  private get evalPipelineRepo(): EvalPipelineRepository {
+    return (this._evalPipelineRepo ??= new EvalPipelineRepository(this.db));
+  }
+
+  /** Skills as the eval services see them; the default pick is the first attached agent's (by name, disabled included). */
+  private get evalSkillsPort(): EvalSkillsPort {
+    const skillsRepo = this.skillsRepo;
+    const agentsRepo = this.agentsRepo;
+    return {
+      getById: async (workspaceId, skillId) => {
+        const row = await skillsRepo.getById(workspaceId, skillId);
+        return row
+          ? {
+              id: row.id,
+              name: row.name,
+              version: row.version,
+              enabled: row.enabled,
+              rendered: renderSkillBlock(row.name, row.body),
+            }
+          : undefined;
+      },
+      agentsUsing: (workspaceId, skillId) => skillsRepo.agentsUsingSkill(workspaceId, skillId),
+      defaultPick: async (workspaceId, skillId) => {
+        const [first] = await skillsRepo.agentsUsingSkill(workspaceId, skillId);
+        const agent = first ? await agentsRepo.getById(workspaceId, first.id) : undefined;
+        return agent ? { provider: agent.provider as Provider, model: agent.model } : null;
+      },
+    };
+  }
+
+  /**
+   * Skill eval suites (plan 35) — cases and runs per skill. One instance per app
+   * (it holds the in-memory progress and draft tokens); same review engine and
+   * call options as `evalPipeline`.
+   */
+  get evalSkillSuite(): EvalSkillSuiteService {
+    return (this._evalSkillSuite ??= new EvalSkillSuiteService({
+      repo: this.evalPipelineRepo,
+      skills: this.evalSkillsPort,
+      llm: (id) => this.llm(id),
+      review: reviewPullRequest,
+      parseDiff: parseUnifiedDiff,
+      callOptions: {
+        callDeadlineMs: EVAL_CASE_CALL_DEADLINE_MS,
+        maxOutputTokens: REVIEW_MAX_OUTPUT_TOKENS,
+        routing: REVIEW_ROUTING,
+        retryRouting: REVIEW_RETRY_ROUTING,
+        maxSkippedChunkFraction: REVIEW_MAX_SKIPPED_CHUNK_FRACTION,
+      },
+      countTokens: (s) => this.tokenizer.count(s),
+      estimateCost: (model, tokensIn, tokensOut) => this.priceBook.estimate(model, tokensIn, tokensOut),
+      now: () => new Date(),
+    }));
   }
 
   /**

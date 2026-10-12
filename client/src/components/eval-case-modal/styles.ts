@@ -83,6 +83,7 @@ export const s = {
   } satisfies CSSProperties,
   errorItem: { margin: 0 } satisfies CSSProperties,
   saved: { padding: 24, fontSize: 14, lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 12 } satisfies CSSProperties,
+  pickerSlot: { padding: "0 24px 24px" } satisfies CSSProperties,
   footer: { display: "flex", gap: 8, justifyContent: "flex-end", alignItems: "center" } satisfies CSSProperties,
   footerSpacer: { flex: 1 } satisfies CSSProperties,
 } as const;

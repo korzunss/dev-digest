@@ -1,11 +1,13 @@
 import type {
+  EvalModelPick,
   EvalSkillRef,
+  EvalSuiteCase,
   LLMProvider,
   Provider,
   UnifiedDiff,
 } from '@devdigest/shared';
 import type { reviewPullRequest } from '@devdigest/reviewer-core';
-import type { EvalPipelineRepository } from './repository/pipeline.repo.js';
+import type { EvalPipelineRepository, SuiteCaseRow } from './repository/pipeline.repo.js';
 
 /**
  * Ports of the eval pipeline service (plan 34). The service depends on these
@@ -94,6 +96,9 @@ export interface EvalPromotePort {
 
 /** The agent exactly as one suite run sees it (enabled skills only). */
 export interface EvalAgentSnapshot {
+  /** Whose version `version` is; absent means an agent (plan 34 callers). */
+  owner?: 'agent' | 'skill';
+  /** The agent id, or the skill id for a skill case run. */
   id: string;
   provider: Provider;
   model: string;
@@ -105,9 +110,48 @@ export interface EvalAgentSnapshot {
   rendered: string[];
 }
 
+/** A skill as the eval pipeline needs it. */
+export interface EvalSkill {
+  id: string;
+  name: string;
+  version: number;
+  enabled: boolean;
+  rendered: string;
+}
+
+export interface EvalSkillsPort {
+  getById(workspaceId: string, skillId: string): Promise<EvalSkill | undefined>;
+  /** Agents the skill is attached to (any enabled state), by name. */
+  agentsUsing(workspaceId: string, skillId: string): Promise<{ id: string; name: string }[]>;
+  /** The first attached agent's provider/model, or null when none. */
+  defaultPick(workspaceId: string, skillId: string): Promise<EvalModelPick | null>;
+}
+
+/** Runs one saved skill case on a pick; implemented by the skill suite service. */
+export interface EvalSkillCaseRunPort {
+  runSavedCase(workspaceId: string, row: SuiteCaseRow, pick: EvalModelPick): Promise<EvalSuiteCase>;
+}
+
+export interface EvalSkillSuiteServiceDeps {
+  repo: EvalPipelineRepository;
+  skills: EvalSkillsPort;
+  llm: (provider: Provider) => Promise<LLMProvider>;
+  review: ReviewFn;
+  parseDiff: (raw: string) => UnifiedDiff;
+  callOptions: Pick<
+    ReviewParams,
+    'callDeadlineMs' | 'maxOutputTokens' | 'routing' | 'retryRouting' | 'maxSkippedChunkFraction'
+  >;
+  countTokens?: (s: string) => number;
+  estimateCost?: (model: string, tokensIn: number, tokensOut: number) => number | null;
+  now: () => Date;
+}
+
 export interface EvalPipelineServiceDeps {
   repo: EvalPipelineRepository;
   agents: EvalAgentsPort;
+  skills: EvalSkillsPort;
+  skillCases: EvalSkillCaseRunPort;
   reviews: EvalReviewSourcePort;
   promote: EvalPromotePort;
   /** Rejects with a `ConfigError` when the provider has no API key. */

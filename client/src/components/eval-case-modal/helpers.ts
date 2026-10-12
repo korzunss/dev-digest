@@ -128,11 +128,13 @@ export const secondsLabel = (ms: number): string => (ms / 1000).toFixed(1);
 
 export const costLabel = (usd: number | null): string => (usd == null ? "n/a" : `$${usd.toFixed(4)}`);
 
-export type RunSnapshot = { diff: string; expected: string };
+/** `pick` is the "provider/model" a skill case ran on ("" for an agent case). */
+export type RunSnapshot = { diff: string; expected: string; pick?: string };
 
-/** A shown result is stale once the input or expected output differs from what ran. */
+/** A shown result is stale once the input, expected output or (skill) picked model differs from what ran. */
 export const isStale = (ran: RunSnapshot | null, now: RunSnapshot): boolean =>
-  ran !== null && (ran.diff !== now.diff || ran.expected !== now.expected);
+  ran !== null &&
+  (ran.diff !== now.diff || ran.expected !== now.expected || (ran.pick ?? "") !== (now.pick ?? ""));
 
 export interface CaseIssue {
   message: string;

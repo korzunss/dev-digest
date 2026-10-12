@@ -81,6 +81,20 @@ describe('runCase', () => {
     expect(r.findings).toEqual([{ file: 'src/a.ts', start_line: 2, end_line: 2, title: 'T', severity: 'WARNING' }]);
   });
 
+  it('tags the result with the model and the agent version only', async () => {
+    const llm = new MockLLMProvider('openai', { structured: review([]) });
+    const r = await runCase(snapshot, llm, { diff: DIFF }, [], deps);
+    expect(r).toMatchObject({ model: 'gpt-4.1', agent_version: 4 });
+    expect(r.skill_version).toBeUndefined();
+  });
+
+  it('tags a skill-owner result with skill_version and no agent_version (AC-88)', async () => {
+    const llm = new MockLLMProvider('openai', { structured: review([]) });
+    const r = await runCase({ ...snapshot, owner: 'skill', version: 7 }, llm, { diff: DIFF }, [], deps);
+    expect(r).toMatchObject({ model: 'gpt-4.1', skill_version: 7 });
+    expect(r.agent_version).toBeUndefined();
+  });
+
   it('marks a missed must_find as failed, not errored', async () => {
     const llm = new MockLLMProvider('openai', { structured: review([]) });
     const r = await runCase(snapshot, llm, { diff: DIFF }, [must('src/a.ts', 2)], deps);

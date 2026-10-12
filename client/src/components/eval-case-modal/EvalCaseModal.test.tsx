@@ -66,7 +66,7 @@ function renderModal(props: Partial<React.ComponentProps<typeof EvalCaseModal>> 
   return render(
     <QueryClientProvider client={qc}>
       <NextIntlClientProvider locale="en" messages={{ eval: evalMessages, common, shell }}>
-        <EvalCaseModal agentId="a1" onClose={onClose} onOpenExisting={onOpenExisting} {...props} />
+        <EvalCaseModal owner={{ kind: "agent", agentId: "a1" }} onClose={onClose} onOpenExisting={onOpenExisting} {...props} />
       </NextIntlClientProvider>
     </QueryClientProvider>,
   );
@@ -278,5 +278,68 @@ describe("EvalCaseModal — a new hand-written case", () => {
     await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith("Saved other (must find)"));
     expect(put).toHaveBeenCalledWith("/eval-cases/c1", expect.objectContaining({ name: "other" }));
     expect(put.mock.calls[0]![1]).not.toHaveProperty("source_finding_id");
+  });
+});
+
+describe("EvalCaseModal — a skill owner", () => {
+  const PICK = { provider: "openai", model: "gpt-x" };
+  const skillRender = (props: Partial<React.ComponentProps<typeof EvalCaseModal>> = {}) =>
+    renderModal({ owner: { kind: "skill", skillId: "s1" }, ...props });
+
+  beforeEach(() => {
+    get.mockImplementation(async (p: string) => {
+      if (p === "/skills/s1/eval-run") {
+        return { skill: { id: "s1", name: "sql", version: 2, enabled: true }, progress: null, default_pick: PICK };
+      }
+      if (p.startsWith("/providers/")) return [{ id: "gpt-x" }];
+      throw new Error(`unexpected GET ${p}`);
+    });
+  });
+
+  it("shows PR meta 'none', confirms on the defaulted pick and runs through the skill endpoints", async () => {
+    post.mockImplementation(async (p: string) => (p.endsWith("/eval-draft-runs") ? { result: RESULT, run_token: "tok1" } : savedCase({ agent_id: null })));
+    skillRender({ draft: undefined });
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "skill-case" } });
+    fireEvent.change(screen.getByLabelText("Unified diff"), { target: { value: DIFF } });
+    fireEvent.change(expectedBox(), { target: { value: "[]" } });
+    fireEvent.click(screen.getByRole("button", { name: "PR meta" }));
+    expect(screen.getByText("none")).toBeInTheDocument();
+
+    await waitFor(() => expect(get).toHaveBeenCalledWith("/skills/s1/eval-run"));
+    await screen.findByText("valid JSON");
+    fireEvent.click(screen.getByRole("button", { name: "Run case" }));
+    await screen.findByText(/the model you pick/);
+    expect(screen.queryByText(/This skill is disabled/)).not.toBeInTheDocument();
+    await waitFor(() => expect(within(screen.getAllByRole("dialog").at(-1)!).getByRole("button", { name: "Run" })).toBeEnabled());
+    clickLast("Run");
+    await screen.findByText("Last run passed");
+    expect(post).toHaveBeenCalledWith("/skills/s1/eval-draft-runs", expect.objectContaining({ ...PICK, expected_output: [] }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalled());
+    const save = post.mock.calls.find(([p]) => p === "/skills/s1/eval-cases");
+    expect(save![1]).toMatchObject({ name: "skill-case", draft_run_token: "tok1" });
+    expect(screen.getByRole("link", { name: "Open case" })).toHaveAttribute("href", "/skills/s1?tab=evals");
+  });
+
+  it("states in the run confirm that the skill is disabled, and stays silent for an enabled one (AC-93)", async () => {
+    const disabledState = { skill: { id: "s1", name: "sql", version: 2, enabled: false }, progress: null, default_pick: PICK };
+    get.mockImplementation(async (p: string) => (p === "/skills/s1/eval-run" ? disabledState : [{ id: "gpt-x" }]));
+    skillRender();
+    await waitFor(() => expect(get).toHaveBeenCalledWith("/skills/s1/eval-run"));
+    fireEvent.click(screen.getByRole("button", { name: "Run case" }));
+    await screen.findByText(/This skill is disabled/);
+  });
+
+  it("keeps Run disabled until a model is picked when there is no default", async () => {
+    get.mockImplementation(async (p: string) => {
+      if (p === "/skills/s1/eval-run") return { skill: { id: "s1", name: "sql", version: 2, enabled: true }, progress: null, default_pick: null };
+      return [];
+    });
+    skillRender();
+    await waitFor(() => expect(get).toHaveBeenCalledWith("/skills/s1/eval-run"));
+    fireEvent.click(screen.getByRole("button", { name: "Run case" }));
+    await screen.findByText(/the model you pick/);
+    expect(within(screen.getAllByRole("dialog").at(-1)!).getByRole("button", { name: "Run" })).toBeDisabled();
   });
 });

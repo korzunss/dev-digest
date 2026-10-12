@@ -28,6 +28,13 @@ without a fresh review of that PR.
   The click opens a prefilled draft that the user checks, and may run, before anything
   is saved. [user: correction, 2026-10-12]
 - Let the user write and edit cases by hand in the same suite, in the same modal.
+- Give every skill its own regression suite on the Skill Editor Evals tab (design 07),
+  run on the skill alone, so a skill can be tested without any agent's prompt or other
+  skills. [user: answer to B1 (skill evals), 2026-10-12; user: answer to B2 (skill
+  evals), 2026-10-12]
+- Let a skill author run, from the skill, the suites of the agents that use it, to see
+  what the skill's current body does to them. [user: answer to B4 (skill evals),
+  2026-10-12]
 - Run an agent over its whole suite on frozen inputs, so runs of different agent
   versions are comparable, and score each run with code only: recall, precision and
   citation accuracy.
@@ -43,8 +50,21 @@ without a fresh review of that PR.
   rendered. [user: answer to B6, 2026-10-11]
 - Saving a case straight from the finding card without the modal.
   [user: correction, 2026-10-12]
-- Skill-owned eval cases and the Skill Editor Evals tab (design 07 is a list-style
-  reference only).
+- For skill suites: suite-run history, metric cards, the trend chart, compare, promote,
+  the regression alert and Eval Dashboard rows. A skill suite keeps one last result per
+  case only. [user: answer to B3 (skill evals), 2026-10-12]
+- Restoring an older skill version from the Evals tab.
+  [user: answer to B3 (skill evals), 2026-10-12]
+- Running a skill case through a host agent (its prompt, model or other skills), and a
+  host agent stored per skill suite. [user: answer to B2 (skill evals), 2026-10-12]
+- A read-only view of agent cases on the skill's Evals tab, and tagging agent cases
+  with a skill. [user: answer to B1 (skill evals), 2026-10-12]
+- Creating a skill case from a finding, and copying an agent case into a skill suite.
+  "Turn into eval case" stays agent-only. [user: answer to B5 (skill evals), 2026-10-12]
+- Marking a skill case's result stale on its own when the skill body changes.
+  [user: answer to B7 (skill evals), 2026-10-12]
+- Showing in a skill suite the older skill-owned case rows of the review-eval CLI and
+  plugin store. [user: answer to B1 (skill evals), 2026-10-12]
 - Running an **older** stored agent version. A run always uses the current version.
   Promote (AC-54…AC-57) is how an older version is brought back. [user: answer to B3, 2026-10-11]
 - Any LLM call in scoring, including LLM-as-judge or semantic matching of finding
@@ -85,15 +105,22 @@ without a fresh review of that PR.
    expectations, file and line range), so that I can cover cases no real PR produced yet.
 8. As an agent author, I want a trend chart of the three metrics over all runs, with
    the prompt version and cost per point, so that I can see the direction over time.
+9. As a skill author, I want a suite of cases on the skill itself, run with only that
+   skill in the prompt, so that a pass or a fail is down to the skill and not to an
+   agent that happens to use it.
+10. As a skill author, I want one button that runs the suites of every agent using the
+   skill, so that I can see whether my skill change helped or hurt those agents.
 
 ## Acceptance criteria (EARS)
 
 ### Suite scope and coexistence
 
-- **AC-1** The system SHALL include in an agent's eval suite only agent-owned cases in
-  the eval-pipeline expectation shape (AC-5). Planted-fixture cases written by the
-  review-eval CLI SHALL NOT appear in any eval-pipeline list, run, metric, trend or
-  dashboard. [user: answer to B1, 2026-10-11]
+- **AC-1** The system SHALL include in an agent's eval suite only that agent's cases,
+  and in a skill's eval suite only that skill's cases, both in the eval-pipeline
+  expectation shape (AC-5). Planted-fixture cases written by the review-eval CLI, and
+  the older skill-owned case rows of that store, SHALL NOT appear in any eval-pipeline
+  list, run, metric, trend or dashboard. [user: answer to B1, 2026-10-11; skill
+  suites: user: answer to B1 (skill evals), 2026-10-12]
 - **AC-2** The system SHALL keep the review-eval CLI (plans 09/12) working with its
   stored cases and run rows unchanged. [user: answer to B1, 2026-10-11]
 
@@ -112,8 +139,9 @@ without a fresh review of that PR.
   never in matching. [user: answer to B2, 2026-10-11]
 - **AC-6** The system SHALL treat a case with an empty expectation list as "must flag
   nothing". [user: answer to B2, 2026-10-11]
-- **AC-7** The system SHALL keep case names unique within one agent's suite, checked
-  when a case is saved.
+- **AC-7** The system SHALL keep case names unique within one suite (an agent's or a
+  skill's), checked when a case is saved. The same name MAY exist in different suites.
+  [skill suites: user: answer to B1 (skill evals), 2026-10-12]
 - **AC-64** The system SHALL represent a case's expected output as a JSON array with
   one element per expectation. Each element has:
   - `expect`: `"must_find"` or `"must_not_flag"`, required;
@@ -244,7 +272,9 @@ without a fresh review of that PR.
   - the expected output;
   - "Cancel", "Run case" and "Save".
 
-  [user: answer to B7, 2026-10-11; correction, 2026-10-12]
+  The same modal SHALL serve a skill suite's new and saved cases (AC-85).
+  [user: answer to B7, 2026-10-11; correction, 2026-10-12; skill suites: user: answer
+  to B5 (skill evals), 2026-10-12]
 - **AC-23** The system SHALL edit the expected output as the JSON array of AC-64, with
   an indicator that shows "valid JSON", or the parse error when the JSON is invalid. A
   "Finding skeleton" action SHALL append a pre-filled `must_find` element. Every
@@ -258,8 +288,8 @@ without a fresh review of that PR.
 - **AC-25** IF an expectation's file is not in the case's diff, or its line range does
   not intersect any new-side line of that file's hunks, THEN the system SHALL refuse
   to save and name the offending expectation. [user: confirmed, 2026-10-12]
-- **AC-26** IF the name is empty or already used in the agent's suite, THEN the system
-  SHALL refuse to save and say why.
+- **AC-26** IF the name is empty or already used in the case's suite (AC-7), THEN the
+  system SHALL refuse to save and say why.
 - **AC-27** The system SHALL show the case's last result in the modal: passed, failed
   or errored, the expected and actual finding counts, the duration and the cost. For
   an unsaved draft, the last result is that of its draft run (AC-67), or none.
@@ -268,18 +298,22 @@ without a fresh review of that PR.
 
 - **AC-28** WHEN the user starts a suite run (Evals tab "Run all evals", or "Run eval"
   on the agent detail page), the system SHALL first show the number of cases and the
-  agent's model, and start only after the user confirms.
-  [user: answer to B6, 2026-10-11]
-- **AC-79** IF no API key is configured for the agent's provider when a run is
+  agent's model, and start only after the user confirms. A skill suite's runs confirm
+  as in AC-87. [user: answer to B6, 2026-10-11; skill suites: user: answer to B6
+  (skill evals), 2026-10-12]
+- **AC-79** IF no API key is configured for the run's provider when a run is
   started, THEN the system SHALL refuse the start, state the reason ("no API key for
   <provider>"), and create no run, no case result and no errored case. This applies to
-  a suite run, a single-case run and a draft run. For "Run all agents", such an agent
-  SHALL be skipped and named with that reason, as in AC-35.
-  [user: answer to plan-34 GAP3, 2026-10-12]
+  a suite run, a single-case run and a draft run, of an agent suite or a skill suite.
+  For "Run all agents" and "Run on evals" (AC-91), such an agent SHALL be skipped and
+  named with that reason, as in AC-35.
+  [user: answer to plan-34 GAP3, 2026-10-12; skill suites: user: answer to B6 (skill
+  evals), 2026-10-12]
 - **AC-29** WHEN a suite run starts (`POST /agents/:id/eval-runs`), the system SHALL
   run the agent's current version (system prompt, model, strategy, attached skills) on
   each case's frozen input only, with no repo-intel, memory, project context or clone
-  reads. [user: answer to B3, 2026-10-11]
+  reads. A skill case runs as in AC-86, not by this criterion.
+  [user: answer to B3, 2026-10-11]
 - **AC-30** The system SHALL record on every suite run the agent version number, the
   model, the start and end time, the per-case results and the total cost.
   [user: answer to B3, 2026-10-11]
@@ -288,7 +322,9 @@ without a fresh review of that PR.
   [user: accepted SG1, 2026-10-12]
 - **AC-31** WHILE a suite run of an agent is in progress, the system SHALL show its
   progress (cases done / total) and SHALL refuse to start another suite run of that
-  agent, saying a run is already in progress. [user: answer to B6, 2026-10-11]
+  agent, saying a run is already in progress. A skill suite follows the same rule per
+  skill (AC-89). [user: answer to B6, 2026-10-11; skill suites: user: answer to B6
+  (skill evals), 2026-10-12]
 - **AC-32** IF the agent's model call for a case fails or returns output that cannot
   be parsed, THEN the system SHALL record that case as errored with the reason, never
   as a miss, and continue with the remaining cases. This covers per-case failures only
@@ -298,8 +334,10 @@ without a fresh review of that PR.
   modal),
   the system SHALL first show the agent's model and confirm, then run that case on its
   frozen input and update that case's last result. A single-case run SHALL NOT count
-  as a suite run in history, metrics, the trend, the dashboard or the alert.
-  [user: answer to B6, 2026-10-11; user: confirmed, 2026-10-12]
+  as a suite run in history, metrics, the trend, the dashboard or the alert. For a
+  skill case, the model shown and used is the one picked as in AC-87.
+  [user: answer to B6, 2026-10-11; user: confirmed, 2026-10-12; skill suites: user:
+  answer to B6 (skill evals), 2026-10-12]
 - **AC-34** WHEN the user clicks "Run all agents" on the Eval Dashboard, the system
   SHALL first show the total case count across agents and the model of each agent it
   will run, then start one suite run for every enabled agent with at least one case.
@@ -307,8 +345,9 @@ without a fresh review of that PR.
 - **AC-35** IF an agent already has a suite run in progress when "Run all agents"
   starts, THEN the system SHALL skip that agent and name it as skipped.
   [user: answer to B6, 2026-10-11]
-- **AC-36** IF the agent's suite is empty, THEN the system SHALL refuse a suite run and
-  say the suite has no cases.
+- **AC-36** IF the agent's or the skill's suite is empty, THEN the system SHALL refuse
+  a suite run and say the suite has no cases. [skill suites: user: answer to B6 (skill
+  evals), 2026-10-12]
 
 ### Scoring (code only)
 
@@ -407,6 +446,82 @@ without a fresh review of that PR.
   first, each with the agent name, the time, the version, the three metrics and cases
   passed / total. [user: confirmed, 2026-10-12]
 
+### Skill suite (Skill Editor Evals tab, design 07)
+
+- **AC-81** The system SHALL give every skill its own eval suite of skill-owned cases,
+  with the case model of AC-3…AC-6 and AC-64, shown on the Skill Editor Evals tab in
+  place of today's placeholder. [user: answer to B1 (skill evals), 2026-10-12]
+- **AC-82** The system SHALL show on the skill's Evals tab the heading "Eval cases", a
+  "N / M passing" count based on each case's latest result, and the actions "Run all
+  evals" and "New eval case". [user: answer to B1 (skill evals), 2026-10-12]
+- **AC-83** The system SHALL list the skill's cases newest first. Each row SHALL show
+  what an AC-19 row shows (last-result icon, name, expectations summary, severity ·
+  category badge or "empty []", and icon-only run, edit and delete actions). A row with
+  a result SHALL also name the skill version that result ran on ("ran on v N").
+  [user: answer to B3 (skill evals), 2026-10-12; user: answer to B7 (skill evals),
+  2026-10-12]
+- **AC-84** WHILE a skill's suite has no cases, the system SHALL show an empty state
+  with "New eval case", and SHALL keep "Run all evals" disabled with the reason that
+  the suite has no cases. [user: answer to B6 (skill evals), 2026-10-12]
+- **AC-85** WHEN the user clicks "New eval case" or edit on a skill case, the system
+  SHALL open the EvalCaseModal for that skill's suite. It SHALL apply the same tabs
+  (PR meta shows "none"), the validation of AC-24…AC-26 and AC-74, the draft run and
+  stale marking of AC-67 and AC-68, the save rules of AC-69 and AC-70 (with the skill's
+  current version and the picked model in place of the agent's version), and the
+  discard rules of AC-71 and AC-78. Delete SHALL follow AC-21.
+  [user: answer to B5 (skill evals), 2026-10-12]
+- **AC-86** WHEN a skill case runs (row action, "Run case", a draft run or "Run all
+  evals"), the system SHALL run it on its frozen input with a fixed, minimal reviewer
+  prompt plus the skill's current body only. That means no agent's system prompt, no
+  other skill, and no repo-intel, memory, project context or clone reads. It SHALL
+  score the result by AC-37…AC-43. [user: answer to B2 (skill evals), 2026-10-12]
+- **AC-87** WHEN the user starts any run of a skill case or suite, the system SHALL
+  first show the case count and a model picker, and start only after the user
+  confirms. The picker SHALL default to the model of the first agent, by name, that
+  has the skill attached. When no agent has it attached, the picker SHALL start empty
+  and the confirm SHALL stay disabled until the user picks a model.
+  [user: answer to Q1 (skill evals), 2026-10-12; user: answer to B2 (skill evals), 2026-10-12; user:
+  answer to B6 (skill evals), 2026-10-12]
+- **AC-88** WHEN a skill case run or a skill's "Run all evals" finishes, the system
+  SHALL update each run case's last result (passed, failed or errored, expected and
+  actual counts, duration, cost, model and skill version). It SHALL record no
+  suite-run history, metrics, trend point, compare entry, alert or dashboard row for
+  the skill. [user: answer to B3 (skill evals), 2026-10-12]
+- **AC-89** WHILE a "Run all evals" of a skill's suite is in progress, the system SHALL
+  show its progress (cases done / total) and SHALL refuse to start another run of that
+  skill's suite, saying a run is already in progress. A skill-suite run and an agent
+  suite run SHALL NOT block each other, including the run of an agent that uses the
+  skill. [user: answer to B6 (skill evals), 2026-10-12]
+- **AC-90** IF the model call for a skill case fails or returns output that cannot be
+  parsed, THEN the system SHALL record that case as errored with the reason, never as
+  a miss, and continue with the remaining cases.
+  [user: answer to B6 (skill evals), 2026-10-12]
+- **AC-91** WHEN the user clicks "Run on evals" in the header of an enabled skill (a
+  disabled skill has the button disabled, AC-93), the system SHALL first list the
+  agents it will run: every enabled agent that has the skill attached
+  and at least one case, each with its case count and model. After the user confirms,
+  it SHALL start one ordinary agent suite run (AC-29, AC-30, AC-75) for each listed
+  agent. It SHALL skip, and name, an agent that already has a run in progress (AC-35)
+  or has no API key (AC-79). [user: answer to B4 (skill evals), 2026-10-12; user:
+  answer to B7 (skill evals), 2026-10-12; enabled skill only: user: answer to plan-35
+  GAP1, 2026-10-12]
+- **AC-92** IF the skill is enabled but no enabled agent with at least one case has it
+  attached, THEN the system SHALL disable "Run on evals" and state why. A disabled
+  skill is covered by AC-93. [user: answer to B4 (skill evals), 2026-10-12; user:
+  answer to plan-35 GAP1, 2026-10-12]
+- **AC-93** WHERE the skill is disabled, the system SHALL still allow runs of the
+  skill's own suite, and SHALL state in the run confirmation (AC-87) that the skill is
+  disabled. It SHALL disable "Run on evals" with the reason "enable the skill to test
+  it in agents", because an agent suite run includes only enabled skills and would
+  otherwise spend on runs without this skill.
+  [user: answer to B7 (skill evals), 2026-10-12; "Run on evals": user: answer to
+  plan-35 GAP1, 2026-10-12]
+- **AC-94** WHEN a skill is deleted, the system SHALL remove its cases and their
+  results. [user: answer to B7 (skill evals), 2026-10-12]
+- **AC-95** WHEN a skill's body is saved as a new version, the system SHALL keep the
+  skill's cases and their last results unchanged. Each result keeps the version it ran
+  on (AC-83). [user: answer to B7 (skill evals), 2026-10-12]
+
 ### Verification
 
 - **AC-62** The system SHALL provide `pnpm verify:l06`. It SHALL be hermetic (no live
@@ -425,7 +540,16 @@ without a fresh review of that PR.
      running it write no case, cancelling leaves no case, and Save creates exactly one
      case whose expectation type matches (`must_find` / `must_not_flag`);
   6. client typecheck and client unit tests;
-  7. a byte-equality check of the eval contracts in the two vendored `shared` copies.
+  7. a byte-equality check of the eval contracts in the two vendored `shared` copies;
+  8. a test that a skill case can be created, run against the mock provider and scored,
+     with zero LLM-provider calls in scoring;
+  9. a test that a skill case run's prompt holds the fixed harness prompt and this
+     skill's body only (AC-86);
+  10. a test that "Run on evals" starts suite runs only for enabled agents that have
+     the skill attached and at least one case (AC-91).
+
+  Item 4's fixture stays agent-only, and `db:seed` seeds no skill cases.
+  [items 8–10: user: answer to B8 (skill evals), 2026-10-12]
 - **AC-63** The system SHALL ship a documented manual demo with a live model. The
   user first builds a suite of at least 8 cases on Security Reviewer from real
   accepted and dismissed findings, through the EvalCaseModal: the user's decisions are
@@ -503,18 +627,50 @@ without a fresh review of that PR.
   period". The metric cards still show the latest run.
 - **Sort orders.** Cases newest first. Suite runs newest first. Trend points
   oldest → newest. Dashboard agents by latest run newest first, never-run agents last.
+  Skill cases newest first (AC-83).
+- **Skill with no cases.** The skill's Evals tab shows the empty state and "Run all
+  evals" is disabled (AC-84). "Run on evals" depends only on the skill being enabled
+  and on the agents' suites (AC-91…AC-93).
+- **Skill used by no agent.** "Run on evals" is disabled with its reason (AC-92). The
+  skill's own suite still runs; the model picker starts empty and the run cannot be
+  confirmed until a model is picked (AC-87).
+- **Skill attached only to disabled agents, or to agents with no cases.** Those agents
+  are left out of "Run on evals". When none is left, the button is disabled (AC-92).
+- **Disabled or not-yet-vetted skill.** Its own suite still runs, and the confirmation
+  says it is disabled (AC-93). "Run on evals" is disabled with the reason "enable the
+  skill to test it in agents" (AC-93). An agent suite run includes only enabled
+  skills, so it would spend on agent runs that leave this skill out.
+  [user: answer to plan-35 GAP1, 2026-10-12]
+- **Skill disabled while its "Run on evals" confirmation is open.** The start is
+  refused with the AC-93 reason, and no agent run starts.
+  [user: answer to plan-35 GAP1, 2026-10-12]
+- **Skill body edited after a run.** Cases and results stay. Each result shows the
+  version it ran on (AC-95), with no automatic stale flag. A skill case's edited input
+  or expected output clears its result to "never run", as for agent cases.
+- **Skill deleted.** Its cases and their results go with it (AC-94). Agent suite runs
+  that recorded the skill keep its name and version (AC-75).
+- **Skill suite run and agent suite run at once,** including an agent that uses the
+  skill. Both proceed (AC-89). Two tabs starting the same skill's "Run all evals" are
+  refused as in AC-31.
+- **Skill edited during its suite run.** Every case uses the skill body current at the
+  run's start, as an agent run does.
+- **"Run on evals" while one of the agents is already running.** That agent is skipped
+  and named (AC-91, AC-35); the others start.
+- **Same case name in a skill suite and an agent suite.** Allowed (AC-7).
 
 ## Non-functional requirements
 
 - **Cost.** Every run trigger, a draft run included, shows its case count and model(s)
-  before spending (AC-28, AC-33, AC-34, AC-67). Scoring is free (AC-37). The run cost is shown per run and per
-  point.
+  before spending (AC-28, AC-33, AC-34, AC-67, AC-87, AC-91). Scoring is free (AC-37). The run cost is shown per run and per
+  point, and per case for a skill suite (AC-88).
 - **Security.** The API is reachable from the whole LAN (server gotcha), so a run
   start is a paid side effect any network peer can trigger. Run starts are limited to
-  one in-flight suite run per agent (AC-31). No route returns secrets.
-- **Size.** A case's diff SHALL be at most 256 KB, and a suite at most 200 cases. Over
-  either limit, save or run is refused with the limit named.
-  [user: confirmed, 2026-10-12]
+  one in-flight suite run per agent (AC-31) and one per skill suite (AC-89). No route
+  returns secrets.
+- **Size.** A case's diff SHALL be at most 256 KB, and a suite (an agent's or a
+  skill's) at most 200 cases. Over either limit, save or run is refused with the limit
+  named. [user: confirmed, 2026-10-12; skill suites: user: answer to B6 (skill evals),
+  2026-10-12]
 - **Determinism.** The same stored model outputs always produce the same metrics and
   pass/fail.
 - **Latency.** Cases in a suite run may run concurrently, up to a bounded limit. The
@@ -539,6 +695,12 @@ without a fresh review of that PR.
 - Recall, precision, citation accuracy, pass/fail, deltas, alert — [deterministic: eval scoring code]
 - Run cost and duration — [deterministic: provider usage reported by the review call, priced by the existing price book]
 - Existing fixture cases and runs — [reused: plan 09 / 12 review-eval CLI rows, excluded from this feature]
+- Skill body, version, enabled state and type for a skill-case run — [reused: skills module, `skills` / `skill_versions`]
+- Agents that have a skill attached, and whether they are enabled, for "Run on evals" — [reused: agent–skill links, `agent_skills`]
+- Fixed reviewer prompt for a skill-case run — [deterministic: harness prompt shipped with the feature]
+- Model picked for a skill-case run — [user: run confirmation picker (AC-87)]
+- Hand-written diff, expected-output JSON and name of a skill case — [user: EvalCaseModal on the skill's Evals tab]
+- Findings returned during a skill-case run, draft run included — [llm: isolated skill review call on a case's frozen input]
 
 ## Untrusted inputs
 
@@ -559,6 +721,17 @@ without a fresh review of that PR.
   executed or rendered as markup.
 - Content from cloned repositories reaches this feature only as diff text frozen into
   a case. It is data.
+- **Model output of a skill-case run** (llm) follows the same rules as an agent run: it
+  is used only through its structured file and line fields, and its text is shown as
+  text. A call that fails or cannot be parsed makes the case errored (AC-90).
+- **A skill's body** is placed in the prompt as a skill, as in any review, and that is
+  its purpose. An imported, community or extracted body may not be vetted yet
+  (AC-93). Its text is shown in the UI as text only, and it never changes how scoring
+  or the run itself behaves: case count, model, the cost confirmation and
+  file-and-line scoring are fixed by code.
+- **The picked model and a skill case's name, diff and expected output** (user) are
+  validated as for agent cases (AC-24…AC-26, AC-74). The model must be one the
+  provider list offers.
 
 ## Module interactions
 
@@ -573,8 +746,15 @@ without a fresh review of that PR.
   - nullable metrics for "n/a";
   - version and cost on trend points;
   - the source-finding and source-PR link on a case;
-  - a compare payload, including the skill-set difference.
-  Today `EvalTrendPoint` metrics are non-nullable and `EvalRun` has no version.
+  - a compare payload, including the skill-set difference;
+  - a suite owner on a case (an agent or a skill), and on a case's last result the
+    model and, for a skill case, the skill version it ran on (AC-83, AC-88);
+  - a "Run on evals" start payload and result: the agents started, and the agents
+    skipped with their reasons (AC-91).
+  Today `EvalTrendPoint` metrics are non-nullable and `EvalRun` has no version. The
+  plan-34 suite tables (`eval_suite_cases`, `eval_suite_runs`) are keyed by agent
+  only, so a skill-owned suite is a model change. How to make it is the plan's
+  decision. [skill suites: user: answer to B1 (skill evals), 2026-10-12]
 - **server, eval module.** It already holds the fixture-scoring CLI (plans 09/12). The
   feature adds the HTTP surface beside it, without changing the CLI:
   - case CRUD per agent;
@@ -582,7 +762,11 @@ without a fresh review of that PR.
     of AC-9, AC-14 and AC-15, or the saved case of AC-16;
   - a run of an unsaved draft, which writes no case;
   - `POST /agents/:id/eval-runs` (suite run);
-  - a single-case run; run all agents, run history and detail, compare, and the dashboard aggregate.
+  - a single-case run; run all agents, run history and detail, compare, and the dashboard aggregate;
+  - for skills: case CRUD per skill, a skill draft run, a single skill-case run and a
+    skill "Run all evals", all on the isolated runner of AC-86, plus "Run on evals",
+    which starts ordinary agent suite runs (AC-91) and is refused for a disabled skill
+    (AC-93).
   Today `eval_runs` is one row per case with no grouping, version or model, so
   persisting a suite run needs a schema extension. That is the plan's decision.
 - **server, reviews module.** It is the source of findings (file, lines, title,
@@ -594,8 +778,16 @@ without a fresh review of that PR.
   update path, which bumps the version on a config change (`PUT /agents/:id`). Agent
   deletion must remove the agent's cases and runs: `eval_cases.owner_id` has no
   foreign key today.
+- **server, skills module.** It supplies a skill's current body, version, enabled
+  state and type, and the agents that have it attached (`agent_skills`, indexed by
+  skill). Skill deletion must remove the skill's cases and results (AC-94). Linking a
+  skill does not bump an agent's version, so "Run on evals" relies on AC-75 to record
+  the skill set of each run.
+- **server, settings.** It supplies the provider list and the API keys the run checks
+  (AC-79). No default model is read for a skill used by no agent (AC-87).
 - **reviewer-core.** Consumed unchanged if possible: the review run on a diff and the
-  grounding gate's kept/dropped split, which citation accuracy needs.
+  grounding gate's kept/dropped split, which citation accuracy needs. A skill-case
+  run feeds it the fixed harness prompt with one skill.
 - **client.** Touches:
   - FindingCard (the "Turn into eval case" action);
   - the AgentEditor Evals tab (reserved key `editor.tabs.evals`);
@@ -603,12 +795,15 @@ without a fresh review of that PR.
     case, with no "Run on save" toggle;
   - the `/eval` dashboard and per-agent detail pages (reserved nav `nav.eval`, app-shell
     helper, `messages/en/eval.json`);
-  - the compare modal.
+  - the compare modal;
+  - the SkillEditor Evals tab (it replaces the "Evals arrive in a later lesson"
+    placeholder), the skill header's "Run on evals" action, and the run confirmation
+    with a model picker.
 - **mcp-server.** Not touched.
 
 ## Open questions
 
-_None._
+None.
 
 ## Changelog
 
@@ -616,3 +811,8 @@ _None._
 - 2026-10-12 · AC-12, AC-32, AC-56, AC-62 #4, AC-63, AC-79, AC-80, Edge cases · plan-34 GAP1–GAP4: promote restores the run's skill set (latest skill bodies); no seeded eval cases, fixture for tests, user-built demo suite; missing provider key refuses the run start; hunks re-derived from current PR SHAs, guarded by AC-25 · user "так, беремо по рекомендаціям"
 - 2026-10-12 · re-approved; confirmed AC-79 applies to every run trigger (Run all agents skips and names keyless agents) and AC-80 promotes with the remaining skills, naming deleted ones · user "Тоді згоден"
 - 2026-10-12 · implemented via plan 34 (docs/plans/34-eval-pipeline.md): complete — needs sign-off, accepted by the user (TAC3 equivalents, MetricCard delta format)
+- 2026-10-12 · reopened → draft: Skill Editor Evals tab (design 07) brought into scope — skill-owned suites, isolated skill runs, "Run on evals" header action; amendment pass 1 B1–B8 answered by recommendation (B1a own skill suite, B2a isolated harness prompt + this skill only, B3a last result per case only, B4b "Run on evals" = suite runs of enabled agents using the skill, B5a manual cases only, B6 all run rules per skill suite, B7 lifecycle as recommended, B8 verify:l06 +3 items) · user "так, давай робити"
+- 2026-10-12 · amendment written (AC-81–AC-95; AC-1, 7, 22, 26, 28, 29, 31, 33, 36, 62, 79 edited); Q1 by recommendation: no default model for a skill used by no agent, the picker starts empty; re-approved · user "так, Q1 по рекомендації, затверджую"
+- 2026-10-12 · reopened → draft for plan-35 GAP1: "Run on evals" on a disabled skill would start agent runs without that skill (agent runs use enabled skills only) → disable the button for a disabled skill with its reason; the skill's own suite still runs (AC-93) · user "так" (GAP1 option a)
+- 2026-10-12 · GAP1 correction written (AC-91–AC-93, Edge cases incl. new "skill disabled while the Run on evals confirm is open", Module interactions); re-approved · user "так"
+- 2026-10-12 · amendment AC-81–AC-95 implemented via plan 35 (docs/plans/35-skill-eval-suites.md): complete — needs sign-off, accepted by the user (SK plan change, R3; browser check not run) · user "давай закривати цю фічу"

@@ -14,6 +14,7 @@ import { ConfirmModal } from "@/components/confirm-modal";
 import { ApiError } from "@/lib/api";
 import { useToast } from "@/lib/toast";
 import {
+  type EvalOwner,
   useDeleteEvalCase,
   useEvalAgentDetail,
   useEvalCases,
@@ -21,10 +22,9 @@ import {
   useRunEvalCase,
   useStartEvalRun,
 } from "@/lib/hooks/eval";
-import { CaseRow } from "./CaseRow";
+import { CaseRow, RunConfirm, passingCount } from "@/components/eval-suite";
 import { StatCard } from "./StatCard";
-import { RunConfirm } from "./RunConfirm";
-import { passingCount, startRefusalKey, toPercent } from "./helpers";
+import { startRefusalKey, toPercent } from "./helpers";
 import { s } from "./styles";
 
 type Confirm = { kind: "runAll" } | { kind: "run" | "delete"; c: EvalSuiteCase };
@@ -34,6 +34,7 @@ export function EvalsTab({ agent }: { agent: Agent }) {
   const t = useTranslations("eval.evalsTab");
   const na = useTranslations("eval.detail")("na");
   const toast = useToast();
+  const owner = React.useMemo<EvalOwner>(() => ({ kind: "agent", agentId: agent.id }), [agent.id]);
   const qc = useQueryClient();
   const cases = useEvalCases(agent.id);
   const detail = useEvalAgentDetail(agent.id, "30d");
@@ -88,9 +89,9 @@ export function EvalsTab({ agent }: { agent: Agent }) {
       start.mutate(agent.id, { onSuccess: (r) => setStartedId(r.id), onError: refuse });
     } else if (c?.kind === "run") {
       setRunningCase(c.c.id);
-      runCase.mutate({ id: c.c.id, agentId: agent.id }, { onError: refuse, onSettled: () => setRunningCase(null) });
+      runCase.mutate({ id: c.c.id, owner }, { onError: refuse, onSettled: () => setRunningCase(null) });
     } else if (c?.kind === "delete") {
-      del.mutate({ id: c.c.id, agentId: agent.id });
+      del.mutate({ id: c.c.id, owner });
     }
   };
 
@@ -152,7 +153,7 @@ export function EvalsTab({ agent }: { agent: Agent }) {
       {editing && (
         <EvalCaseModal
           key={editing.existing?.id ?? "new"}
-          agentId={agent.id}
+          owner={owner}
           existing={editing.existing}
           onClose={() => setEditing(null)}
           onOpenExisting={(id) => setEditing({ existing: list.find((c) => c.id === id) ?? null })}

@@ -53,7 +53,5 @@ export const s = {
   pass: { fontWeight: 700 } satisfies CSSProperties,
   empty: { fontSize: 13, color: "var(--text-muted)", padding: "14px 0" } satisfies CSSProperties,
   confirmBody: { display: "flex", flexDirection: "column", gap: 8, padding: "18px 24px", fontSize: 13.5, lineHeight: 1.5 } satisfies CSSProperties,
-  confirmList: { margin: 0, paddingLeft: 18, display: "flex", flexDirection: "column", gap: 4 } satisfies CSSProperties,
-  skipped: { color: "var(--warn)", fontSize: 13 } satisfies CSSProperties,
   footer: { display: "flex", justifyContent: "flex-end", gap: 8 } satisfies CSSProperties,
 } as const;

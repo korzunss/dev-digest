@@ -4,11 +4,15 @@ import {
   caseName,
   normaliseExpectations,
   pool,
+  resolveProvider,
   runTokenHash,
+  skillRunTokenHash,
+  skillSnapshot,
   seedExpectation,
   validateCase,
 } from '../src/modules/eval/pipeline-helpers.js';
-import { EVAL_MAX_DIFF_BYTES, EVAL_NAME_TITLE_MAX } from '../src/modules/eval/constants.js';
+import { ConfigError } from '../src/platform/errors.js';
+import { EVAL_MAX_DIFF_BYTES, EVAL_NAME_TITLE_MAX, EVAL_SKILL_HARNESS_PROMPT } from '../src/modules/eval/constants.js';
 
 const DIFF = [
   'diff --git a/src/a.ts b/src/a.ts',
@@ -191,5 +195,46 @@ describe('pool', () => {
     // … and no worker picks up another task afterwards (a bare Promise.all pool would start task 2).
     await new Promise((r) => setTimeout(r, 60));
     expect(started).toEqual([0, 1]);
+  });
+});
+
+describe('skill helpers', () => {
+  const skill = { id: 'sk1', name: 'My Skill', version: 3, enabled: true, rendered: '### Skill: My Skill\n\nBODY' };
+
+  it('builds a skill snapshot with the fixed harness prompt and the skill as the only skill', () => {
+    const snap = skillSnapshot(skill, { provider: 'openai', model: 'gpt-4.1' });
+    expect(snap).toMatchObject({
+      owner: 'skill',
+      id: 'sk1',
+      provider: 'openai',
+      model: 'gpt-4.1',
+      systemPrompt: EVAL_SKILL_HARNESS_PROMPT,
+      version: 3,
+      skills: [{ id: 'sk1', name: 'My Skill', version: 3 }],
+      rendered: [skill.rendered],
+    });
+    expect(snap.systemPrompt).not.toContain('BODY');
+  });
+
+  it('skillRunTokenHash changes with the pick and the version', () => {
+    const base = { diff: 'd', expected: [], skillId: 'sk1', version: 1, provider: 'openai', model: 'm' };
+    const h = skillRunTokenHash(base);
+    expect(skillRunTokenHash({ ...base })).toBe(h);
+    expect(skillRunTokenHash({ ...base, model: 'm2' })).not.toBe(h);
+    expect(skillRunTokenHash({ ...base, provider: 'anthropic' })).not.toBe(h);
+    expect(skillRunTokenHash({ ...base, version: 2 })).not.toBe(h);
+  });
+
+  it('resolveProvider maps a missing key to a 422 no_api_key and rethrows anything else', async () => {
+    await expect(
+      resolveProvider(async () => {
+        throw new ConfigError('missing');
+      }, 'openai'),
+    ).rejects.toMatchObject({ code: 'no_api_key', statusCode: 422 });
+    await expect(
+      resolveProvider(async () => {
+        throw new Error('boom');
+      }, 'openai'),
+    ).rejects.toThrow('boom');
   });
 });

@@ -1,7 +1,9 @@
-import { pgTable, index, uniqueIndex, uuid, text, integer, boolean, jsonb, timestamp, doublePrecision } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
+import { pgTable, index, uniqueIndex, check, uuid, text, integer, boolean, jsonb, timestamp, doublePrecision } from 'drizzle-orm/pg-core';
 import { workspaces } from './core';
 import { pullRequests } from './pulls';
 import { agents } from './agents';
+import { skills } from './skills';
 import { findings } from './reviews';
 
 // ============================================================ Eval / Conformance / Compose
@@ -69,9 +71,9 @@ export const evalSuiteCases = pgTable('eval_suite_cases', {
   workspaceId: uuid('workspace_id')
     .notNull()
     .references(() => workspaces.id, { onDelete: 'cascade' }),
-  agentId: uuid('agent_id')
-    .notNull()
-    .references(() => agents.id, { onDelete: 'cascade' }),
+  // Exactly one owner (eval_suite_cases_owner_check): an agent case or a skill case (plan 35).
+  agentId: uuid('agent_id').references(() => agents.id, { onDelete: 'cascade' }),
+  skillId: uuid('skill_id').references(() => skills.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   inputDiff: text('input_diff').notNull(),
   inputFiles: jsonb('input_files').notNull(),
@@ -83,7 +85,11 @@ export const evalSuiteCases = pgTable('eval_suite_cases', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 }, (t) => ({
+  // NULL agent_id rows (skill cases) never collide here, hence the separate skill index.
   agentNameUq: uniqueIndex('eval_suite_cases_agent_name_idx').on(t.agentId, t.name),
+  // Leads with the FK column, so it is also the FK index.
+  skillNameUq: uniqueIndex('eval_suite_cases_skill_name_idx').on(t.skillId, t.name),
+  ownerCheck: check('eval_suite_cases_owner_check', sql`(${t.agentId} IS NULL) <> (${t.skillId} IS NULL)`),
   // One case per finding. NULLs are distinct in a unique index, so hand-written
   // cases (source_finding_id NULL) never collide — that is wanted.
   sourceFindingUq: uniqueIndex('eval_suite_cases_source_finding_idx').on(t.sourceFindingId),

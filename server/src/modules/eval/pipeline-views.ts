@@ -42,7 +42,8 @@ export interface RunRowLike {
 
 export interface CaseRowLike {
   id: string;
-  agentId: string;
+  agentId: string | null;
+  skillId: string | null;
   name: string;
   inputDiff: string;
   inputFiles: unknown;
@@ -135,6 +136,7 @@ export function toCaseDto(row: CaseRowLike): EvalSuiteCase {
   return {
     id: row.id,
     agent_id: row.agentId,
+    skill_id: row.skillId,
     name: row.name,
     input: {
       diff: row.inputDiff,

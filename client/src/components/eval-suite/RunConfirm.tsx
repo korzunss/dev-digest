@@ -1,5 +1,6 @@
 /* RunConfirm — a run calls the model and costs money, so it names what will
-   run and on which model, and asks first (AC-28, AC-33). */
+   run and on which model, and asks first (AC-28, AC-33). `children` is the
+   slot for a model picker; `confirmDisabled` gates the button until it is set. */
 "use client";
 
 import React from "react";
@@ -13,12 +14,16 @@ export function RunConfirm({
   confirmLabel,
   onConfirm,
   onClose,
+  confirmDisabled = false,
+  children,
 }: {
   title: string;
   body: string;
   confirmLabel: string;
   onConfirm: () => void;
   onClose: () => void;
+  confirmDisabled?: boolean;
+  children?: React.ReactNode;
 }) {
   const common = useTranslations("common");
   return (
@@ -31,13 +36,16 @@ export function RunConfirm({
           <Button kind="ghost" onClick={onClose}>
             {common("actions.cancel")}
           </Button>
-          <Button kind="primary" icon="Play" onClick={onConfirm}>
+          <Button kind="primary" icon="Play" disabled={confirmDisabled} onClick={onConfirm}>
             {confirmLabel}
           </Button>
         </div>
       }
     >
-      <div style={s.confirmBody}>{body}</div>
+      <div style={s.confirmBody}>
+        {body}
+        {children}
+      </div>
     </Modal>
   );
 }

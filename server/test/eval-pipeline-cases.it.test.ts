@@ -280,6 +280,39 @@ d('eval pipeline: cases and drafts (Testcontainers pg)', () => {
     expect(listed.some((c: { id: string }) => c.id === saved.id)).toBe(false);
   });
 
+  it('checks a PUT name against the case owner\'s own suite (AC-26, plan 35)', async () => {
+    const db = pg.handle.db;
+    const [skill] = await db
+      .insert(t.skills)
+      .values({ workspaceId, name: 'owner-scope-skill', description: 'd', type: 'custom', source: 'manual', body: 'b' })
+      .returning();
+    const skillCase = (name: string) => ({
+      workspaceId,
+      agentId: null,
+      skillId: skill!.id,
+      name,
+      inputDiff: PR_DIFF,
+      inputFiles: ['src/config.ts'],
+      expected: [mustFind()],
+    });
+    const [first, second] = await db
+      .insert(t.evalSuiteCases)
+      .values([skillCase('skill-one'), skillCase('skill-two')])
+      .returning();
+    const agentCase = (await save('agent-owned-name')).json();
+
+    // A skill case may reuse a name that only the agent suite holds ...
+    const ok = await app.inject({ method: 'PUT', url: `/eval-cases/${first!.id}`, payload: saveBody('agent-owned-name') });
+    expect([ok.statusCode, ok.json().skill_id, ok.json().agent_id]).toEqual([200, skill!.id, null]);
+    // ... but not one held by a sibling skill case.
+    const dup = await app.inject({ method: 'PUT', url: `/eval-cases/${second!.id}`, payload: saveBody('agent-owned-name') });
+    expect(dup.statusCode).toBe(422);
+    expect(dup.json().error.message).toMatch(/already used/);
+    // The agent case keeps its own name untouched.
+    const still = await app.inject({ method: 'GET', url: `/agents/${agentId}/eval-cases` });
+    expect(still.json().some((c: { id: string; skill_id: unknown }) => c.id === agentCase.id && c.skill_id === null)).toBe(true);
+  });
+
   it('refuses every paid call when the provider has no key, and creates nothing (AC-79)', async () => {
     const own = await save('anthropic-case', [mustFind()], {}, anthropicAgentId);
     expect(own.statusCode).toBe(201); // saving is free; only runs need a key

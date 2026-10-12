@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# verify:l06 — hermetic check of the eval pipeline (spec 011, AC-62).
+# verify:l06 — hermetic check of the eval pipeline (spec 011, AC-62 #1-#10).
 #
 #   cd server && pnpm verify:l06
 #
@@ -22,7 +22,7 @@ export TESTCONTAINERS_RYUK_DISABLED=true
 
 step() { printf '\n== %s\n' "$1"; }
 
-step "1/4 server: eval-pipeline tests (AC-62 #1-#5: unit, fixture >= 8 cases, integration)"
+step "1/4 server: eval-pipeline tests (AC-62 #1-#5, #8-#10: unit, fixture >= 8 cases, skill suites, integration)"
 (cd "$ROOT/server" && pnpm exec vitest run test/eval-pipeline)
 
 step "2/4 client: typecheck (AC-62 #6)"

@@ -148,6 +148,7 @@
     "subtitleAccepted": "Seeded from an accepted finding · assert the expected output",
     "subtitleDismissed": "Seeded from a dismissed finding · assert the expected output",
     "subtitleManual": "Assert the agent's expected output on a frozen diff",
+    "subtitleSkill": "Assert what this skill makes a reviewer report on a frozen diff",
     "bannerPositive": "POSITIVE CASE · MUST find \"{title}\" at {file}:{line}",
     "bannerNegative": "NEGATIVE CASE · MUST NOT flag \"{title}\" at {file}:{line}",
     "nameLabel": "Name",
@@ -178,6 +179,7 @@
     "running": "Running…",
     "runConfirmTitle": "Run this case?",
     "runConfirmBody": "The agent's current version runs once on this input with {model}. This calls the model and costs money.",
+    "runConfirmBodySkill": "The skill's current version runs once on this input with the model you pick. This calls the model and costs money.",
     "runConfirm": "Run",
     "lastRun": {
       "passed": "Last run passed",
@@ -314,5 +316,38 @@
     "notComparable": "These runs cannot be compared.",
     "loadError": "Could not load the comparison.",
     "close": "Close"
+  },
+  "skillTab": {
+    "heading": "Eval cases",
+    "subtitle": "Cases that assert what this skill makes a reviewer report",
+    "passingCount": "{passed} / {total} passing",
+    "runAll": "Run all evals",
+    "newCase": "New eval case",
+    "loadingCases": "Loading cases…",
+    "loadError": "Could not load the eval cases.",
+    "retry": "Retry",
+    "empty": "No eval cases yet. Create one to assert what this skill should make a reviewer find.",
+    "emptyRunReason": "Add an eval case before running the suite.",
+    "disabledNote": "This skill is disabled. Its own suite still runs, but agents will not use it.",
+    "progress": "Running {done} / {total}",
+    "ranOn": "ran on v{version}",
+    "confirmTitle": "Run all evals?",
+    "confirmBody": "{count, plural, one {# case} other {# cases}} will run on the model you pick. This calls the model and costs money.",
+    "confirmRun": "Run",
+    "runStarted": "Run started",
+    "runFailed": "Could not start the run.",
+    "suiteEmpty": "This suite has no cases.",
+    "suiteTooLarge": "This suite has too many cases to run at once.",
+    "deleteBody": "{name} and its stored result will be removed.",
+    "runInProgress": "A run is already in progress for this skill.",
+    "noApiKey": "No API key for {provider}."
+  },
+  "modelPicker": {
+    "providerLabel": "Provider",
+    "providerPlaceholder": "Select a provider",
+    "modelLabel": "Model",
+    "modelSearch": "Search models…",
+    "modelHint": "Pick the model that runs the skill.",
+    "modelEmptyHint": "No models listed for {provider}. Check its API key in Settings."
   }
 }

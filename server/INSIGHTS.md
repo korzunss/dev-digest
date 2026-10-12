@@ -214,6 +214,18 @@ foreign key POINTS AT"
 
 ## Tool & Library Notes
 
+### 2026-10-12 — an optional POST body declared `.optional()` rejects the bodyless request with 422
+**Symptom:** plan 35 G3: `POST /eval-cases/:id/runs` got `body: EvalCaseRunBody.optional()` so the existing bodyless agent single run kept working; the bodyless call returned 422 `Expected object, received null`. Caught by `eval-pipeline-skill-runs.it.test.ts`.
+**Cause:** with `fastify-type-provider-zod` an absent request body reaches the body schema as `null`, not `undefined`, and `.optional()` accepts only `undefined`.
+**Rule:** declare an optional body as `.nullish()` and pass `req.body ?? undefined` to the service; cover the bodyless call in an `.it` test. (A route that spends money and has no unguessable path id must still *require* a JSON body — see the 2026-10-12 CORS entry.)
+**Evidence:** `server/src/modules/eval/routes.ts` (`/eval-cases/:id/runs`, `EvalCaseRunBody.nullish()`) · `server/test/eval-pipeline-skill-runs.it.test.ts` (bodyless agent run) · `docs/plans/35-skill-eval-suites.md` G3 log
+
+### 2026-10-12 — drizzle-kit emits a `check()` constraint and a dropped `.notNull()` natively; no `--custom` stub needed
+**Symptom:** plan 35 S2 needed an XOR owner CHECK on `eval_suite_cases` plus `agent_id` NOT NULL → NULL; the repo had no CHECK precedent and research could not establish what `db:generate` would do, so the plan carried a `--custom` stub fallback.
+**Cause:** drizzle-kit 0.30 with drizzle-orm 0.38 generates `ALTER COLUMN … DROP NOT NULL` and `ADD CONSTRAINT "<name>" CHECK (…)` from `check('<name>', sql…)` in the table callback; the change is an alter, so the drop+add rename prompt (hang) does not appear.
+**Rule:** put a CHECK in the schema with `check()` and let `pnpm db:generate` write it; keep `--custom` stubs for data fixes only. Read the generated SQL to confirm the constraint line is there.
+**Evidence:** `server/src/db/migrations/0025_volatile_lady_bullseye.sql:1,5` · `server/src/db/schema/eval.ts` (`eval_suite_cases_owner_check`) · `server/package.json` (`drizzle-orm ^0.38.3`, `drizzle-kit ^0.30.1`)
+
 ### 2026-10-12 — a "narrow" Stryker vitest config built with `mergeConfig` runs the whole suite and inflates the score
 **Symptom:** plan 34 S21: `vitest.mutation.config.ts` did `mergeConfig(baseConfig, { test: { include: ['test/eval-pipeline-scoring.test.ts'] } })`; the report claimed 175/179 killed (97.8 %), but `jq '.testFiles|keys' reports/mutation/mutation.json` listed 33 files incl. `.it` ones — 57 kills came from `eval-pipeline-runs.it.test.ts`. With the scope fixed: 170 killed, 9 survived, 3 of them real test gaps (e.g. `s.status === 'passed'` → `!==` in `aggregateRun` survived: nothing unit-tested the passed-case count).
 **Cause:** Vitest's `mergeConfig` concatenates array options, so `test.include` is appended to the base `['test/**/*.test.ts', 'src/**/*.test.ts']` instead of replacing it.

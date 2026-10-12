@@ -3,6 +3,7 @@ import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import {
   EvalAgentDetail,
+  EvalCaseRunBody,
   EvalCaseSaveBody,
   EvalCompare,
   EvalDashboardView,
@@ -14,6 +15,10 @@ import {
   EvalRunAllBody,
   EvalRunAllPreview,
   EvalRunAllResult,
+  EvalSkillDraftRunBody,
+  EvalSkillRunAgentsPreview,
+  EvalSkillRunBody,
+  EvalSkillRunState,
   EvalSuiteCase,
   EvalSuiteRun,
   EvalSuiteRunDetail,
@@ -39,6 +44,15 @@ import { NotFoundError } from '../../platform/errors.js';
  *   GET    /eval/dashboard                   -> EvalDashboardView
  *   GET    /eval/run-all                     -> EvalRunAllPreview
  *   POST   /eval/run-all          (paid)     -> EvalRunAllResult
+ * Skill suites (plan 35; a skill case carries a provider/model pick):
+ *   GET    /skills/:id/eval-cases            -> EvalSuiteCase[]
+ *   POST   /skills/:id/eval-cases            -> 201 EvalSuiteCase
+ *   POST   /skills/:id/eval-draft-runs (paid)-> EvalDraftRunResult
+ *   POST   /skills/:id/eval-runs  (paid)     -> 202 EvalSkillRunState
+ *   GET    /skills/:id/eval-run              -> EvalSkillRunState
+ *   GET    /skills/:id/eval-run-agents       -> EvalSkillRunAgentsPreview
+ *   POST   /skills/:id/eval-run-agents (paid)-> EvalRunAllResult
+ *   POST   /eval-cases/:id/runs takes an optional EvalCaseRunBody (required for a skill case)
  *
  * Every route is reachable from the LAN (server/insights/gotchas.md, Security),
  * so each one that spends money or writes is rate-limited.
@@ -52,6 +66,7 @@ const CompareQuery = z.object({ a: z.string().uuid(), b: z.string().uuid() });
 export default async function evalRoutes(appBase: FastifyInstance) {
   const app = appBase.withTypeProvider<ZodTypeProvider>();
   const evalPipeline = () => app.container.evalPipeline;
+  const skillSuite = () => app.container.evalSkillSuite;
 
   // ---- Cases -------------------------------------------------------------
   app.get(
@@ -91,10 +106,12 @@ export default async function evalRoutes(appBase: FastifyInstance) {
 
   app.post(
     '/eval-cases/:id/runs',
-    { schema: { params: IdParams, response: { 200: EvalSuiteCase } }, config: RATE_LIMIT },
+    // The body is optional (an absent body reaches the schema as null, hence nullish): an agent case runs on the agent's own model (an unguessable
+    // case id, kept bodyless); a skill case needs the pick and the service refuses without it.
+    { schema: { params: IdParams, body: EvalCaseRunBody.nullish(), response: { 200: EvalSuiteCase } }, config: RATE_LIMIT },
     async (req) => {
       const { workspaceId } = await getContext(app.container, req);
-      return evalPipeline().runSavedCase(workspaceId, req.params.id);
+      return evalPipeline().runSavedCase(workspaceId, req.params.id, req.body ?? undefined);
     },
   );
 
@@ -186,6 +203,80 @@ export default async function evalRoutes(appBase: FastifyInstance) {
     async (req) => {
       const { workspaceId } = await getContext(app.container, req);
       return evalPipeline().runAll(workspaceId);
+    },
+  );
+
+  // ---- Skill suites ------------------------------------------------------
+  app.get(
+    '/skills/:id/eval-cases',
+    { schema: { params: IdParams, response: { 200: z.array(EvalSuiteCase) } } },
+    async (req) => {
+      const { workspaceId } = await getContext(app.container, req);
+      return skillSuite().listCases(workspaceId, req.params.id);
+    },
+  );
+
+  app.post(
+    '/skills/:id/eval-cases',
+    { schema: { params: IdParams, body: EvalCaseSaveBody, response: { 201: EvalSuiteCase } } },
+    async (req, reply) => {
+      const { workspaceId } = await getContext(app.container, req);
+      const created = await skillSuite().createCase(workspaceId, req.params.id, req.body);
+      return reply.status(201).send(created);
+    },
+  );
+
+  app.post(
+    '/skills/:id/eval-draft-runs',
+    {
+      schema: { params: IdParams, body: EvalSkillDraftRunBody, response: { 200: EvalDraftRunResult } },
+      config: RATE_LIMIT,
+    },
+    async (req) => {
+      const { workspaceId } = await getContext(app.container, req);
+      return skillSuite().draftRun(workspaceId, req.params.id, req.body);
+    },
+  );
+
+  app.post(
+    '/skills/:id/eval-runs',
+    // A required JSON body (pick + confirm): a cross-origin no-cors POST cannot carry one.
+    {
+      schema: { params: IdParams, body: EvalSkillRunBody, response: { 202: EvalSkillRunState } },
+      config: RATE_LIMIT,
+    },
+    async (req, reply) => {
+      const { workspaceId } = await getContext(app.container, req);
+      const { provider, model } = req.body;
+      const state = await skillSuite().startSuiteRun(workspaceId, req.params.id, { provider, model });
+      return reply.status(202).send(state);
+    },
+  );
+
+  app.get(
+    '/skills/:id/eval-run',
+    { schema: { params: IdParams, response: { 200: EvalSkillRunState } } },
+    async (req) => {
+      const { workspaceId } = await getContext(app.container, req);
+      return skillSuite().runState(workspaceId, req.params.id);
+    },
+  );
+
+  app.get(
+    '/skills/:id/eval-run-agents',
+    { schema: { params: IdParams, response: { 200: EvalSkillRunAgentsPreview } } },
+    async (req) => {
+      const { workspaceId } = await getContext(app.container, req);
+      return evalPipeline().runOnEvalsPreview(workspaceId, req.params.id);
+    },
+  );
+
+  app.post(
+    '/skills/:id/eval-run-agents',
+    { schema: { params: IdParams, body: EvalRunAllBody, response: { 200: EvalRunAllResult } }, config: RATE_LIMIT },
+    async (req) => {
+      const { workspaceId } = await getContext(app.container, req);
+      return evalPipeline().runOnEvals(workspaceId, req.params.id);
     },
   );
 }

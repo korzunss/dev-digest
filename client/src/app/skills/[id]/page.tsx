@@ -6,12 +6,13 @@
 import React, { Suspense } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { Badge, Button, ErrorState, Icon, Skeleton } from "@devdigest/ui";
+import { Badge, ErrorState, Icon, Skeleton } from "@devdigest/ui";
 import { AppShell } from "../../../components/app-shell";
 import { ApiError } from "../../../lib/api";
 import { useSkill } from "../../../lib/hooks/skills";
 import { SkillsRail, layout } from "../_components/SkillsRail";
 import { TYPE_COLOR } from "../_components/SkillCard";
+import { RunOnEvalsButton } from "./_components/RunOnEvalsButton";
 import { SkillEditor, DEFAULT_TAB, VALID_TABS } from "./_components/SkillEditor";
 
 export default function SkillEditorPage() {
@@ -89,17 +90,7 @@ function SkillEditorRoute() {
               </Badge>
               {!skill.enabled && <Badge color="var(--text-muted)">{t("config.disabled")}</Badge>}
               <div style={{ marginLeft: "auto" }}>
-                {/* Disabled until eval sets exist — the title says why rather
-                    than leaving a dead control to guess at. */}
-                <Button
-                  kind="secondary"
-                  size="sm"
-                  icon="FlaskConical"
-                  disabled
-                  title={t("evals.runDisabledTitle")}
-                >
-                  {t("evals.run")}
-                </Button>
+                <RunOnEvalsButton skill={skill} />
               </div>
             </div>
             <SkillEditor skill={skill} tab={tab} onTab={setTab} />

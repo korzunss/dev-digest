@@ -5,6 +5,9 @@ import {
   buildDashboard,
   type RunRowLike,
 } from '../src/modules/eval/pipeline-views.js';
+import { ConfigError } from '../src/platform/errors.js';
+import { EvalPipelineService } from '../src/modules/eval/pipeline-service.js';
+import type { EvalAgent, EvalPipelineServiceDeps, EvalSkill } from '../src/modules/eval/types.js';
 
 const T0 = Date.parse('2026-10-01T00:00:00Z');
 const DAY = 86_400_000;
@@ -182,5 +185,75 @@ describe('buildDashboard', () => {
     expect(view.recent_runs).toHaveLength(20);
     expect(view.recent_runs[0]!.id).toBe('r24');
     expect(view.recent_runs[0]!.agent_name).toBe('Security Reviewer');
+  });
+});
+
+describe('EvalPipelineService run on evals (plan 35)', () => {
+  const agent = (id: string, over: Partial<EvalAgent> = {}): EvalAgent => ({
+    id,
+    name: id,
+    provider: 'openai',
+    model: 'gpt-4.1',
+    systemPrompt: 'p',
+    strategy: 'single-pass',
+    version: 1,
+    enabled: true,
+    ...over,
+  });
+
+  function make(opts: { skill?: Partial<EvalSkill>; using: string[]; agents: EvalAgent[]; cases: Record<string, number>; noKey?: string[] }) {
+    const skill: EvalSkill = { id: 'sk', name: 'S', version: 1, enabled: true, rendered: 'B', ...opts.skill };
+    const deps = {
+      repo: {
+        countCases: async (_ws: string, o: { agentId: string }) => opts.cases[o.agentId] ?? 0,
+        hasRunning: async () => false,
+      },
+      agents: { listAll: async () => opts.agents },
+      skills: {
+        getById: async (_ws: string, id: string) => (id === 'sk' ? skill : undefined),
+        agentsUsing: async () => opts.using.map((id) => ({ id, name: id })),
+      },
+      llm: async (provider: string) => {
+        if (opts.noKey?.includes(provider)) throw new ConfigError('no key');
+        return {};
+      },
+    } as unknown as EvalPipelineServiceDeps;
+    return new EvalPipelineService(deps);
+  }
+
+  const agents = [
+    agent('a-using'),
+    agent('a-off', { enabled: false }),
+    agent('a-nocases'),
+    agent('a-other'),
+    agent('a-nokey', { provider: 'anthropic' }),
+  ];
+  const cases = { 'a-using': 3, 'a-off': 2, 'a-other': 4, 'a-nokey': 1 };
+  const using = ['a-using', 'a-off', 'a-nocases', 'a-nokey'];
+
+  it('previews only enabled agents that use the skill and have cases, and lists the keyless one as skipped', async () => {
+    const svc = make({ agents, cases, using, noKey: ['anthropic'] });
+    const p = await svc.runOnEvalsPreview('ws', 'sk');
+    expect(p.blocked).toBeNull();
+    expect(p.agents).toEqual([{ agent_id: 'a-using', name: 'a-using', model: 'gpt-4.1', cases: 3 }]);
+    expect(p.total_cases).toBe(3);
+    expect(p.skipped).toEqual([expect.objectContaining({ agent_id: 'a-nokey', reason: 'no_api_key' })]);
+  });
+
+  it('reports skill_disabled and no_agents as blocked reasons', async () => {
+    expect((await make({ agents, cases, using, skill: { enabled: false } }).runOnEvalsPreview('ws', 'sk')).blocked).toBe('skill_disabled');
+    expect((await make({ agents, cases, using: ['a-nocases'] }).runOnEvalsPreview('ws', 'sk')).blocked).toBe('no_agents');
+  });
+
+  it('POST re-checks the skill: 409 skill_disabled, 422 no_agents, 404 unknown', async () => {
+    await expect(make({ agents, cases, using, skill: { enabled: false } }).runOnEvals('ws', 'sk')).rejects.toMatchObject({
+      code: 'skill_disabled',
+      statusCode: 409,
+    });
+    await expect(make({ agents, cases, using: ['a-nocases'] }).runOnEvals('ws', 'sk')).rejects.toMatchObject({
+      code: 'no_agents',
+      statusCode: 422,
+    });
+    await expect(make({ agents, cases, using }).runOnEvals('ws', 'zzz')).rejects.toMatchObject({ statusCode: 404 });
   });
 });

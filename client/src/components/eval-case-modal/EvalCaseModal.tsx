@@ -12,12 +12,21 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { Button, FormField, Modal, TextInput } from "@devdigest/ui";
-import type { EvalCaseResult, EvalDraft, EvalPrMeta, EvalSuiteCase } from "@devdigest/shared";
+import type { EvalCaseResult, EvalDraft, EvalModelPick, EvalPrMeta, EvalSuiteCase } from "@devdigest/shared";
 import { ConfirmModal } from "@/components/confirm-modal";
 import { ApiError } from "@/lib/api";
 import { useToast } from "@/lib/toast";
 import { useAgent } from "@/lib/hooks/agents";
-import { useRunEvalCase, useRunEvalDraft, useSaveEvalCase, useUpdateEvalCase } from "@/lib/hooks/eval";
+import {
+  type EvalOwner,
+  useRunEvalCase,
+  useRunEvalDraft,
+  useRunSkillEvalDraft,
+  useSaveEvalCase,
+  useSaveSkillEvalCase,
+  useSkillEvalRunState,
+  useUpdateEvalCase,
+} from "@/lib/hooks/eval";
 import { CaseInputTabs } from "./CaseInputTabs";
 import { CaseRunResult } from "./CaseRunResult";
 import { ExpectedOutputEditor } from "./ExpectedOutputEditor";
@@ -30,7 +39,8 @@ import {
 import { s } from "./styles";
 
 export interface EvalCaseModalProps {
-  agentId: string;
+  /** Whose suite the case belongs to: a reviewer agent or a skill (AC-22, AC-85). */
+  owner: EvalOwner;
   /** A draft seeded from a finding — unsaved. */
   draft?: EvalDraft | null;
   /** A saved case, opened in edit mode. */
@@ -53,15 +63,24 @@ function initialValues(draft?: EvalDraft | null, existing?: EvalSuiteCase | null
   };
 }
 
-export function EvalCaseModal({ agentId, draft, existing, onClose, onOpenExisting }: EvalCaseModalProps) {
+const pickKey = (p: EvalModelPick | null) => (p ? `${p.provider}/${p.model}` : "");
+
+export function EvalCaseModal({ owner, draft, existing, onClose, onOpenExisting }: EvalCaseModalProps) {
   const t = useTranslations("eval.modal");
   const common = useTranslations("common");
   const toast = useToast();
-  const { data: agent } = useAgent(agentId);
+  const isSkill = owner.kind === "skill";
+  const { data: agent } = useAgent(owner.kind === "agent" ? owner.agentId : null);
+  const { data: skillRun } = useSkillEvalRunState(owner.kind === "skill" ? owner.skillId : null);
   const save = useSaveEvalCase();
+  const saveSkill = useSaveSkillEvalCase();
   const update = useUpdateEvalCase();
   const runSaved = useRunEvalCase();
   const runDraft = useRunEvalDraft();
+  const runSkillDraft = useRunSkillEvalDraft();
+  // `undefined` = the user has not touched the picker: follow the server's default (AC-87).
+  const [chosen, setChosen] = React.useState<EvalModelPick | null | undefined>(undefined);
+  const pick = chosen === undefined ? (skillRun?.default_pick ?? null) : chosen;
 
   const [initial] = React.useState(() => initialValues(draft, existing));
   const [name, setName] = React.useState(initial.name);
@@ -76,10 +95,11 @@ export function EvalCaseModal({ agentId, draft, existing, onClose, onOpenExistin
   const [saved, setSaved] = React.useState<{ name: string; kind: string } | null>(null);
 
   const files = React.useMemo(() => diffToPrFiles(diff), [diff]);
-  const now: RunSnapshot = { diff, expected };
+  const now: RunSnapshot = { diff, expected, pick: isSkill ? pickKey(pick) : "" };
   const dirty = name !== initial.name || diff !== initial.diff || expected !== initial.expected;
   const stale = isStale(run?.ran ?? null, now);
-  const busy = save.isPending || update.isPending || runSaved.isPending || runDraft.isPending;
+  const busy =
+    save.isPending || saveSkill.isPending || update.isPending || runSaved.isPending || runDraft.isPending || runSkillDraft.isPending;
   const seed = draft?.expected[0] ?? null;
   const askBeforeClose = existing ? dirty : dirty || run !== null;
   const discardTitle = existing ? t("discardChangesTitle") : t("discardDraftTitle");
@@ -97,17 +117,23 @@ export function EvalCaseModal({ agentId, draft, existing, onClose, onOpenExistin
     if (!parsed.ok) return setIssues([{ message: t("invalidJson", { message: parsed.message }) }]);
     setIssues([]);
     const snap = { ...now };
+    // A skill case has no model of its own: the picked one is sent with every run.
+    if (isSkill && !pick) return;
     if (existing && !dirty) {
-      runSaved.mutate({ id: existing.id, agentId }, {
+      runSaved.mutate({ id: existing.id, owner, ...(isSkill && pick ? { pick } : {}) }, {
         onSuccess: (c) => setRun(c.last_result ? { result: c.last_result, token: null, ran: snap } : null),
         onError: fail,
       });
       return;
     }
-    runDraft.mutate({ agentId, body: { input: { diff, pr_meta: initial.prMeta }, expected_output: parsed.value } }, {
-      onSuccess: (r) => setRun({ result: r.result, token: r.run_token, ran: snap }),
-      onError: fail,
-    });
+    const input = { diff, pr_meta: initial.prMeta };
+    const onSuccess = (r: { result: EvalCaseResult; run_token: string | null }) =>
+      setRun({ result: r.result, token: r.run_token, ran: snap });
+    if (owner.kind === "skill" && pick) {
+      runSkillDraft.mutate({ skillId: owner.skillId, body: { input, expected_output: parsed.value, ...pick } }, { onSuccess, onError: fail });
+    } else if (owner.kind === "agent") {
+      runDraft.mutate({ agentId: owner.agentId, body: { input, expected_output: parsed.value } }, { onSuccess, onError: fail });
+    }
   };
 
   const doSave = () => {
@@ -128,14 +154,15 @@ export function EvalCaseModal({ agentId, draft, existing, onClose, onOpenExistin
       setSaved({ name: c.name, kind });
       toast.success(t("saved", { name: c.name, kind }));
     };
-    if (existing) update.mutate({ id: existing.id, agentId, body }, { onSuccess: done, onError: fail });
-    else save.mutate({ agentId, body }, { onSuccess: done, onError: fail });
+    if (existing) update.mutate({ id: existing.id, owner, body }, { onSuccess: done, onError: fail });
+    else if (owner.kind === "skill") saveSkill.mutate({ skillId: owner.skillId, body }, { onSuccess: done, onError: fail });
+    else save.mutate({ agentId: owner.agentId, body }, { onSuccess: done, onError: fail });
   };
 
   const title = draft || existing ? t("title", { name: name || initial.name }) : t("newTitle");
   const subtitle = draft
     ? t(draft.seeded_from === "accepted" ? "subtitleAccepted" : "subtitleDismissed")
-    : t("subtitleManual");
+    : t(isSkill ? "subtitleSkill" : "subtitleManual");
   const positive = seed?.expect === "must_find";
 
   /* Portal to body: inside a FindingCard the Modal's fixed layer sits in the
@@ -155,10 +182,10 @@ export function EvalCaseModal({ agentId, draft, existing, onClose, onOpenExistin
               <>
                 <Button kind="ghost" onClick={requestClose}>{common("actions.cancel")}</Button>
                 <div style={s.footerSpacer} />
-                <Button kind="secondary" icon="Play" onClick={() => setConfirm("run")} loading={runSaved.isPending || runDraft.isPending} disabled={busy}>
+                <Button kind="secondary" icon="Play" onClick={() => setConfirm("run")} loading={runSaved.isPending || runDraft.isPending || runSkillDraft.isPending} disabled={busy}>
                   {t("run")}
                 </Button>
-                <Button kind="primary" onClick={doSave} loading={save.isPending || update.isPending} disabled={busy}>
+                <Button kind="primary" onClick={doSave} loading={save.isPending || saveSkill.isPending || update.isPending} disabled={busy}>
                   {t("save")}
                 </Button>
               </>
@@ -169,7 +196,7 @@ export function EvalCaseModal({ agentId, draft, existing, onClose, onOpenExistin
         {saved ? (
           <div style={s.saved} role="status">
             <span>{t("saved", saved)}</span>
-            <Link href={evalsTabHref(agentId)}>{t("savedLink")}</Link>
+            <Link href={evalsTabHref(owner)}>{t("savedLink")}</Link>
           </div>
         ) : (
           <div style={s.body}>
@@ -209,7 +236,14 @@ export function EvalCaseModal({ agentId, draft, existing, onClose, onOpenExistin
           </div>
         )}
       </Modal>
-      {confirm === "run" && <RunConfirmModal model={agent?.model ?? ""} onConfirm={doRun} onClose={() => setConfirm(null)} />}
+      {confirm === "run" && (
+        <RunConfirmModal
+          model={agent?.model ?? ""}
+          skill={isSkill ? { pick, onPick: setChosen, disabled: skillRun?.skill.enabled === false } : undefined}
+          onConfirm={doRun}
+          onClose={() => setConfirm(null)}
+        />
+      )}
       {confirm === "discard" && (
         <ConfirmModal title={discardTitle} body={discardBody} confirmLabel={t("discard")} onConfirm={onClose} onClose={() => setConfirm(null)} />
       )}

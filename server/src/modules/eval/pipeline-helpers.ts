@@ -1,7 +1,22 @@
 import { createHash } from 'node:crypto';
 import { groundFindings } from '@devdigest/reviewer-core';
-import { EvalExpectation, type EvalSkillRef, type Finding, type UnifiedDiff } from '@devdigest/shared';
-import { EVAL_MAX_DIFF_BYTES, EVAL_NAME_TITLE_MAX } from './constants.js';
+import {
+  EvalExpectation,
+  type EvalModelPick,
+  type EvalSkillRef,
+  type Finding,
+  type LLMProvider,
+  type Provider,
+  type UnifiedDiff,
+} from '@devdigest/shared';
+import { AppError, ConfigError, ValidationError } from '../../platform/errors.js';
+import {
+  EVAL_MAX_DIFF_BYTES,
+  EVAL_NAME_TITLE_MAX,
+  EVAL_SKILL_HARNESS_PROMPT,
+  EVAL_SKILL_STRATEGY,
+} from './constants.js';
+import type { EvalAgentSnapshot, EvalSkill } from './types.js';
 
 /** Pure helpers for the eval pipeline (plan 34). Reasons are returned, never thrown. */
 
@@ -217,4 +232,70 @@ export async function pool<T>(limit: number, tasks: readonly (() => Promise<T>)[
   await Promise.all(Array.from({ length: width }, worker));
   if (failed) throw firstError;
   return results;
+}
+
+/** Postgres unique violation, bare or wrapped by the driver layer. */
+export function isUniqueViolation(err: unknown): boolean {
+  const e = err as { code?: string; cause?: { code?: string } } | null;
+  return e?.code === '23505' || e?.cause?.code === '23505';
+}
+
+const REFUSAL_FIELD: Record<CaseRefusal['code'], string> = {
+  name_empty: 'name',
+  name_taken: 'name',
+  diff_too_large: 'input.diff',
+  diff_unparsable: 'input.diff',
+  expected_invalid: 'expected_output',
+  expectation_ungrounded: 'expected_output',
+};
+
+export function refusalError(r: CaseRefusal): ValidationError {
+  return new ValidationError(r.message, [
+    { ...(r.index === undefined ? {} : { index: r.index }), field: REFUSAL_FIELD[r.code], message: r.message },
+  ]);
+}
+
+/** The provider client, or a `no_api_key` refusal. Call it before anything is created or spent. */
+export async function resolveProvider(
+  llm: (provider: Provider) => Promise<LLMProvider>,
+  provider: Provider,
+): Promise<LLMProvider> {
+  try {
+    return await llm(provider);
+  } catch (err) {
+    if (err instanceof ConfigError) {
+      throw new AppError('no_api_key', `no API key for ${provider}`, 422);
+    }
+    throw err;
+  }
+}
+
+/**
+ * The skill exactly as one skill-case run sees it: a fixed harness prompt (never
+ * built from skill text) plus the skill's rendered body as the only skill.
+ */
+export function skillSnapshot(skill: EvalSkill, pick: EvalModelPick): EvalAgentSnapshot {
+  return {
+    owner: 'skill',
+    id: skill.id,
+    provider: pick.provider,
+    model: pick.model,
+    systemPrompt: EVAL_SKILL_HARNESS_PROMPT,
+    strategy: EVAL_SKILL_STRATEGY,
+    version: skill.version,
+    skills: [{ id: skill.id, name: skill.name, version: skill.version }],
+    rendered: [skill.rendered],
+  };
+}
+
+/** sha256 over what a skill draft run depends on, including the picked provider and model. */
+export function skillRunTokenHash(input: {
+  diff: string;
+  expected: readonly EvalExpectation[];
+  skillId: string;
+  version: number;
+  provider: string;
+  model: string;
+}): string {
+  return createHash('sha256').update(canonicalJson(input)).digest('hex');
 }

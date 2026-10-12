@@ -36,12 +36,11 @@ export function TurnIntoEvalCase({ finding }: { finding: FindingRecord }) {
 
   const load = () =>
     seed.mutate(finding.id, {
-      onSuccess: (res) =>
-        setOpen(
-          res.kind === "draft"
-            ? { agentId: res.draft.agent_id, draft: res.draft, existing: null }
-            : { agentId: res.case.agent_id, draft: null, existing: res.case },
-        ),
+      onSuccess: (res) => {
+        if (res.kind === "draft") setOpen({ agentId: res.draft.agent_id, draft: res.draft, existing: null });
+        // A seed returns agent cases only; a skill case (no agent_id) has no agent modal to open.
+        else if (res.case.agent_id) setOpen({ agentId: res.case.agent_id, draft: null, existing: res.case });
+      },
       onError: (err) => toast.error(refusal(err)),
     });
 
@@ -56,7 +55,7 @@ export function TurnIntoEvalCase({ finding }: { finding: FindingRecord }) {
         <EvalCaseModal
           // A reopened case is a different modal state: remount, never mutate in place.
           key={open.existing?.id ?? "draft"}
-          agentId={open.agentId}
+          owner={{ kind: "agent", agentId: open.agentId }}
           draft={open.draft}
           existing={open.existing}
           onClose={() => setOpen(null)}

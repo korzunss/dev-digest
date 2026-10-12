@@ -8,9 +8,20 @@ export type SuiteCaseRow = typeof t.evalSuiteCases.$inferSelect;
 export type SuiteRunRow = typeof t.evalSuiteRuns.$inferSelect;
 export type CaseResultRow = typeof t.evalCaseResults.$inferSelect;
 
+/** Whose suite a case belongs to: exactly one of an agent or a skill (DB CHECK). */
+export type SuiteOwner = { agentId: string } | { skillId: string };
+
+/** The owner a stored case row belongs to. Throws on a row with neither (the CHECK forbids it). */
+export function ownerOf(row: Pick<SuiteCaseRow, 'agentId' | 'skillId'>): SuiteOwner {
+  if (row.agentId) return { agentId: row.agentId };
+  if (row.skillId) return { skillId: row.skillId };
+  throw new Error('eval_suite_cases row has no owner');
+}
+
 export interface SuiteCaseInsert {
   workspaceId: string;
-  agentId: string;
+  agentId: string | null;
+  skillId: string | null;
   name: string;
   inputDiff: string;
   inputFiles: string[];
@@ -54,6 +65,12 @@ export interface SuiteRunCompletion {
   costUsd: number | null;
 }
 
+function ownerFilter(owner: SuiteOwner) {
+  return 'agentId' in owner
+    ? eq(t.evalSuiteCases.agentId, owner.agentId)
+    : eq(t.evalSuiteCases.skillId, owner.skillId);
+}
+
 /**
  * Reads and writes the three eval-pipeline tables (`eval_suite_cases`,
  * `eval_suite_runs`, `eval_case_results`). Never touches `eval_cases` /
@@ -69,12 +86,17 @@ export class EvalPipelineRepository {
 
   // ---- cases -----------------------------------------------------------------
 
+  /** See the module-level `ownerOf`. */
+  ownerOf(row: Pick<SuiteCaseRow, 'agentId' | 'skillId'>): SuiteOwner {
+    return ownerOf(row);
+  }
+
   /** Newest first. */
-  async listCases(workspaceId: string, agentId: string): Promise<SuiteCaseRow[]> {
+  async listCases(workspaceId: string, owner: SuiteOwner): Promise<SuiteCaseRow[]> {
     return this.db
       .select()
       .from(t.evalSuiteCases)
-      .where(and(eq(t.evalSuiteCases.workspaceId, workspaceId), eq(t.evalSuiteCases.agentId, agentId)))
+      .where(and(eq(t.evalSuiteCases.workspaceId, workspaceId), ownerFilter(owner)))
       .orderBy(desc(t.evalSuiteCases.createdAt), desc(t.evalSuiteCases.id));
   }
 
@@ -101,19 +123,19 @@ export class EvalPipelineRepository {
     return row ?? null;
   }
 
-  async caseNames(workspaceId: string, agentId: string): Promise<string[]> {
+  async caseNames(workspaceId: string, owner: SuiteOwner): Promise<string[]> {
     const rows = await this.db
       .select({ name: t.evalSuiteCases.name })
       .from(t.evalSuiteCases)
-      .where(and(eq(t.evalSuiteCases.workspaceId, workspaceId), eq(t.evalSuiteCases.agentId, agentId)));
+      .where(and(eq(t.evalSuiteCases.workspaceId, workspaceId), ownerFilter(owner)));
     return rows.map((r) => r.name);
   }
 
-  async countCases(workspaceId: string, agentId: string): Promise<number> {
+  async countCases(workspaceId: string, owner: SuiteOwner): Promise<number> {
     const [row] = await this.db
       .select({ n: sql<number>`count(*)::int` })
       .from(t.evalSuiteCases)
-      .where(and(eq(t.evalSuiteCases.workspaceId, workspaceId), eq(t.evalSuiteCases.agentId, agentId)));
+      .where(and(eq(t.evalSuiteCases.workspaceId, workspaceId), ownerFilter(owner)));
     return row?.n ?? 0;
   }
 

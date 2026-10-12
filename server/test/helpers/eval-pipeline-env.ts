@@ -112,3 +112,29 @@ export async function suiteCounts(db: Db) {
   ]);
   return { cases: cases.length, runs: runs.length, results: results.length };
 }
+
+/** A workspace skill (enabled unless told otherwise); `version` 1. */
+export async function insertSkill(
+  db: Db,
+  workspaceId: string,
+  opts: { name: string; body?: string; enabled?: boolean },
+): Promise<string> {
+  const [row] = await db
+    .insert(t.skills)
+    .values({
+      workspaceId,
+      name: opts.name,
+      description: `${opts.name} description`,
+      type: 'custom',
+      source: 'manual',
+      body: opts.body ?? `${opts.name} body`,
+      enabled: opts.enabled ?? true,
+    })
+    .returning();
+  return row!.id;
+}
+
+/** Attach a skill to an agent (the `agent_skills` link). */
+export async function attachSkill(db: Db, agentId: string, skillId: string): Promise<void> {
+  await db.insert(t.agentSkills).values({ agentId, skillId });
+}

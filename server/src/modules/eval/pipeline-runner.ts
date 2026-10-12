@@ -30,11 +30,15 @@ export async function runCase(
 ): Promise<EvalCaseResult> {
   const startedAt = deps.now();
   const mustFindTotal = expected.filter((e) => e.expect === 'must_find').length;
-  const finish = (partial: Omit<EvalCaseResult, 'ran_at' | 'agent_version' | 'duration_ms'>): EvalCaseResult => ({
+  const finish = (
+    partial: Omit<EvalCaseResult, 'ran_at' | 'agent_version' | 'skill_version' | 'model' | 'duration_ms'>,
+  ): EvalCaseResult => ({
     ...partial,
     duration_ms: Math.max(0, Math.round(deps.now().getTime() - startedAt.getTime())),
     ran_at: startedAt.toISOString(),
-    agent_version: snapshot.version,
+    model: snapshot.model,
+    // The version belongs to the owner: a skill case run tags `skill_version` only (AC-88).
+    ...(snapshot.owner === 'skill' ? { skill_version: snapshot.version } : { agent_version: snapshot.version }),
   });
 
   try {

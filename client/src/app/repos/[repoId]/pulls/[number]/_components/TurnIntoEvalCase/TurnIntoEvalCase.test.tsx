@@ -16,9 +16,9 @@ vi.mock("@/lib/api", async (importActual) => ({
   api: { get: (p: string) => get(p) },
 }));
 vi.mock("@/components/eval-case-modal", () => ({
-  EvalCaseModal: (p: { agentId: string; draft?: { name: string } | null; existing?: { name: string } | null; onClose: () => void }) => (
+  EvalCaseModal: (p: { owner: { kind: string; agentId?: string }; draft?: { name: string } | null; existing?: { name: string } | null; onClose: () => void }) => (
     <div role="dialog">
-      modal {p.agentId} {p.draft ? `draft:${p.draft.name}` : `existing:${p.existing?.name}`}
+      modal {p.owner.agentId} {p.draft ? `draft:${p.draft.name}` : `existing:${p.existing?.name}`}
       <button onClick={p.onClose}>close-modal</button>
     </div>
   ),

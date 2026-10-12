@@ -35,7 +35,7 @@ const result = (over: Partial<EvalCaseResult> = {}): EvalCaseResult => ({
 });
 
 const mkCase = (id: string, name: string, over: Partial<EvalSuiteCase> = {}): EvalSuiteCase => ({
-  id, agent_id: "a1", name, input: { diff: "d", files: [], pr_meta: null },
+  id, agent_id: "a1", skill_id: null, name, input: { diff: "d", files: [], pr_meta: null },
   expected: [{ expect: "must_find", file: "src/a.ts", start_line: 2, severity: "CRITICAL", category: "secrets" }],
   source: { finding_id: null, pr_id: null, repo_id: null, pr_number: null },
   created_at: "2026-10-12T09:00:00Z", updated_at: "2026-10-12T09:00:00Z", last_result: null, ...over,

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { Provider } from './knowledge.js';
 
 /**
  * Eval pipeline (plan 34) — regression suites per agent.
@@ -94,14 +95,21 @@ export const EvalCaseResult = z.object({
   cost_usd: z.number().nullable(),
   error: z.string().nullable(),
   ran_at: z.string(),
-  agent_version: z.number().int(),
+  // Plan 35: a stored plan-34 result has neither `skill_version` nor `model`, so all
+  // three are optional/nullish (it must still parse). A skill-case run carries
+  // `skill_version`; an agent-case run carries `agent_version`.
+  agent_version: z.number().int().optional(),
+  skill_version: z.number().int().nullish(),
+  model: z.string().nullish(),
   findings: z.array(EvalFindingBrief),
 });
 export type EvalCaseResult = z.infer<typeof EvalCaseResult>;
 
 export const EvalSuiteCase = z.object({
   id: z.string(),
-  agent_id: z.string(),
+  // Exactly one owner is set (DB CHECK): an agent case or a skill case.
+  agent_id: z.string().nullable(),
+  skill_id: z.string().nullable(),
   name: z.string(),
   input: EvalSuiteCaseInput,
   expected: z.array(EvalExpectation),
@@ -356,3 +364,45 @@ export const EvalRunAllResult = z.object({
   skipped: z.array(EvalRunAllSkipped),
 });
 export type EvalRunAllResult = z.infer<typeof EvalRunAllResult>;
+
+// ===========================================================================
+// Skill suites (plan 35)
+// ===========================================================================
+
+/** The provider/model a skill case runs on (a skill has none of its own). */
+export const EvalModelPick = z.object({
+  provider: Provider,
+  model: z.string().trim().min(1).max(200),
+});
+export type EvalModelPick = z.infer<typeof EvalModelPick>;
+
+/** Single run of a saved case; the route makes the body optional (agent cases ignore it). */
+export const EvalCaseRunBody = EvalModelPick;
+export type EvalCaseRunBody = z.infer<typeof EvalCaseRunBody>;
+
+export const EvalSkillDraftRunBody = EvalDraftRunBody.extend(EvalModelPick.shape);
+export type EvalSkillDraftRunBody = z.infer<typeof EvalSkillDraftRunBody>;
+
+// Paid run of the whole skill suite; the required body defeats a CORS "simple" POST.
+export const EvalSkillRunBody = EvalModelPick.extend({ confirm: z.literal(true) });
+export type EvalSkillRunBody = z.infer<typeof EvalSkillRunBody>;
+
+export const EvalSkillRunState = z.object({
+  skill: z.object({
+    id: z.string(),
+    name: z.string(),
+    version: z.number().int(),
+    enabled: z.boolean(),
+  }),
+  progress: z.object({ done: z.number().int(), total: z.number().int() }).nullable(),
+  default_pick: EvalModelPick.nullable(),
+});
+export type EvalSkillRunState = z.infer<typeof EvalSkillRunState>;
+
+export const EvalSkillRunAgentsBlocked = z.enum(['skill_disabled', 'no_agents']);
+export type EvalSkillRunAgentsBlocked = z.infer<typeof EvalSkillRunAgentsBlocked>;
+
+export const EvalSkillRunAgentsPreview = EvalRunAllPreview.extend({
+  blocked: EvalSkillRunAgentsBlocked.nullable(),
+});
+export type EvalSkillRunAgentsPreview = z.infer<typeof EvalSkillRunAgentsPreview>;

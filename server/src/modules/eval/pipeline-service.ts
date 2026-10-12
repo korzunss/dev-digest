@@ -12,7 +12,9 @@ import type {
   EvalPeriod,
   EvalPromoteResult,
   EvalRunAllPreview,
+  EvalModelPick,
   EvalRunAllResult,
+  EvalSkillRunAgentsPreview,
   EvalSuiteCase,
   EvalSuiteRun,
   EvalSuiteRunDetail,
@@ -25,7 +27,16 @@ import {
   EVAL_MAX_SUITE_CASES,
   EVAL_RECENT_RUNS,
 } from './constants.js';
-import { caseName, pool, runTokenHash, seedExpectation, validateCase, type CaseRefusal } from './pipeline-helpers.js';
+import {
+  caseName,
+  isUniqueViolation,
+  pool,
+  refusalError,
+  resolveProvider,
+  runTokenHash,
+  seedExpectation,
+  validateCase,
+} from './pipeline-helpers.js';
 import { runCase, type CaseRunnerDeps } from './pipeline-runner.js';
 import { aggregateRun, type CaseScore } from './pipeline-scoring.js';
 import {
@@ -47,27 +58,6 @@ interface DraftToken {
   hash: string;
   result: EvalCaseResult;
   expiresAt: number;
-}
-
-/** Postgres unique violation, bare or wrapped by the driver layer. */
-function isUniqueViolation(err: unknown): boolean {
-  const e = err as { code?: string; cause?: { code?: string } } | null;
-  return e?.code === '23505' || e?.cause?.code === '23505';
-}
-
-const REFUSAL_FIELD: Record<CaseRefusal['code'], string> = {
-  name_empty: 'name',
-  name_taken: 'name',
-  diff_too_large: 'input.diff',
-  diff_unparsable: 'input.diff',
-  expected_invalid: 'expected_output',
-  expectation_ungrounded: 'expected_output',
-};
-
-function refusalError(r: CaseRefusal): ValidationError {
-  return new ValidationError(r.message, [
-    { ...(r.index === undefined ? {} : { index: r.index }), field: REFUSAL_FIELD[r.code], message: r.message },
-  ]);
 }
 
 /**
@@ -118,15 +108,8 @@ export class EvalPipelineService {
   }
 
   /** The provider client, or a `no_api_key` refusal. Called before anything is created or spent. */
-  private async providerFor(provider: EvalAgentSnapshot['provider']): Promise<LLMProvider> {
-    try {
-      return await this.deps.llm(provider);
-    } catch (err) {
-      if (err instanceof ConfigError) {
-        throw new AppError('no_api_key', `no API key for ${provider}`, 422);
-      }
-      throw err;
-    }
+  private providerFor(provider: EvalAgentSnapshot['provider']): Promise<LLMProvider> {
+    return resolveProvider(this.deps.llm, provider);
   }
 
   private erroredResult(snapshot: EvalAgentSnapshot, expected: readonly EvalExpectation[], reason: string): EvalCaseResult {
@@ -144,6 +127,7 @@ export class EvalPipelineService {
       error: reason,
       ran_at: this.deps.now().toISOString(),
       agent_version: snapshot.version,
+      model: snapshot.model,
       findings: [],
     };
   }
@@ -154,7 +138,7 @@ export class EvalPipelineService {
 
   async listCases(workspaceId: string, agentId: string): Promise<EvalSuiteCase[]> {
     if (!(await this.deps.agents.getById(workspaceId, agentId))) throw new NotFoundError('Agent not found');
-    return (await this.deps.repo.listCases(workspaceId, agentId)).map(toCaseDto);
+    return (await this.deps.repo.listCases(workspaceId, { agentId })).map(toCaseDto);
   }
 
   /** The draft for a finding, or the case already saved for it. Writes nothing. */
@@ -173,7 +157,7 @@ export class EvalPipelineService {
     if (src.fileDiff === null || src.fileDiff.trim() === '') {
       throw new AppError('no_diff_text', `no diff text available for ${src.finding.file}`, 422);
     }
-    const taken = await this.deps.repo.caseNames(workspaceId, agent.id);
+    const taken = await this.deps.repo.caseNames(workspaceId, { agentId: agent.id });
     return {
       kind: 'draft',
       draft: {
@@ -211,7 +195,7 @@ export class EvalPipelineService {
     // The token is single-use: consumed here whatever the outcome below.
     const token = body.draft_run_token ? this.takeToken(body.draft_run_token) : null;
 
-    if ((await this.deps.repo.countCases(workspaceId, agentId)) >= EVAL_MAX_SUITE_CASES) {
+    if ((await this.deps.repo.countCases(workspaceId, { agentId })) >= EVAL_MAX_SUITE_CASES) {
       throw new AppError('suite_too_large', `A suite holds at most ${EVAL_MAX_SUITE_CASES} cases.`, 422);
     }
 
@@ -227,7 +211,7 @@ export class EvalPipelineService {
       diff: body.input.diff,
       expected: body.expected_output,
       name: body.name,
-      takenNames: await this.deps.repo.caseNames(workspaceId, agentId),
+      takenNames: await this.deps.repo.caseNames(workspaceId, { agentId }),
       parseDiff: this.deps.parseDiff,
     });
     if (!checked.ok) throw refusalError(checked);
@@ -250,6 +234,7 @@ export class EvalPipelineService {
       row = await this.deps.repo.insertCase({
         workspaceId,
         agentId,
+        skillId: null,
         name: body.name.trim(),
         inputDiff: body.input.diff,
         inputFiles: checked.files,
@@ -286,7 +271,7 @@ export class EvalPipelineService {
   ): Promise<EvalSuiteCase> {
     const current = await this.deps.repo.getCase(workspaceId, caseId);
     if (!current) throw new NotFoundError('Case not found');
-    const names = await this.deps.repo.caseNames(workspaceId, current.agentId);
+    const names = await this.deps.repo.caseNames(workspaceId, this.deps.repo.ownerOf(current));
     const checked = validateCase({
       diff: body.input.diff,
       expected: body.expected_output,
@@ -349,10 +334,22 @@ export class EvalPipelineService {
     return { result, run_token: token };
   }
 
-  /** Run one saved case on its frozen input and store the result on it. Not a suite run. */
-  async runSavedCase(workspaceId: string, caseId: string): Promise<EvalSuiteCase> {
+  /**
+   * Run one saved case on its frozen input and store the result on it. Not a suite run.
+   * A skill case needs a provider/model `pick` and is run by the skill suite service;
+   * an agent case ignores `pick` (it runs on the agent's own model).
+   */
+  async runSavedCase(workspaceId: string, caseId: string, pick?: EvalModelPick): Promise<EvalSuiteCase> {
     const row = await this.deps.repo.getCase(workspaceId, caseId);
     if (!row) throw new NotFoundError('Case not found');
+    if (!row.agentId) {
+      if (!pick) {
+        throw new ValidationError('A skill case needs a provider and model.', [
+          { field: 'model', message: 'Pick a provider and model to run a skill case.' },
+        ]);
+      }
+      return this.deps.skillCases.runSavedCase(workspaceId, row, pick);
+    }
     const snap = await this.snapshot(workspaceId, row.agentId);
     const llm = await this.providerFor(snap.provider);
     const expected = parseExpected(row.expected);
@@ -399,7 +396,7 @@ export class EvalPipelineService {
         throw new AppError('run_in_progress', 'A suite run of this agent is already in progress.', 409);
       }
       const snap = await this.snapshot(workspaceId, agentId);
-      const cases = await this.deps.repo.listCases(workspaceId, agentId);
+      const cases = await this.deps.repo.listCases(workspaceId, { agentId });
       if (cases.length === 0) throw new AppError('suite_empty', 'The suite has no cases.', 422);
       if (cases.length > EVAL_MAX_SUITE_CASES) {
         throw new AppError('suite_too_large', `A suite holds at most ${EVAL_MAX_SUITE_CASES} cases.`, 422);
@@ -493,11 +490,11 @@ export class EvalPipelineService {
   }
 
   /** Enabled agents with at least one case, and which of them would be skipped. */
-  async runAllPreview(workspaceId: string): Promise<EvalRunAllPreview> {
+  async runAllPreview(workspaceId: string, only?: ReadonlySet<string>): Promise<EvalRunAllPreview> {
     const out: EvalRunAllPreview = { agents: [], total_cases: 0, skipped: [] };
     for (const agent of await this.deps.agents.listAll(workspaceId)) {
-      if (!agent.enabled) continue;
-      const cases = await this.deps.repo.countCases(workspaceId, agent.id);
+      if (!agent.enabled || (only && !only.has(agent.id))) continue;
+      const cases = await this.deps.repo.countCases(workspaceId, { agentId: agent.id });
       if (cases === 0) continue;
       if (this.inFlight.has(agent.id) || (await this.deps.repo.hasRunning(agent.id))) {
         out.skipped.push({ agent_id: agent.id, name: agent.name, provider: agent.provider, reason: 'run_in_progress' });
@@ -517,11 +514,11 @@ export class EvalPipelineService {
   }
 
   /** One suite run per enabled agent with cases; an agent that cannot start is skipped by name. */
-  async runAll(workspaceId: string): Promise<EvalRunAllResult> {
+  async runAll(workspaceId: string, only?: ReadonlySet<string>): Promise<EvalRunAllResult> {
     const out: EvalRunAllResult = { started: [], skipped: [] };
     for (const agent of await this.deps.agents.listAll(workspaceId)) {
-      if (!agent.enabled) continue;
-      if ((await this.deps.repo.countCases(workspaceId, agent.id)) === 0) continue;
+      if (!agent.enabled || (only && !only.has(agent.id))) continue;
+      if ((await this.deps.repo.countCases(workspaceId, { agentId: agent.id })) === 0) continue;
       try {
         const run = await this.startSuiteRun(workspaceId, agent.id);
         out.started.push({ agent_id: agent.id, run_id: run.id });
@@ -532,6 +529,36 @@ export class EvalPipelineService {
         }
         throw err;
       }
+    }
+    return out;
+  }
+
+  /** The ids of the agents a skill is attached to; 404 for an unknown skill. */
+  private async agentsUsing(workspaceId: string, skillId: string) {
+    const skill = await this.deps.skills.getById(workspaceId, skillId);
+    if (!skill) throw new NotFoundError('Skill not found');
+    const using = await this.deps.skills.agentsUsing(workspaceId, skillId);
+    return { skill, ids: new Set(using.map((a) => a.id)) };
+  }
+
+  /** "Run on evals" preview: the skill's enabled agents with cases, or why nothing can run. */
+  async runOnEvalsPreview(workspaceId: string, skillId: string): Promise<EvalSkillRunAgentsPreview> {
+    const { skill, ids } = await this.agentsUsing(workspaceId, skillId);
+    if (!skill.enabled) return { agents: [], total_cases: 0, skipped: [], blocked: 'skill_disabled' };
+    const preview = await this.runAllPreview(workspaceId, ids);
+    const nothing = preview.agents.length === 0 && preview.skipped.length === 0;
+    return { ...preview, blocked: nothing ? 'no_agents' : null };
+  }
+
+  /** Suite runs of the agents using the skill; the skill state is re-checked here (edge: disabled while the confirm is open). */
+  async runOnEvals(workspaceId: string, skillId: string): Promise<EvalRunAllResult> {
+    const { skill, ids } = await this.agentsUsing(workspaceId, skillId);
+    if (!skill.enabled) {
+      throw new AppError('skill_disabled', 'Enable the skill to test it in agents.', 409);
+    }
+    const out = await this.runAll(workspaceId, ids);
+    if (out.started.length === 0 && out.skipped.length === 0) {
+      throw new AppError('no_agents', 'No enabled agent that uses this skill has eval cases.', 422);
     }
     return out;
   }
@@ -557,7 +584,7 @@ export class EvalPipelineService {
     if (!agent) throw new NotFoundError('Agent not found');
     const [allRuns, casesTotal] = await Promise.all([
       this.deps.repo.listRuns(workspaceId, agentId, null),
-      this.deps.repo.countCases(workspaceId, agentId),
+      this.deps.repo.countCases(workspaceId, { agentId }),
     ]);
     return buildAgentDetail({
       agent,
@@ -575,7 +602,7 @@ export class EvalPipelineService {
         name: a.name,
         model: a.model,
         enabled: a.enabled,
-        casesTotal: await this.deps.repo.countCases(workspaceId, a.id),
+        casesTotal: await this.deps.repo.countCases(workspaceId, { agentId: a.id }),
         runs: await this.deps.repo.listRuns(workspaceId, a.id, null),
       })),
     );

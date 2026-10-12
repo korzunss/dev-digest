@@ -26,3 +26,10 @@ export const EVAL_RECENT_RUNS = 20;
 export const EVAL_DRAFT_TOKEN_TTL_MS = 3_600_000;
 /** Deadline of one case's model call (assumption). */
 export const EVAL_CASE_CALL_DEADLINE_MS = 240_000;
+
+/** Skill suites (plan 35). */
+/** System prompt of a skill case run: the skill under test is the only instruction (assumption). */
+export const EVAL_SKILL_HARNESS_PROMPT =
+  'You are a code reviewer. Review the diff using only the skill below. Report only issues that skill asks for, each at a file and line range present in the diff.';
+/** Review strategy of a skill case run (assumption). */
+export const EVAL_SKILL_STRATEGY = 'single-pass' as const;
