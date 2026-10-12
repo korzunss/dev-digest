@@ -3,34 +3,81 @@
    The list shows EVERY skill in the workspace; the checkbox is the attachment,
    and attached ones float to the top in their stored order. That order is the
    order of the blocks in the assembled prompt, which is why it is editable at
-   all — and why every change posts the whole ordered id list. */
+   all — and why a save posts the whole ordered id list.
+
+   Edits are STAGED: toggles, drags and arrow keys change local state only, and
+   one Save (with an optional note) posts the result, so a session of edits is
+   one agent version rather than one per click. */
 "use client";
 
 import React from "react";
 import { useTranslations } from "next-intl";
 import { Badge, Checkbox, ErrorState, Icon, Skeleton } from "@devdigest/ui";
 import type { Agent } from "@devdigest/shared";
+import { AGENT_NOTE_MAX } from "../../constants";
 import { useAgentSkills, useSetAgentSkills, useSkills } from "../../../../../../../lib/hooks/skills";
 import { TYPE_COLOR } from "../../../../../../skills/_components/SkillCard";
 import { moveId, toggleAttachment } from "@/lib/attachment-order";
-import { attachedIds, filterRows, orderedRows } from "./helpers";
+import { attachedIds, filterRows, orderedRows, sameOrder } from "./helpers";
+import { SaveBar } from "./SaveBar";
 import { s } from "./styles";
+import { useUnsavedGuard } from "./use-unsaved-guard";
 
-export function SkillsTab({ agent }: { agent: Agent }) {
+interface SkillsTabProps {
+  agent: Agent;
+  /** Reports whether staged edits exist. Pass a stable function (a state setter). */
+  onDirtyChange?: (dirty: boolean) => void;
+}
+
+export function SkillsTab({ agent, onDirtyChange }: SkillsTabProps) {
   const t = useTranslations("agents");
   const ts = useTranslations("skills");
   const tc = useTranslations("common");
   const { data: skills, isLoading, isError, refetch } = useSkills();
-  const { data: links } = useAgentSkills(agent.id);
+  const { data: links, isLoading: linksLoading, isError: linksError, refetch: refetchLinks } =
+    useAgentSkills(agent.id);
   const setSkills = useSetAgentSkills();
 
   const [search, setSearch] = React.useState("");
   const [dragging, setDragging] = React.useState<string | null>(null);
+  // Staged edits. AgentEditor remounts this tab with key={agent.id}, so they can
+  // never be shown (or saved) against another agent; no agent id is tracked here.
+  const [staged, setStaged] = React.useState<string[] | null>(null);
+  const [note, setNote] = React.useState("");
 
-  const attached = attachedIds(links);
+  const stored = attachedIds(links);
+  const attached = staged ?? stored;
+  const isDirty = staged !== null && !sameOrder(staged, stored);
+  const noteTooLong = note.trim().length > AGENT_NOTE_MAX;
   const rows = filterRows(orderedRows(skills ?? [], attached), search);
 
-  const commit = (skillIds: string[]) => setSkills.mutate({ agentId: agent.id, skillIds });
+  useUnsavedGuard(isDirty, t("skills.leaveConfirm"));
+
+  // `onDirtyChange` must be stable (the page passes a state setter): the effect
+  // re-runs on identity change, and the cleanup would briefly report "clean".
+  React.useEffect(() => {
+    onDirtyChange?.(isDirty);
+    // Leaving the tab drops the staged edits, so the page must not keep asking.
+    return () => {
+      if (isDirty) onDirtyChange?.(false);
+    };
+  }, [isDirty, onDirtyChange]);
+
+  const commit = (skillIds: string[]) => setStaged(skillIds);
+
+  const cancel = () => {
+    setStaged(null);
+    setNote("");
+  };
+
+  const save = () => {
+    if (staged === null) return;
+    const message = note.trim();
+    setSkills.mutate(
+      { agentId: agent.id, skillIds: staged, ...(message ? { message } : {}) },
+      { onSuccess: cancel },
+    );
+  };
 
   const move = (id: string, delta: number) => {
     const from = attached.indexOf(id);
@@ -46,7 +93,10 @@ export function SkillsTab({ agent }: { agent: Agent }) {
     commit(moveId(attached, from, to));
   };
 
-  if (isLoading) return <Skeleton height={180} />;
+  // Never render controls before the stored list is known: a Save from a
+  // half-loaded tab would replace every stored link.
+  if (isLoading || linksLoading) return <Skeleton height={180} />;
+  if (linksError) return <ErrorState body={ts("page.loadError")} onRetry={() => refetchLinks()} />;
   if (isError) return <ErrorState body={ts("page.loadError")} onRetry={() => refetch()} />;
 
   return (
@@ -132,6 +182,17 @@ export function SkillsTab({ agent }: { agent: Agent }) {
             );
           })}
         </div>
+      )}
+
+      {isDirty && (
+        <SaveBar
+          note={note}
+          onNote={setNote}
+          noteTooLong={noteTooLong}
+          pending={setSkills.isPending}
+          onCancel={cancel}
+          onSave={save}
+        />
       )}
     </div>
   );

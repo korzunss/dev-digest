@@ -510,13 +510,77 @@ export const AgentVersionConfig = z.object({
   ci_fail_on: CiFailOn,
   repo_intel: z.boolean(),
   skills: z.array(z.string()),
+  // id -> name at snapshot time, so a version still names a skill deleted later.
+  skill_names: z.record(z.string(), z.string()).optional(),
 });
 export type AgentVersionConfig = z.infer<typeof AgentVersionConfig>;
 
 export const AgentVersion = z.object({
   agent_id: z.string(),
   version: z.number().int(),
-  config: AgentVersionConfig,
+  // null = the stored snapshot is unreadable
+  config: AgentVersionConfig.nullable(),
+  message: z.string().nullable(),
   created_at: z.string(),
 });
 export type AgentVersion = z.infer<typeof AgentVersion>;
+
+export const AGENT_VERSION_MESSAGE_MAX = 500;
+export const AgentVersionMessage = z.string().max(AGENT_VERSION_MESSAGE_MAX);
+export type AgentVersionMessage = z.infer<typeof AgentVersionMessage>;
+
+export const AgentVersionSkillRef = z.object({
+  id: z.string(),
+  name: z.string().nullable(),
+  deleted: z.boolean(),
+});
+export type AgentVersionSkillRef = z.infer<typeof AgentVersionSkillRef>;
+
+export const AgentVersionField = z.enum([
+  'provider',
+  'model',
+  'strategy',
+  'ci_fail_on',
+  'repo_intel',
+  'output_schema',
+]);
+export type AgentVersionField = z.infer<typeof AgentVersionField>;
+
+export const AgentVersionFieldChange = z.object({
+  field: AgentVersionField,
+  // output_schema as a JSON string
+  from: z.union([z.string(), z.boolean()]).nullable(),
+  to: z.union([z.string(), z.boolean()]).nullable(),
+});
+export type AgentVersionFieldChange = z.infer<typeof AgentVersionFieldChange>;
+
+export const AgentVersionDiff = z.object({
+  from: z.number().int(),
+  to: z.number().int(),
+  config_available: z.boolean(),
+  // '' when unchanged or unavailable
+  prompt_patch: z.string(),
+  fields: z.array(AgentVersionFieldChange),
+  skills: z.object({
+    from: z.array(AgentVersionSkillRef),
+    to: z.array(AgentVersionSkillRef),
+    added: z.array(AgentVersionSkillRef),
+    removed: z.array(AgentVersionSkillRef),
+    order_changed: z.boolean(),
+  }),
+  identical: z.boolean(),
+});
+export type AgentVersionDiff = z.infer<typeof AgentVersionDiff>;
+
+export const RestoreAgentVersionBody = z.object({
+  message: AgentVersionMessage.optional(),
+});
+export type RestoreAgentVersionBody = z.infer<typeof RestoreAgentVersionBody>;
+
+export const AgentVersionRestoreResult = z.object({
+  agent_id: z.string(),
+  version: z.number().int(),
+  restored_from: z.number().int(),
+  dropped_skill_ids: z.array(z.string()),
+});
+export type AgentVersionRestoreResult = z.infer<typeof AgentVersionRestoreResult>;

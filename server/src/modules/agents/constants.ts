@@ -18,3 +18,9 @@ export const GENERAL_DETACHED_SKILLS: readonly string[] = [
 
 /** Built-in agent that loses `GENERAL_DETACHED_SKILLS` on sync. */
 export const GENERAL_AGENT_NAME = 'General Reviewer';
+
+/** Automatic version message written by `agents:sync-builtin`. */
+export const SYNC_VERSION_MESSAGE = 'Synced built-in prompt';
+
+/** Automatic version message for a restore that came without a user note. */
+export const restoreVersionMessage = (version: number): string => `Restored from v${version}`;

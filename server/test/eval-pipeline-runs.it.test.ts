@@ -179,6 +179,7 @@ d('eval pipeline: suite runs, compare, promote (Testcontainers pg)', () => {
     expect((await json({ method: 'GET', url: `/agents/${agentId}/skills` })).body).toHaveLength(0);
     const after = (await json({ method: 'GET', url: `/agents/${agentId}/versions` })).body;
     expect(after).toHaveLength(before.length + 1); // past versions are kept
+    expect(after[0].message).toBe(`Promoted v1 from an eval run`);
 
     // The compare now offers promote for a run of an older version than the current one.
     const cmp = (await json({ method: 'GET', url: `/eval-runs/compare?a=${run2}&b=${run3}` })).body;

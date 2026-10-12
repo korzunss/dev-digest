@@ -1,4 +1,4 @@
-/* AgentEditor — the agent's Config, Skills, Context and Evals tabs. Stats/CI arrive with
+/* AgentEditor — the agent's Config, Skills, Context, Evals and Versions tabs. Stats/CI arrive with
    later lessons. Tab state lives in ?tab= so a tab is linkable. */
 "use client";
 
@@ -10,10 +10,22 @@ import { ConfigTab } from "./_components/ConfigTab";
 import { ContextTab } from "./_components/ContextTab";
 import { EvalsTab } from "./_components/EvalsTab";
 import { SkillsTab } from "./_components/SkillsTab";
+import { VersionsTab } from "./_components/VersionsTab";
 import { TABS } from "./constants";
 import { s } from "./styles";
 
-export function AgentEditor({ agent, tab, onTab }: { agent: Agent; tab: string; onTab: (t: string) => void }) {
+export function AgentEditor({
+  agent,
+  tab,
+  onTab,
+  onSkillsDirtyChange,
+}: {
+  agent: Agent;
+  tab: string;
+  onTab: (t: string) => void;
+  /** Reports whether the Skills tab holds staged, unsaved edits. Pass a stable setter. */
+  onSkillsDirtyChange?: (dirty: boolean) => void;
+}) {
   const t = useTranslations("agents");
   const tabs = TABS.map((tb) => ({ key: tb.key, label: t(tb.labelKey), icon: tb.icon }));
   return (
@@ -23,13 +35,15 @@ export function AgentEditor({ agent, tab, onTab }: { agent: Agent; tab: string; 
       </div>
       <div style={s.body}>
         {tab === "skills" ? (
-          <SkillsTab agent={agent} />
+          <SkillsTab key={agent.id} agent={agent} onDirtyChange={onSkillsDirtyChange} />
         ) : tab === "context" ? (
           <ContextTab agent={agent} />
         ) : tab === "evals" ? (
           <EvalsTab agent={agent} />
+        ) : tab === "versions" ? (
+          <VersionsTab agent={agent} />
         ) : (
-          <ConfigTab agent={agent} />
+          <ConfigTab key={`${agent.id}:${agent.version}`} agent={agent} />
         )}
       </div>
     </div>

@@ -58,5 +58,18 @@ export const s = {
   }),
   name: { fontSize: 13, fontWeight: 600, flex: 1, minWidth: 0 } satisfies CSSProperties,
   muted: { fontSize: 12, color: "var(--text-muted)" } satisfies CSSProperties,
+  footer: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 14,
+    padding: "10px 12px",
+    borderRadius: 7,
+    border: "1px solid var(--border-strong)",
+    background: "var(--bg-elevated)",
+  } satisfies CSSProperties,
+  unsaved: { fontSize: 12.5, fontWeight: 600, color: "var(--warn)" } satisfies CSSProperties,
+  noteWrap: { flex: 1, minWidth: 0 } satisfies CSSProperties,
+  noteError: { fontSize: 12, color: "var(--crit)", marginTop: 4 } satisfies CSSProperties,
   empty: { fontSize: 13, color: "var(--text-muted)", padding: "16px 0" } satisfies CSSProperties,
 } as const;

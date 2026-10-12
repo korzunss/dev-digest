@@ -183,6 +183,20 @@
       "when": 1791825208304,
       "tag": "0025_volatile_lady_bullseye",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1791833157411,
+      "tag": "0026_dashing_valeria_richards",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1791833173222,
+      "tag": "0027_giant_northstar",
+      "breakpoints": true
     }
   ]
 }

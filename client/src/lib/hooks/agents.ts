@@ -4,7 +4,16 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import { changedPaths, invalidateContextDocs } from "./context";
-import type { Agent, AgentContext, ModelInfo, Provider, ReviewStrategy } from "@devdigest/shared";
+import type {
+  Agent,
+  AgentContext,
+  AgentVersion,
+  AgentVersionDiff,
+  AgentVersionRestoreResult,
+  ModelInfo,
+  Provider,
+  ReviewStrategy,
+} from "@devdigest/shared";
 
 export function useAgents() {
   return useQuery({
@@ -42,6 +51,7 @@ export function useCreateAgent() {
 
 export interface UpdateAgentInput {
   id: string;
+  /** Optional note stored on the version this save creates; ignored when none is created. */
   patch: Partial<
     Pick<
       Agent,
@@ -57,15 +67,59 @@ export interface UpdateAgentInput {
       | "enabled"
     >
   >;
+  message?: string;
 }
 
 export function useUpdateAgent() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, patch }: UpdateAgentInput) => api.put<Agent>(`/agents/${id}`, patch),
+    mutationFn: ({ id, patch, message }: UpdateAgentInput) =>
+      api.put<Agent>(`/agents/${id}`, message ? { ...patch, message } : patch),
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["agents"] });
       qc.setQueryData(["agent", data.id], data);
+      qc.invalidateQueries({ queryKey: ["agent-versions", data.id] });
+    },
+  });
+}
+
+// ---- Versions --------------------------------------------------------------
+
+/** The config history of one agent, newest first. */
+export function useAgentVersions(id: string | null | undefined) {
+  return useQuery({
+    queryKey: ["agent-versions", id],
+    queryFn: () => api.get<AgentVersion[]>(`/agents/${id}/versions`),
+    enabled: !!id,
+  });
+}
+
+/** One stored version against the agent's current config. Fetched only once a version is picked. */
+export function useAgentVersionDiff(id: string | null | undefined, version: number | null | undefined) {
+  return useQuery({
+    queryKey: ["agent-version-diff", id, version],
+    queryFn: () => api.get<AgentVersionDiff>(`/agents/${id}/versions/${version}/diff`),
+    enabled: !!id && version != null,
+  });
+}
+
+/**
+ * Restore an old config. History is not rewound: the server APPENDS a new
+ * version carrying the old config, so a restore touches everything a save
+ * touches — the agent, its skill links and the version list — and every diff
+ * against "current" is stale.
+ */
+export function useRestoreAgentVersion() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, version }: { id: string; version: number }) =>
+      api.post<AgentVersionRestoreResult>(`/agents/${id}/versions/${version}/restore`),
+    onSuccess: (_data, { id }) => {
+      qc.invalidateQueries({ queryKey: ["agent", id] });
+      qc.invalidateQueries({ queryKey: ["agents"] });
+      qc.invalidateQueries({ queryKey: ["agent-versions", id] });
+      qc.invalidateQueries({ queryKey: ["agent-skills", id] });
+      qc.invalidateQueries({ queryKey: ["agent-version-diff", id] });
     },
   });
 }

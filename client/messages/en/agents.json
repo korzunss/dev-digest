@@ -52,7 +52,8 @@
       "context": "Context",
       "evals": "Evals",
       "stats": "Stats",
-      "ci": "CI"
+      "ci": "CI",
+      "versions": "Versions"
     }
   },
   "config": {
@@ -89,13 +90,26 @@
     "save": "Save agent",
     "saving": "Saving…",
     "saved": "Saved (v{version})",
-    "savedToast": "Agent saved (v{version})"
+    "savedToast": "Agent saved (v{version})",
+    "note": "Version note",
+    "noteHint": "Optional. Saved with the new version this change creates.",
+    "noteTooLong": "Note is too long (max {max} characters)."
   },
   "skills": {
     "title": "Skills",
     "enabledCount": "{linked} of {total} enabled",
     "filterPlaceholder": "Filter skills…",
-    "orderHint": "Order matters — earlier skills appear earlier in the assembled prompt. Toggle to attach."
+    "orderHint": "Order matters — earlier skills appear earlier in the assembled prompt. Toggle to attach.",
+    "save": "Save",
+    "saving": "Saving…",
+    "cancel": "Cancel",
+    "unsaved": "Unsaved changes",
+    "note": "Version note (optional)",
+    "noteTooLong": "Note is too long (max {max} characters).",
+    "discardTitle": "Discard unsaved skill changes?",
+    "discardBody": "The skill changes on this agent have not been saved. Leaving now discards them.",
+    "discardConfirm": "Discard changes",
+    "leaveConfirm": "You have unsaved skill changes on this agent. Leave and discard them?"
   },
   "context": {
     "loadError": "Could not load this agent's context documents.",
@@ -107,5 +121,48 @@
   },
   "mount": {
     "body": "Mount point for {owner}. The Agent Editor shell + tab routing are wired by A2 — {owner} renders this tab."
+  },
+  "versions": {
+    "title": "Versions",
+    "count": "{count} versions",
+    "hint": "Every change to the model, prompt, strategy, CI gate or skills creates a version. Restoring one adds a new version; nothing is rewritten.",
+    "version": "v{version}",
+    "current": "Current",
+    "noMessage": "No note",
+    "diff": "Diff",
+    "restore": "Restore",
+    "restoring": "Restoring…",
+    "loadError": "Could not load the version history.",
+    "onlyOne": "This agent has only one version so far. Diff and restore become available after the next change.",
+    "configUnavailable": "Config unavailable",
+    "agentGone": "This agent no longer exists.",
+    "diffTitle": "v{from} → v{to}",
+    "identical": "Identical to the current version.",
+    "promptHeading": "System prompt",
+    "fieldsHeading": "Settings",
+    "skillsHeading": "Skills",
+    "added": "Added",
+    "removed": "Removed",
+    "orderChanged": "Skill order changed",
+    "deleted": "deleted",
+    "deletedSkill": "Deleted skill · {id}",
+    "field": {
+      "provider": "Provider",
+      "model": "Model",
+      "strategy": "Review strategy",
+      "ci_fail_on": "CI gate",
+      "repo_intel": "Repo intelligence",
+      "output_schema": "Output schema"
+    },
+    "restoreTitle": "Restore v{version}?",
+    "restoreBody": "v{version} becomes a new current version. No existing version changes.",
+    "restoreSkills": "Skills that will be attached, in order",
+    "restoreNoSkills": "No skills will be attached.",
+    "restoreDiffError": "Couldn’t load the skills this restore would attach. Retry before restoring.",
+    "restoreMissing": "Deleted skills are dropped",
+    "restoreNoKey": "No API key is set for {provider}; reviews will fail until you add one.",
+    "restoreUnknownModel": "The model {model} is not in the provider's current model list.",
+    "restoreConfirm": "Restore",
+    "restored": "Restored as v{version}"
   }
 }
