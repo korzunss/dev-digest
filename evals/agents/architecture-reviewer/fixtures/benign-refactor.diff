@@ -1,0 +1,14 @@
+diff --git a/server/src/modules/blast/helpers.ts b/server/src/modules/blast/helpers.ts
+index 7c2d9e4..a18f5b0 100644
+--- a/server/src/modules/blast/helpers.ts
++++ b/server/src/modules/blast/helpers.ts
+@@ -1,7 +1,7 @@
+ import type { BlastRadius } from '@devdigest/shared';
+ import type { BlastResult } from '../repo-intel/types.js';
+ 
+-function sortedUnion(lists: string[][]): string[] {
+-  return [...new Set(lists.flat())].sort();
++function sortedUnion(groups: string[][]): string[] {
++  return [...new Set(groups.flat())].sort();
+ }
+ 

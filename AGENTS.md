@@ -1,6 +1,6 @@
 # DevDigest — repo map
 
-Local-first AI pull-request review. Five **standalone** packages, not a workspace:
+Local-first AI pull-request review. Six **standalone** packages, not a workspace:
 each has its own `package.json` + lockfile; cross-package code is shared through
 tsconfig path aliases, never published modules.
 
@@ -16,6 +16,7 @@ Node ≥22 · TypeScript 5 · vitest everywhere · Docker runs Postgres only.
 | `reviewer-core/`           | pure engine: diff → prompt → LLM → findings | —   |
 | `e2e/`                     | deterministic agent-browser flows          | —    |
 | `mcp-server/`              | local stdio MCP server, thin client over the API | — |
+| `evals/`                   | harness evals: skills, agents, `CLAUDE.md` workflow | — |
 | `server/src/vendor/shared` | `@devdigest/shared` — Zod contracts        | —    |
 
 ## Commands
@@ -23,9 +24,25 @@ Node ≥22 · TypeScript 5 · vitest everywhere · Docker runs Postgres only.
 `./scripts/dev.sh` brings up Postgres + API + web. Per-package commands live in
 that package's `AGENTS.md`, which loads automatically when you work in its folder.
 
+## Harness evals — which one after which change
+
+After editing the harness, run the matching eval from `evals/` (pnpm) before
+handing the work back. CI (`harness-evals.yml`) runs the same suites on the PR.
+
+| Changed | Run |
+|---|---|
+| `.claude/skills/<name>/**` | `pnpm vitest run skills/<name>/` (skip if it has no `evals/skills/<name>/`) |
+| `.claude/agents/<name>.md` | `pnpm vitest run agents/<name>/`, then `pnpm eval:workflow` |
+| `CLAUDE.md` / any `AGENTS.md`, `insights/gotchas.md`, `.claude/settings.json` | `pnpm eval:workflow` |
+| any `SKILL.md` (structure, frontmatter, links) | `pnpm eval:quality` (no model) |
+| measuring a skill/agent edit | `eval:repeat … --label before` → edit → `--label after` → `eval:delta before after` |
+
+One run is a sample, not a verdict: compare series (`eval:repeat -n 5`). Details
+and the full table → `evals/README.md` (*Which change → which run*).
+
 ## Conventions (non-default)
 
-- **Package managers differ.** `client/` and `server/` use **pnpm**, as does `mcp-server/`;
+- **Package managers differ.** `client/` and `server/` use **pnpm**, as do `mcp-server/` and `evals/`;
   `reviewer-core/` and `e2e/` use **npm**. Use the one matching the lockfile.
 - **Contracts change in `shared` first** (`server/src/vendor/shared`), then in the
   consumers. `client/src/vendor/shared` is a vendored copy — keep them in sync.
@@ -155,6 +172,14 @@ that package's `AGENTS.md`, which loads automatically when you work in its folde
 - `server/clones/**` — runtime checkouts of imported repos. **Exclude it from
   every search/grep**: it contains full copies of other repos (and of this one),
   so matches there are noise.
+- `.claude/skills/*/evals/fixtures/**`, `evals/agents/*/fixtures/**` and
+  `evals/skills/*/fixtures/**` — eval inputs, many with **deliberately seeded**
+  bugs or incomplete patches. The skill ones are scored against
+  `evals/expected-findings.json` by line number; the harness ones are inlined
+  into prompts and scored by the case's `practices` in `evals/<tier>/<name>/*.cases.ts`.
+  Exclude them from searches, never fix or reformat them, and don't report them
+  as findings. Edit them only to change an eval, together with its answer key
+  or case.
 - `**/.env` — local secrets.
 - **Lock files — never hand-edit.** They are generated and carry integrity
   hashes. Change `package.json`, then reinstall with that package's own manager

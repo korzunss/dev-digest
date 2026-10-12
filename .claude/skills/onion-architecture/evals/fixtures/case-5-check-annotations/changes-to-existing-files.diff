@@ -1,0 +1,46 @@
+--- a/server/src/vendor/shared/adapters.ts
++++ b/server/src/vendor/shared/adapters.ts
+@@
++export interface CheckAnnotation {
++  path: string;
++  start_line: number;
++  end_line: number;
++  annotation_level: 'notice' | 'warning' | 'failure';
++  title: string;
++  message: string;
++}
++
++export interface CheckRunInput {
++  name: string;
++  annotations: CheckAnnotation[];
++}
++
++/** Publishes findings as line annotations on the PR's head commit. */
++export interface CheckAnnotationsClient {
++  publish(repo: RepoRef, headSha: string, input: CheckRunInput): Promise<{ id: string }>;
++}
+--- a/server/src/platform/container.ts
++++ b/server/src/platform/container.ts
+@@
++import { OctokitCheckAnnotations } from '../adapters/github/check-runs.js';
++import { ChecksRepository } from '../modules/checks/repository.js';
++import { ChecksService } from '../modules/checks/service.js';
+@@
++  async checkAnnotations(): Promise<CheckAnnotationsClient> {
++    const token = await this.secrets.get('GITHUB_TOKEN');
++    if (!token) throw new ConfigError('GITHUB_TOKEN is not configured');
++    return (this._checkAnnotations ??= new OctokitCheckAnnotations(token));
++  }
++
++  get checks(): ChecksService {
++    return (this._checks ??= new ChecksService({
++      repo: new ChecksRepository(this.db),
++      checks: () => this.checkAnnotations(),
++    }));
++  }
+--- a/server/src/modules/index.ts
++++ b/server/src/modules/index.ts
+@@
++import checks from './checks/routes.js';
+@@
++  checks,

@@ -6,7 +6,7 @@ Reusable AI skills that provide specialized knowledge and workflows. Canonical l
 
 | Skill | Scope | Description |
 |-------|-------|-------------|
-| [onion-architecture](onion-architecture/SKILL.md) | Backend | Ports-and-adapters layering for `server/` + `reviewer-core/` — where routes, services, repositories and adapters belong, DI wiring, the inward dependency rule and its dependency-cruiser gate |
+| [onion-architecture](onion-architecture/SKILL.md) | Backend | Ports-and-adapters layering for `server/` + `reviewer-core/` — where routes, services, repositories and adapters belong, DI wiring, the inward dependency rule and how to check it (a dependency-cruiser config is proposed, not installed); ships evals in `evals/` |
 | [fastify-best-practices](fastify-best-practices/SKILL.md) | Backend | Fastify routes, plugins, JSON-schema validation, error handling |
 | [drizzle-orm-patterns](drizzle-orm-patterns/SKILL.md) | Backend | Drizzle schema, queries, relations, transactions, migrations |
 | [postgresql-table-design](postgresql-table-design/SKILL.md) | Backend | Postgres schema design, data types, indexing, constraints |
@@ -22,6 +22,7 @@ Reusable AI skills that provide specialized knowledge and workflows. Canonical l
 | [pr-self-review](pr-self-review/SKILL.md) | Review | Pre-PR gate — runs cheap deterministic checks (tsc, lint, dependency-cruiser, tests), routes the diff through architecture/quality skills per file bucket, and blocks the push on any verified CRITICAL |
 | [sdd](sdd/SKILL.md) | Meta | Main-session pipeline `/sdd` — drives a feature from spec through plan, implementation and review to a handed-over commit message, stopping at every user gate and never committing |
 | [workflow-retro](workflow-retro/SKILL.md) | Meta | Main-session, on-demand per-plan process retro — what happened, cost (from sdd.sh usage-scan/flags/cost), what worked, what did not, proposed corrections filed as plan follow-ups; process lessons only, never INSIGHTS.md |
+| [dependency-checker](dependency-checker/SKILL.md) | Full-stack | Dependency audit of all six packages — Mermaid component graph, installed/closure/exclusive sizes by category, unused/undeclared/duplicated/drifting deps, findings ranked P0/P1/P2/Info with the package's own pnpm/npm command; facts from deterministic scripts (`collect.mjs` → `render.mjs`), self-tested by `selftest.mjs` |
 | [devdigest-appsec](devdigest-appsec/SKILL.md) | Review | DevDigest-specific trust boundaries and security checks (X1–X11) for reviewing this repo's own code — used by the `security-reviewer` subagent, not a generic OWASP primer |
 
 ## What Are Skills?

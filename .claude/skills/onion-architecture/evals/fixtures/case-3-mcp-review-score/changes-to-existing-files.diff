@@ -1,0 +1,9 @@
+--- a/mcp-server/src/server.ts
++++ b/mcp-server/src/server.ts
+@@
+ import { registerGetFindings } from './tools/get-findings.js';
++import { registerGetReviewScore } from './tools/get-review-score.js';
+@@ export function buildServer(deps: ServerDeps): McpServer {
+   registerGetBlastRadius(server, deps);
++  registerGetReviewScore(server, deps);
+   return server;

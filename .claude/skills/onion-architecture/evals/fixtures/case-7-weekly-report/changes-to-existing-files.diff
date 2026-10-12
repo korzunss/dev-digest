@@ -1,0 +1,49 @@
+--- a/server/src/vendor/shared/index.ts
++++ b/server/src/vendor/shared/index.ts
+@@ -26,2 +26,3 @@ export * from './contracts/observability.js';
+ export * from './contracts/productionize.js';
++export * from './weekly-report.js';
+ export * from './adapters.js';
+--- a/server/src/platform/container.ts
++++ b/server/src/platform/container.ts
+@@ -37,3 +37,5 @@ import { BriefService } from '../modules/brief/service.js';
+ import { BriefRepository } from '../modules/brief/repository.js';
+ import { ContextService } from '../modules/context/service.js';
++import { WeeklyReportService } from '../modules/weekly-report/service.js';
++import { WeeklyReportRepository } from '../modules/weekly-report/repository.js';
+ 
+@@ -98,4 +100,5 @@ export class Container {
+   private _brief?: BriefService;
+   private _context?: ContextService;
++  private _weeklyReport?: WeeklyReportService;
+ 
+@@ -228,4 +231,13 @@ export class Container {
+     }));
+   }
++
++  /** Weekly review report for the workspace. */
++  get weeklyReport(): WeeklyReportService {
++    return (this._weeklyReport ??= new WeeklyReportService({
++      repo: new WeeklyReportRepository(this.db),
++      secrets: this.secrets,
++      repoIntel: this.repoIntel,
++    }));
++  }
+ 
+--- a/server/src/modules/index.ts
++++ b/server/src/modules/index.ts
+@@ -17,2 +17,3 @@ import onboarding from './onboarding/routes.js';
+ import brief from './brief/routes.js';
++import weeklyReport from './weekly-report/routes.js';
+ 
+@@ -47,3 +48,4 @@ export const modules: Record<string, FastifyPluginAsync> = {
+   onboarding,
+   brief,
++  weeklyReport,
+ };
+--- a/server/package.json
++++ b/server/package.json
+@@ -30,4 +30,5 @@
+     "fastify-type-provider-zod": "^4.0.2",
++    "markdown-table": "^3.0.4",
+     "octokit": "^4.0.2",
