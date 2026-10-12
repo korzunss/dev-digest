@@ -200,11 +200,13 @@
   },
   "evals": {
     "run": "Run on evals",
-    "runDisabledTitle": "The eval pipeline is not wired up yet — a skill cannot be scored until eval sets exist.",
-    "empty": {
-      "title": "Evals arrive in a later lesson",
-      "body": "Once eval sets exist, this tab scores the skill against them and shows whether a body change helped or hurt."
-    }
+    "disabledSkillOff": "Enable the skill to test it in agents",
+    "disabledNoAgents": "No enabled agent that uses this skill has eval cases",
+    "confirmTitle": "Run on evals?",
+    "confirmRun": "Run",
+    "started": "{count, plural, one {Started # run} other {Started # runs}}",
+    "runFailed": "Could not start the runs.",
+    "skillDisabledToast": "This skill was disabled. Enable it to test it in agents."
   },
   "context": {
     "loadError": "Could not load this skill's context documents.",

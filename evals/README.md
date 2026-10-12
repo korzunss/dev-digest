@@ -291,7 +291,7 @@ src/
 ## Case layout — where your tests, prompts, and fixtures live
 
 > The repo ships these suites: skills `dependency-checker`, `onion-architecture`,
-> `engineering-insights`; agents `architecture-reviewer`, `architecture-reviewer-lite`,
+> `engineering-insights`, `pr-self-review`; agents `architecture-reviewer`, `architecture-reviewer-lite`,
 > `security-reviewer`, `plan-verifier`; and the `workflow` review pipeline. Add your own with
 > `pnpm eval:scaffold`.
 

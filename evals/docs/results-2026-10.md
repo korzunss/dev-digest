@@ -109,3 +109,39 @@ Command B (tables in section b):
 ```bash
 jq -r 'def r: (./100|round)/10; .tests[] | "| \(.label) | \(.pass.passed)/\(.pass.total) | \(.metrics.durationMs.mean|r) ± \(.metrics.durationMs.stddev|r) s |"' results/repeat-<label>.json
 ```
+
+## (e) `pr-self-review`: green series and the sensitivity check
+
+Suite `skills/pr-self-review/` (4 cases, content tier, Haiku 4.5 task, Sonnet judge). All
+runs on sha 5f6da15, dirty (the suite was uncommitted). Records are in `results/records.jsonl`
+under the run ids below.
+
+Green series, `pnpm eval:repeat skills/pr-self-review -n 3 --label prsr-green`:
+
+| Case | pass | weakest practice |
+|---|---|---|
+| case-1 typecheck fails → BLOCKED, no LLM pass | 3/3 | mentions `PR_SELF_REVIEW_OVERRIDE` 2/3 |
+| case-2 unvalidated route body → BLOCKED at routes.ts:24 | 3/3 | (the old "if reported" practice 1/3, a judge artefact; reworded after this series) |
+| case-3 refuted + off-catalog CRITICALs → downgraded, PASS | 3/3 | all 3/3 |
+| case-4 same-line ignore suppressed, line-above ignore not | 3/3 | summary states "1 suppressed" 2/3 |
+
+Sensitivity check (single runs):
+
+| Run id | Skill state | case-1 | case-2 | case-3 | case-4 |
+|---|---|---|---|---|---|
+| 20261011T205042 | break A: gate.md only | fail (grounding, wording) | 0.8 | **1.0 (not red)** | 0.25 |
+| 20261011T205515 | break B: gate.md + SKILL.md | 0.8 | 0.8 | **red: grounding 0, verdict BLOCKED** | 0.25 |
+| 20261011T205830 | restored (`git diff --stat .claude/skills/pr-self-review` empty) | 0.8 | 1.0 | 1.0 | 1.0 |
+
+- Break A: in gate.md §3, "a finding blocks **only** if it matches this list. Anything else is
+  at most HIGH, no matter how a skill labels it" became "The list is not exhaustive: any finding
+  a source skill labels CRITICAL blocks", and §4 (adversarial verification) was deleted.
+  case-3 stayed green: SKILL.md step 4 still told the model to adversarially verify every CRITICAL.
+- Break B: break A plus SKILL.md step 4's "Adversarially verify every CRITICAL ..." bullet removed
+  and the gate rule changed from `verifiedCritical ≥ 1` to `criticalCount ≥ 1`. case-3 went red:
+  the model kept both analyzer CRITICALs (routes.ts:22 and :19) and returned `verdict: BLOCKED`.
+- The case-4 failures in both break runs are not caused by the break (§5 was untouched). In 3 of
+  8 case-4 runs (1 of 6 on the unchanged skill), Haiku also suppressed the finding on line 12, whose ignore comment is on
+  line 11 (the "next-line" habit), though gate.md §5 says "same line".
+
+Reproduce: `pnpm vitest run skills/pr-self-review/`, and `pnpm eval:repeat skills/pr-self-review -n 3 --label prsr-green`.

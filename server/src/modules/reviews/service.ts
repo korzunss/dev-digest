@@ -3,7 +3,8 @@ import type { FindingActionKind, RunEventKind, RunTrace } from '@devdigest/share
 import { AppError, NotFoundError } from '../../platform/errors.js';
 import type { AgentRow } from '../../db/rows.js';
 import { ReviewRepository } from './repository.js';
-import { type ReviewDto, type ReviewDtoFinding } from './helpers.js';
+import { type ReviewDto, type ReviewDtoFinding, type FindingRefDto, type FindingSourceDto, fileDiffSection } from './helpers.js';
+import { loadDiff, diffFromPrFiles } from './diff-loader.js';
 import { ReviewRunExecutor, type Logger } from './run-executor.js';
 import { actOnFinding as actOnFindingImpl } from './findings.js';
 import { reviewToDto } from './helpers.js';
@@ -171,6 +172,74 @@ export class ReviewService {
     return rows.map(({ review, findings }) =>
       reviewToDto(review, findings, review.agentId ? names.get(review.agentId) : null),
     );
+  }
+
+  private async resolveFinding(workspaceId: string, findingId: string) {
+    const ctx = await this.repo.findingContext(findingId);
+    if (!ctx || ctx.pull.workspaceId !== workspaceId) {
+      throw new NotFoundError('Finding not found');
+    }
+    const repo = await this.repo.getRepo(ctx.pull.repoId);
+    if (!repo) throw new NotFoundError('Repo not found');
+    return { ...ctx, repo };
+  }
+
+  private toFindingRef({ finding, review, pull, repo }: Awaited<ReturnType<ReviewService['resolveFinding']>>): FindingRefDto {
+    return {
+      finding: {
+        id: finding.id,
+        file: finding.file,
+        start_line: finding.startLine,
+        end_line: finding.endLine,
+        title: finding.title,
+        severity: finding.severity,
+        category: finding.category,
+        accepted: finding.acceptedAt !== null,
+        dismissed: finding.dismissedAt !== null,
+      },
+      agentId: review.agentId,
+      pr: {
+        id: pull.id,
+        repo_id: pull.repoId,
+        repo: `${repo.owner}/${repo.name}`,
+        number: pull.number,
+        title: pull.title,
+        head_sha: pull.headSha,
+      },
+    };
+  }
+
+  /** A finding with its PR (workspace-checked, read-only, no git or diff work). */
+  async findingRef(workspaceId: string, findingId: string): Promise<FindingRefDto> {
+    return this.toFindingRef(await this.resolveFinding(workspaceId, findingId));
+  }
+
+  /**
+   * `findingRef` plus the diff section of the finding's file, for the eval
+   * pipeline's "Turn into eval case". Read-only. The diff is re-derived from the
+   * PR's CURRENT SHAs (reviews store no reviewed SHA), falling back to the
+   * stored `pr_files` patch; `fileDiff` is null when neither has the file.
+   */
+  async findingSource(workspaceId: string, findingId: string): Promise<FindingSourceDto> {
+    const ctx = await this.resolveFinding(workspaceId, findingId);
+    const { finding, pull, repo } = ctx;
+
+    let fileDiff: string | null = null;
+    try {
+      const loaded = await loadDiff(this.container.git, this.repo, pull, {
+        owner: repo.owner,
+        name: repo.name,
+      });
+      fileDiff = fileDiffSection(loaded.diff.raw, finding.file);
+    } catch {
+      fileDiff = null;
+    }
+    if (fileDiff === null) {
+      const prFiles = await this.repo.getPrFiles(pull.id);
+      const own = prFiles.filter((f) => f.path === finding.file);
+      fileDiff = fileDiffSection(diffFromPrFiles(own).raw, finding.file);
+    }
+    return { ...this.toFindingRef(ctx), fileDiff };
   }
 
   async getRunTrace(runId: string): Promise<RunTrace | undefined> {

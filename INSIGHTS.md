@@ -59,6 +59,12 @@ write-up here. That keeps `AGENTS.md` short without losing the reasoning.
 
 ## What Works
 
+### 2026-10-12 — commit one finished plan while another plan's edits sit in the same package
+**Symptom:** plan 34 was signed off while plan 35 had already edited three `client/` files (the vendored contract copy, `TurnIntoEvalCase.tsx`, one line of a plan-34 test). Staging only plan 34's files would be denied by the test gate, and the plan-34 test no longer typechecked without plan 35's contract.
+**Cause:** `.claude/hooks/test-gate.sh` denies a commit when a touched package still has untracked files or unstaged edits (the tests would see a different tree than the commit), so a package cannot be committed in parts.
+**Rule:** copy the other plan's files of that package to the scratchpad and record `shasum`; return them to the committed plan's state (`git checkout -- <file>`, or undo the one mixed line); stage and commit; copy the files back and `shasum -c`. Docs outside packages can be staged partially. Never bypass the gate.
+**Evidence:** commit `3504068` · `.claude/hooks/test-gate.sh` (decision model, header) · `docs/plans/35-skill-eval-suites.md` Verification log (REC3 entry)
+
 ### 2026-10-11 — a doc-routing eval question must be unanswerable from the always-loaded docs
 **Symptom:** the server routing trace passed 1/5: the model answered "which file and key holds the self-hosted GitLab token" and "where does a contract change start" correctly but never opened `adapters/secrets/local.ts` or `vendor/shared`.
 **Cause:** both answers sit verbatim in docs that load into every session (`server/AGENTS.md`, `server/insights/gotchas.md`, root `CLAUDE.md`), so reading the routed file is unnecessary. The same goes for anything a `Grep` hit already shows, such as a function signature.

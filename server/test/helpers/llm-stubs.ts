@@ -3,6 +3,7 @@ import type {
   CompletionResult,
   LLMProvider,
   ModelInfo,
+  Review,
   StructuredRequest,
   StructuredResult,
 } from '@devdigest/shared';
@@ -115,6 +116,53 @@ export class DeferredLLMProvider extends RecordingStub {
     const batch = this.pending;
     this.pending = [];
     for (const p of batch) p.reject(err);
+  }
+}
+
+/** One scripted answer: used when `match` occurs in the request's system prompt. */
+export interface LlmScript {
+  match: string;
+  /** A fixed review, or one computed from the request (e.g. by the file in the diff). */
+  review: Review | ((req: StructuredRequest<unknown>) => Review);
+}
+
+/**
+ * `completeStructured` answers with the `Review` of the FIRST script whose
+ * `match` is a substring of the system prompt, so one provider can play an
+ * "old prompt" and a "new prompt" agent in the same test. No script matched:
+ * it rejects, which a case runner reports as an errored case.
+ */
+export class ScriptedLLMProvider extends RecordingStub {
+  constructor(
+    private scripts: LlmScript[],
+    id: ProviderId = 'openai',
+  ) {
+    super(id);
+  }
+
+  async completeStructured<T>(req: StructuredRequest<T>): Promise<StructuredResult<T>> {
+    const unknownReq = req as StructuredRequest<unknown>;
+    this.calls.push(unknownReq);
+    const system = req.messages
+      .filter((m) => m.role === 'system')
+      .map((m) => String(m.content))
+      .join('\n');
+    const script = this.scripts.find((s) => system.includes(s.match));
+    if (!script) throw new Error('ScriptedLLMProvider: no script matches the system prompt');
+    const data = typeof script.review === 'function' ? script.review(unknownReq) : script.review;
+    const parsed = req.schema.safeParse(data);
+    if (!parsed.success) {
+      throw new Error(`ScriptedLLMProvider: review failed schema: ${parsed.error.message}`);
+    }
+    return {
+      data: parsed.data,
+      model: req.model,
+      tokensIn: 100,
+      tokensOut: 50,
+      costUsd: 0.001,
+      raw: JSON.stringify(data),
+      attempts: 1,
+    };
   }
 }
 

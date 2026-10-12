@@ -6,10 +6,13 @@
  * order.
  */
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { render, screen, cleanup, fireEvent } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, within } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { Skill } from "@devdigest/shared";
 import messages from "../../../../../../messages/en/skills.json";
+import evalMessages from "../../../../../../messages/en/eval.json";
+import common from "../../../../../../messages/en/common.json";
 import { ToastProvider } from "../../../../../lib/toast";
 
 // Every pane reads through this module, so the shell test has to stand in for
@@ -44,6 +47,18 @@ vi.mock("../../../../../lib/hooks/skills", () => ({
   useRestoreSkillVersion: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
+const evalSuite = vi.hoisted(() => ({ cases: [] as unknown[] }));
+
+// The Evals pane reads the skill's (empty) suite through the eval hooks.
+vi.mock("@/lib/hooks/eval", async (importActual) => ({
+  ...(await importActual<typeof import("@/lib/hooks/eval")>()),
+  useSkillEvalCases: () => ({ data: evalSuite.cases, isLoading: false, isError: false, refetch: vi.fn() }),
+  useSkillEvalRunState: () => ({ data: { skill: { id: "sk1", name: "n", version: 3, enabled: true }, progress: null, default_pick: null } }),
+  useStartSkillEvalRun: () => ({ mutate: vi.fn(), isPending: false }),
+  useRunEvalCase: () => ({ mutate: vi.fn(), isPending: false }),
+  useDeleteEvalCase: () => ({ mutate: vi.fn(), isPending: false }),
+}));
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
 }));
@@ -68,12 +83,14 @@ const SKILL: Skill = {
 
 afterEach(cleanup);
 
-function renderEditor(tab: string, onTab = vi.fn()) {
+function renderEditor(tab: string, onTab = vi.fn(), skill: Skill = SKILL) {
   render(
-    <NextIntlClientProvider locale="en" messages={{ skills: messages }}>
-      <ToastProvider>
-        <SkillEditor skill={SKILL} tab={tab} onTab={onTab} />
-      </ToastProvider>
+    <NextIntlClientProvider locale="en" messages={{ skills: messages, eval: evalMessages, common }}>
+      <QueryClientProvider client={new QueryClient()}>
+        <ToastProvider>
+          <SkillEditor skill={skill} tab={tab} onTab={onTab} />
+        </ToastProvider>
+      </QueryClientProvider>
     </NextIntlClientProvider>,
   );
   return onTab;
@@ -109,9 +126,39 @@ describe("SkillEditor", () => {
     expect(screen.queryByText("Save skill")).not.toBeInTheDocument();
   });
 
-  it("renders the Evals placeholder, not a broken pane", () => {
+  it("renders the skill's eval suite pane, not a placeholder", () => {
     renderEditor("evals");
-    expect(screen.getByText("Evals arrive in a later lesson")).toBeInTheDocument();
+    expect(screen.getByText("Eval cases")).toBeInTheDocument();
+    expect(screen.getByText("New eval case")).toBeInTheDocument();
+  });
+
+  it("names a disabled skill in the single-case Run confirm, and not an enabled one (AC-93)", () => {
+    const kase = {
+      id: "c1", agent_id: null, skill_id: "sk1", name: "leaks a key", input: { diff: "d", files: [], pr_meta: null },
+      expected: [], source: { finding_id: null, pr_id: null }, created_at: "2026-10-01T00:00:00Z", updated_at: "2026-10-01T00:00:00Z",
+      last_result: null,
+    };
+    evalSuite.cases = [kase];
+    try {
+      const { unmount } = render(
+        <NextIntlClientProvider locale="en" messages={{ skills: messages, eval: evalMessages, common }}>
+          <QueryClientProvider client={new QueryClient()}>
+            <ToastProvider>
+              <SkillEditor skill={{ ...SKILL, enabled: false }} tab="evals" onTab={vi.fn()} />
+            </ToastProvider>
+          </QueryClientProvider>
+        </NextIntlClientProvider>,
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Run" }));
+      expect(within(screen.getByRole("dialog")).getByText(/This skill is disabled/)).toBeInTheDocument();
+      unmount();
+
+      renderEditor("evals");
+      fireEvent.click(screen.getByRole("button", { name: "Run" }));
+      expect(screen.queryByText(/This skill is disabled/)).not.toBeInTheDocument();
+    } finally {
+      evalSuite.cases = [];
+    }
   });
 
   it.each([

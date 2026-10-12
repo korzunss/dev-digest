@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import type { Agent } from "@devdigest/shared";
 import messages from "../../../../../../messages/en/agents.json";
@@ -49,5 +49,18 @@ describe("A2 Agent Editor (smoke)", () => {
   it("offers a Context tab next to Skills", () => {
     renderWithIntl(<AgentEditor agent={AGENT} tab="config" onTab={() => {}} />);
     expect(screen.getByText("Context")).toBeInTheDocument();
+  });
+
+  it("offers an Evals tab after Context", () => {
+    renderWithIntl(<AgentEditor agent={AGENT} tab="config" onTab={() => {}} />);
+    const labels = screen.getAllByRole("button").map((b) => b.textContent);
+    expect(labels.indexOf("Evals")).toBe(labels.indexOf("Context") + 1);
+  });
+
+  it("opens the Evals tab on click", () => {
+    const onTab = vi.fn();
+    renderWithIntl(<AgentEditor agent={AGENT} tab="config" onTab={onTab} />);
+    fireEvent.click(screen.getByRole("button", { name: "Evals" }));
+    expect(onTab).toHaveBeenCalledWith("evals");
   });
 });

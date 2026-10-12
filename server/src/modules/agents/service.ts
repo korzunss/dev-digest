@@ -1,4 +1,5 @@
 import type { Container } from '../../platform/container.js';
+import { AgentVersionConfig } from '@devdigest/shared';
 import type {
   Agent,
   AgentContext,
@@ -254,6 +255,52 @@ export class AgentsService {
       // Throw, don't return: a vanished row must roll back the detach above.
       if (!row) throw new NotFoundError(`agent ${agentId} vanished during sync`);
       return { detached, changed, fromVersion: v, toVersion: row.version };
+    });
+  }
+
+  /**
+   * Promote a past version's config: write it as a NEW version (past versions
+   * stay untouched) and restore the skill set it recorded, in ONE transaction.
+   * `config` is a stored `agent_versions.config_json`; a malformed one is a 422.
+   * Returns undefined when the agent isn't in this workspace.
+   */
+  async promote(
+    workspaceId: string,
+    agentId: string,
+    input: { config: Record<string, unknown>; skillIds: string[] },
+  ): Promise<{ version: number } | undefined> {
+    const parsed = AgentVersionConfig.omit({ skills: true }).safeParse(input.config);
+    if (!parsed.success) {
+      throw new ValidationError('Stored version config is malformed', {
+        issues: parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
+      });
+    }
+    const cfg = parsed.data;
+    await this.assertSkillsInWorkspace(workspaceId, input.skillIds);
+    return this.repo.transaction(async (repo) => {
+      const agent = await repo.lockById(workspaceId, agentId);
+      if (!agent) return undefined;
+      await repo.setSkills(agentId, input.skillIds);
+      const schemaDiffers =
+        cfg.output_schema != null &&
+        JSON.stringify(cfg.output_schema) !== JSON.stringify(agent.outputSchema ?? null);
+      const row = await repo.update(
+        workspaceId,
+        agentId,
+        {
+          provider: cfg.provider,
+          model: cfg.model,
+          systemPrompt: cfg.system_prompt,
+          strategy: cfg.strategy,
+          ciFailOn: cfg.ci_fail_on,
+          repoIntel: cfg.repo_intel,
+          ...(schemaDiffers ? { outputSchema: cfg.output_schema } : {}),
+        },
+        { bumpVersion: true },
+      );
+      // Throw, don't return: a vanished row must roll back the skill restore above.
+      if (!row) throw new NotFoundError(`agent ${agentId} vanished during promote`);
+      return { version: row.version };
     });
   }
 

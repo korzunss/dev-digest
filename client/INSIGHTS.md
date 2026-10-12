@@ -78,6 +78,15 @@ if it is hover-only — it sits on the cursor's path to the row and would otherw
 swallow clicks meant for the row underneath.
 **Evidence:** `src/app/repos/[repoId]/pulls/styles.ts` → `tableCard.overflow` ·
 `src/components/findings-preview/FindingsPreview.tsx`
+**Addendum (2026-10-12):** the same holds for full modals. The vendored `Modal`
+(`src/vendor/ui/kit/Modal.tsx:20`, `position: fixed; zIndex: 50`) does **not**
+portal itself, so opened from inside a `FindingCard` its layer stays in the card's
+stacking context and the sibling cards paint over the dialog and its footer
+(plan 34, EvalCaseModal on a PR page). Portal the whole returned tree — nested
+confirm modals included — with `createPortal(tree, document.body)`; jsdom tests
+pass either way unless one asserts the dialog's parent
+(`src/components/eval-case-modal/EvalCaseModal.tsx`, its test "renders the dialog
+under document.body").
 
 ## Tool & Library Notes
 
