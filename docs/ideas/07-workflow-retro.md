@@ -88,3 +88,4 @@ User, 2026-10-05 ("давай робити по рекомендаціям"), af
 - **Not chosen:** Opt3 (per-feature model retro) — 20–40k tokens per feature on a sample of one; Opt2 (status quo) — no token data.
 - **Led to:** plan 23 reworked in place (its D1–D3 superseded).
 - **Reversed in part** (user, 2026-10-07: "давай також зробемо окремий скіл"): Opt3 returns as a **manual** `/workflow-retro <plan>` skill that `/sdd` only offers at hand-over — never an every-feature auto-run. The no-LLM metrics stay its only cost source. See `docs/plans/29-workflow-retro-skill.md`.
+- **Reversed again** (user, 2026-10-13: "давай зробимо запуск ретро автоматично", then "Давай усе за рекомендаціями"): `/sdd` runs the retro automatically at hand-over, but only when the `metrics` stage's `flags` reports ≥1 flag or a `repeat:` line (else `retro: skipped (0 flags)`); `--no-retro` opts out; plans closed outside `/sdd` stay manual. See `docs/plans/38-auto-workflow-retro.md`.

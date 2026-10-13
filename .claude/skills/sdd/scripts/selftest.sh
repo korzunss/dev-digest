@@ -377,6 +377,12 @@ sdd log docs/plans/06-st.md "retro-fact: G2 implementer resumed twice" >/dev/nul
 eq "state done skips a retro-fact line" "stage: handover" "$(state_of docs/plans/06-st.md)"
 sdd log docs/plans/06-st.md "retro: docs/plans/assets/06-st/workflow-retro.md" >/dev/null
 eq "state done skips retro-fact then retro" "stage: handover" "$(state_of docs/plans/06-st.md)"
+write_plan docs/plans/06-st.md done
+sdd log docs/plans/06-st.md "metrics: flags: 0 flag(s), 0 repeat(s)" >/dev/null
+sdd log docs/plans/06-st.md "retro: skipped (0 flags)" >/dev/null
+eq "state done skips a retro skipped line" "stage: handover" "$(state_of docs/plans/06-st.md)"
+sdd log docs/plans/06-st.md "retro: skipped (--no-retro)" >/dev/null
+eq "state done skips a retro opt-out line" "stage: handover" "$(state_of docs/plans/06-st.md)"
 
 # --- scripts lint
 for f in "${here}"/*.sh "${here}"/../../*/scripts/*.sh; do
