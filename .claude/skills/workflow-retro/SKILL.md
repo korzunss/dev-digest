@@ -27,12 +27,14 @@ version: "1.1.0"
 
 `S` below is `bash .claude/skills/sdd/scripts/sdd.sh`.
 
+In an auto run, check the step 6 path **before step 1**: if the file exists, run `S log <plan> "retro: skipped (exists)"` and stop — no scan, no reads, no `retro-fact:` lines, no question.
+
 1. `S usage-scan`
 2. `S flags <plan>`
 3. `S cost <plan>` — quote the outputs of 1–3 verbatim.
 4. Read the plan sections of §2.
 5. A fact known only from the conversation is first logged with `S log <plan> "retro-fact: <fact>"` (`S state` skips `retro-fact:` lines), then cited as that log line.
-6. The path is `docs/plans/assets/<plan basename>/workflow-retro.md`. If it exists, ask (AskUserQuestion): overwrite or stop. In an auto run, if it exists, run `S log <plan> "retro: skipped (exists)"` and stop, with no question and no write.
+6. The path is `docs/plans/assets/<plan basename>/workflow-retro.md`. If it exists, ask (AskUserQuestion): overwrite or stop. (An auto run already checked this before step 1.)
 7. Write the file from the §4 template with the Write tool; drop the HTML comments from the result.
 8. File each `P<n>`: `S follow-up <plan> "retro P<n>: <change> — <where>"`.
 9. `S log <plan> "retro: <path>"` — `S state` skips `retro:` lines, so a `done` plan keeps its stage.

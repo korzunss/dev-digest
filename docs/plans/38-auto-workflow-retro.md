@@ -214,3 +214,4 @@ Handoff to the next group: none (single-agent, S1–S5 done). Deviation: S1 adds
 - 2026-10-13 eval:quality sdd workflow-retro: 0 failures, 2 WARN (no eval file — pre-existing, neither skill has an evals/skills suite)
 - 2026-10-13 sign-off: user accepted R4 (2026-10-13, "так, підтверджую")
 - 2026-10-13 eval:workflow (subscription, run 20261013T173703): 7/9 passed — both /sdd traces pass; 2 fails unrelated to this plan: server-task case (gotchas.md not read; failed 9 of 11 runs on 2026-10-12, pre-existing flake) and client UI-string case (gotchas.md not read; passed 2026-10-11/12, one sample)
+- 2026-10-13 main-session fix: self-review LOW — workflow-retro/SKILL.md §3: an auto run checks the existing-file path before step 1 (no scan, reads or retro-fact lines on skip); step 6 points to it. S2 Done-when ok, selftest: ok, eval:quality 0 failures
