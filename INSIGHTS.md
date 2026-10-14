@@ -81,6 +81,12 @@ write-up here. That keeps `AGENTS.md` short without losing the reasoning.
 
 ## What Doesn't Work
 
+### 2026-10-14 — splitting one broad CI `paths:` filter into per-tier filters leaves the router script reacting to paths no workflow triggers on
+**Symptom:** plan 39 split `harness-evals.yml` (one `paths:` incl. `evals/**`) into four per-tier workflows. `ci-detect.mjs` still set `run_workflow=true` for an `evals/skills/<n>/**` change of a skill named in the workflow cases, but `harness-evals-workflow.yml`'s `paths:` had no `evals/skills/**` — that rule was dead in CI, yet live under `CI_DETECT_ALL` and locally (architecture-reviewer F1).
+**Cause:** the script decides on paths that the workflow filter has already narrowed; with one broad filter the two never disagreed, with several narrow ones every rule the script has but the filter lacks silently stops firing.
+**Rule:** when a workflow's `paths:` and a router script both select by path, keep one table as the truth and pin the other with a test (plan 39 F3: `evals/src/ci-detect.test.ts` reads each `harness-evals-<tier>.yml` `on.pull_request.paths` and checks it against the script's engine table).
+**Evidence:** `evals/scripts/ci-detect.mjs:171-173` (mention rule, now `.claude/skills/<n>/` only) · `.github/workflows/harness-evals-workflow.yml:3-23` · plan 39 Verification log "architecture-reviewer: PASS; F1 MEDIUM …"
+
 ### 2026-10-11 — "no Bash/Write/Edit in `trace.tools`" does not prove an agent eval left the repo alone
 **Symptom:** plan 32 added `disallowedTools` (Bash, Write, Edit, MultiEdit, NotebookEdit) to `agentTask`. Its M1 gate checked with `jq` that no `agents/*` record lists those tools in `trace.tools`, and every record passed.
 **Cause:** `runClaude` collects `tool_use` blocks from the main stream only, so tool calls made inside a subagent never reach `trace.tools`. `agentTask` still offers `Task`/`Agent` (and `WebFetch`/`WebSearch`) under `bypassPermissions`. Whether the SDK's `disallowedTools` also binds a spawned subagent was not checked.

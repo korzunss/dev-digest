@@ -1,0 +1,117 @@
+# Skill evals (evals/skills) on OpenRouter. Only the skills a PR touches run (evals/scripts/ci-detect.mjs).
+# Task model defaults to DeepSeek V4 Flash; switch per run via workflow_dispatch inputs or the repo
+# variables EVAL_MODEL / EVAL_JUDGE_MODEL. The model job needs the OPENROUTER_API_KEY Actions secret and
+# is skipped when its suite list is empty. Without the key a fork PR skips it (notice only); a
+# same-repo PR or a manual dispatch fails `detect`. Eval failures are non-blocking (warning only).
+# Never pull_request_target: fork code must not see the secret.
+name: harness-evals-skills
+
+on:
+  pull_request:
+    paths:
+      - '.claude/skills/**'
+      - 'evals/skills/**'
+      - 'evals/scripts/**'
+      - 'evals/package.json'
+      - 'evals/pnpm-lock.yaml'
+      - '.github/actions/harness-evals-setup/**'
+      - '.github/actions/harness-evals-detect/**'
+      - '.github/workflows/harness-evals-skills.yml'
+  workflow_dispatch:
+    inputs:
+      model:
+        description: 'Task model (OpenRouter slug); empty = repo variable EVAL_MODEL or the default'
+        type: string
+        default: ''
+      judge_model:
+        description: 'Judge model (OpenRouter slug); empty = repo variable EVAL_JUDGE_MODEL or the default'
+        type: string
+        default: ''
+      scope:
+        description: 'all = every suite that has evals; changed = diff against the default branch'
+        type: choice
+        options: [all, changed]
+        default: all
+
+permissions:
+  contents: read
+
+concurrency:
+  group: harness-evals-skills-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  EVAL_BACKEND: openrouter
+  EVAL_MODEL: ${{ inputs.model || vars.EVAL_MODEL || 'deepseek/deepseek-v4-flash' }}
+  EVAL_JUDGE_MODEL: ${{ inputs.judge_model || vars.EVAL_JUDGE_MODEL || 'deepseek/deepseek-v4-pro' }}
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      skills: ${{ steps.detect.outputs.skills }}
+      has_key: ${{ steps.detect.outputs.has_key }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect skill suites
+        id: detect
+        uses: ./.github/actions/harness-evals-detect
+        with:
+          tier: skills
+          has-key: ${{ secrets.OPENROUTER_API_KEY != '' }}
+          event-name: ${{ github.event_name }}
+          scope: ${{ inputs.scope }}
+          base-sha: ${{ github.event.pull_request.base.sha }}
+          head-sha: ${{ github.event.pull_request.head.sha }}
+          default-branch: ${{ github.event.repository.default_branch }}
+          head-repo: ${{ github.event.pull_request.head.repo.full_name }}
+          base-repo: ${{ github.repository }}
+
+  skills:
+    needs: detect
+    if: needs.detect.outputs.has_key == 'true' && needs.detect.outputs.skills != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      max-parallel: 1
+      fail-fast: false
+      matrix:
+        suite: ${{ fromJSON(needs.detect.outputs.skills) }}
+    defaults:
+      run:
+        working-directory: evals
+    env:
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/harness-evals-setup
+
+      - name: Run skill evals
+        id: evals
+        continue-on-error: true
+        timeout-minutes: 15
+        env:
+          SUITE: ${{ matrix.suite }}
+        run: pnpm exec vitest run "skills/$SUITE/"
+
+      - name: Report eval failure
+        if: always() && steps.evals.outcome == 'failure'
+        env:
+          TIER: skills
+          SUITE: ${{ matrix.suite }}
+        run: |
+          MSG="$TIER evals failed${SUITE:+ for $SUITE} — non-blocking for now (D1); see the results artifact"
+          echo "::warning title=harness evals::$MSG"
+          echo "$MSG" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: harness-evals-skills-${{ matrix.suite }}
+          path: evals/results
+          if-no-files-found: ignore

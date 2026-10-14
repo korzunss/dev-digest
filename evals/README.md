@@ -189,32 +189,39 @@ workflow cases:
 
 ### Wiring it into GitHub Actions (per-PR)
 
-The workflow is `.github/workflows/harness-evals.yml`. It runs the harness evals on the OpenRouter
-backend and only runs the suites a PR actually touches.
+CI is one workflow per tier, so a failed tier is visible by file name and each tier triggers only on
+its own paths. They run the harness evals on the OpenRouter backend and only the suites a PR touches.
 
-**Triggers.** `pull_request` with a `paths:` filter over the harness (`.claude/**`, `CLAUDE.md`,
-`**/AGENTS.md`, `**/CLAUDE.md`, `**/insights/gotchas.md`, `evals/**`, the workflow file itself), and
-`workflow_dispatch` with the inputs `model`, `judge_model` and `scope` (`all` = every suite that has
-evals, the default; `changed` = diff against the default branch). There is no `push` trigger and
-never `pull_request_target`, so fork code cannot see the secret.
+**Triggers.** Each workflow has `pull_request` with its own `paths:` filter (positive patterns; `workflow` adds one trailing `!` exclusion)
+and `workflow_dispatch` with the inputs `model` and `judge_model`; `skills` and `agents` also take
+`scope` (`all` = every suite that has evals, the default and what an empty value means; `changed` =
+diff against the default branch). `workflow` has no `scope`: a manual run always runs the tier.
+There is no `push` trigger and never `pull_request_target`, so fork code cannot see the secret.
+Concurrency group: `harness-evals-<tier>-<ref>`, cancel-in-progress.
 
-**Jobs.**
+| Workflow file | Jobs | Paths | Proxy |
+|---|---|---|---|
+| `harness-evals-skills.yml` | `detect`, `skills` (matrix over changed skills with evals, content tier, `max-parallel: 1`) | `.claude/skills/**`, `evals/skills/**`, engine, itself | no (direct OpenRouter) |
+| `harness-evals-agents.yml` | `detect`, `agents` (matrix over changed agents with evals, tool tier) | `.claude/agents/**`, `evals/agents/**`, `evals/proxy/**`, engine, itself | LiteLLM |
+| `harness-evals-workflow.yml` | `detect`, `workflow` (`pnpm eval:workflow`) | harness docs and settings, `.claude/agents/**`, `.claude/skills/**`, `evals/workflow/**`, `evals/src/**` minus `!evals/src/**/*.test.ts`, `evals/proxy/**`, engine, itself | LiteLLM |
+| `harness-evals-static.yml` | `static`: `pnpm typecheck`, `pnpm eval:quality`, `src/records/stats.test.ts`, `src/ci-detect.test.ts` (no model, no secret) | `evals/**`, `.claude/skills/**`, setup action, itself | no |
 
-| Job | Runs | Proxy |
-|-----|------|-------|
-| `detect` | `git diff --name-only <base>...<head>` fed to `scripts/ci-detect.mjs`; checks the secret | no |
-| `static` | `pnpm typecheck`, `pnpm eval:quality`, `src/records/stats.test.ts` (no model, always runs) | no |
-| `skills` | matrix over changed skills with evals, content tier, `max-parallel: 1` | no (direct OpenRouter) |
-| `agents` | matrix over changed agents with evals, tool tier, `max-parallel: 1` | LiteLLM |
-| `workflow` | `pnpm eval:workflow` when the harness itself changed | LiteLLM |
+Engine paths: `evals/scripts/**`, `evals/package.json`, `evals/pnpm-lock.yaml`,
+`.github/actions/harness-evals-setup/**`, `.github/actions/harness-evals-detect/**`. Setup and
+detect are composite actions shared by the workflows; the API key never enters them (only a
+boolean `has-key`).
 
-Eval failures in `skills` / `agents` / `workflow` are non-blocking for now: the eval step has
-step-level `continue-on-error`, a failure shows as a `::warning` annotation plus a job-summary line,
-the job stays green and `evals/results` is still uploaded (`if: always()`). `detect` and `static`
-stay blocking. Blocking returns by a later decision. DeepSeek V4 Flash on the tool tiers is
-unmeasured (the verified-model table above lists `deepseek/deepseek-chat` failing dispatch), so a
-warning from `agents` or `workflow` may mean the model, not the harness; switch the model (below)
-before debugging the artifact.
+Eval failures in the model jobs are non-blocking for now: the eval step has step-level
+`continue-on-error`, a failure shows as a `::warning` annotation plus a job-summary line, the job
+stays green and `evals/results` is still uploaded (`if: always()`). `detect` and `static` stay
+blocking. Blocking returns by a later decision. DeepSeek V4 Flash on the tool tiers is unmeasured
+(the verified-model table above lists `deepseek/deepseek-chat` failing dispatch), so a warning from
+`agents` or `workflow` may mean the model, not the harness; switch the model (below) before
+debugging the artifact.
+
+**Pending checks.** A path-filtered workflow that does not run leaves its checks Pending, and a PR
+that requires them is blocked. None of these jobs is a required check today; if one is made
+required, use a job that always runs.
 
 **Model switch.** `EVAL_MODEL` resolves `inputs.model` → repo variable `EVAL_MODEL` → default
 `deepseek/deepseek-v4-flash`; `EVAL_JUDGE_MODEL` resolves `inputs.judge_model` → repo variable
@@ -230,11 +237,14 @@ dispatch without the key, `detect` fails with an `::error`.
 - `.claude/agents/<n>.md` or `evals/agents/<n>/**` → `evals/agents/<n>`.
 - Workflow tier: root `CLAUDE.md` / `AGENTS.md`, nested `*/AGENTS.md`, `*/CLAUDE.md`,
   `*/insights/gotchas.md` (outside `.claude/`), `.claude/settings.json`, any agent definition,
-  `evals/workflow/**`, `evals/src/**`. A skill change triggers it only when the skill's name appears as
-  a token in `evals/workflow/*.cases.ts`.
-- CI engine change (the workflow file, `evals/scripts/**`, `evals/proxy/**`, `evals/package.json`,
-  `evals/pnpm-lock.yaml`) → every suite with evals plus the workflow tier, same as `CI_DETECT_ALL`;
-  the log has an `engine-change:` line.
+  `evals/workflow/**`, `evals/src/**` (not `evals/src/**/*.test.ts`). A `.claude/skills/<n>/**` change
+  triggers it only when the skill's name appears as a token in `evals/workflow/*.cases.ts`; an
+  `evals/skills/<n>/**` change never does.
+- CI engine change → every suite with evals of the tier(s) it concerns, same as `CI_DETECT_ALL`;
+  the log has an `engine-change:` line. A tier's own workflow file → that tier only; the engine
+  paths above → all three tiers; `evals/proxy/**` → agents and workflow.
+- `CI_DETECT_TIER=skills|agents|workflow` restricts the run to one tier (the workflows set it);
+  unset = all tiers, as before; any other value exits with status 2.
 - A changed skill or agent with no evals is not run and does not fail: the log has
   `SKIP <tier> <name> (no evals)` plus a `::notice` annotation. An empty suite list skips its job.
 
@@ -243,6 +253,7 @@ dispatch without the key, `detect` fails with an `::error`.
 ```bash
 CHANGED_FILES=$'.claude/agents/architecture-reviewer.md' node scripts/ci-detect.mjs
 CI_DETECT_ALL=1 node scripts/ci-detect.mjs      # every suite that has evals
+CI_DETECT_TIER=agents CHANGED_FILES=$'evals/proxy/docker-compose.yml' node scripts/ci-detect.mjs
 ```
 
 ## Module layout — `src/` (the engine)
@@ -574,6 +585,7 @@ tokens > 125% of baseline), `missing_data` (a config has zero records for a test
 | Adding evals for one of **your** skills/agents | `pnpm eval:scaffold <name>` (or `--agent <name>`) |
 | Model / Claude Code version | `pnpm eval` (whole suite) |
 | Stats math changed | `pnpm vitest run src/records/stats.test.ts` |
+| `scripts/ci-detect.mjs` changed | `pnpm vitest run src/ci-detect.test.ts` |
 
 ## Safety
 
