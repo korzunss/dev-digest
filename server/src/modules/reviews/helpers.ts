@@ -114,5 +114,52 @@ export function pathsOutsidePrFiles(diff: UnifiedDiff, prFiles: { path: string }
   return diff.files.map((f) => f.path).filter((p) => !known.has(p));
 }
 
+/**
+ * The `diff --git` section of `raw` whose new-side path (`+++ b/<path>`) equals
+ * `path` exactly, or null. Exact comparison: `src/a.ts` never matches `src/a.tsx`.
+ */
+export function fileDiffSection(raw: string, path: string): string | null {
+  const lines = raw.split('\n');
+  const sections: string[][] = [];
+  for (const line of lines) {
+    if (line.startsWith('diff --git ')) sections.push([line]);
+    else sections[sections.length - 1]?.push(line);
+  }
+  const target = `+++ b/${path}`;
+  for (const section of sections) {
+    if (section.some((l) => l.replace(/\r$/, '') === target)) return section.join('\n');
+  }
+  return null;
+}
+
+/** A finding with the PR it belongs to (eval "turn into case"); no diff text. */
+export interface FindingRefDto {
+  finding: {
+    id: string;
+    file: string;
+    start_line: number;
+    end_line: number;
+    title: string;
+    severity: string;
+    category: string;
+    accepted: boolean;
+    dismissed: boolean;
+  };
+  agentId: string | null;
+  pr: {
+    id: string;
+    repo_id: string;
+    repo: string;
+    number: number;
+    title: string;
+    head_sha: string;
+  };
+}
+
+/** A `FindingRefDto` plus the finding's file section of the PR's current diff (null when none). */
+export interface FindingSourceDto extends FindingRefDto {
+  fileDiff: string | null;
+}
+
 // `mergeContextPaths` moved to `_shared/context-paths.ts`; re-exported for existing imports.
 export { mergeContextPaths } from '../_shared/context-paths.js';

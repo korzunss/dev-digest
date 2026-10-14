@@ -1,6 +1,10 @@
-import { pgTable, uniqueIndex, uuid, text, integer, boolean, jsonb, timestamp, doublePrecision } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
+import { pgTable, index, uniqueIndex, check, uuid, text, integer, boolean, jsonb, timestamp, doublePrecision } from 'drizzle-orm/pg-core';
 import { workspaces } from './core';
 import { pullRequests } from './pulls';
+import { agents } from './agents';
+import { skills } from './skills';
+import { findings } from './reviews';
 
 // ============================================================ Eval / Conformance / Compose
 
@@ -57,3 +61,80 @@ export const composedReviews = pgTable('composed_reviews', {
   postedAt: timestamp('posted_at', { withTimezone: true }),
   githubReviewId: text('github_review_id'),
 });
+
+// ============================================================ Eval pipeline (plan 34)
+// Regression suites per agent. Separate from eval_cases / eval_runs above, which
+// stay untouched (they serve the skill/agent eval cases).
+
+export const evalSuiteCases = pgTable('eval_suite_cases', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  workspaceId: uuid('workspace_id')
+    .notNull()
+    .references(() => workspaces.id, { onDelete: 'cascade' }),
+  // Exactly one owner (eval_suite_cases_owner_check): an agent case or a skill case (plan 35).
+  agentId: uuid('agent_id').references(() => agents.id, { onDelete: 'cascade' }),
+  skillId: uuid('skill_id').references(() => skills.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  inputDiff: text('input_diff').notNull(),
+  inputFiles: jsonb('input_files').notNull(),
+  inputMeta: jsonb('input_meta'),
+  expected: jsonb('expected').notNull(),
+  sourceFindingId: uuid('source_finding_id').references(() => findings.id, { onDelete: 'set null' }),
+  sourcePrId: uuid('source_pr_id').references(() => pullRequests.id, { onDelete: 'set null' }),
+  lastResult: jsonb('last_result'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  // NULL agent_id rows (skill cases) never collide here, hence the separate skill index.
+  agentNameUq: uniqueIndex('eval_suite_cases_agent_name_idx').on(t.agentId, t.name),
+  // Leads with the FK column, so it is also the FK index.
+  skillNameUq: uniqueIndex('eval_suite_cases_skill_name_idx').on(t.skillId, t.name),
+  ownerCheck: check('eval_suite_cases_owner_check', sql`(${t.agentId} IS NULL) <> (${t.skillId} IS NULL)`),
+  // One case per finding. NULLs are distinct in a unique index, so hand-written
+  // cases (source_finding_id NULL) never collide — that is wanted.
+  sourceFindingUq: uniqueIndex('eval_suite_cases_source_finding_idx').on(t.sourceFindingId),
+  sourcePrIdx: index('eval_suite_cases_source_pr_idx').on(t.sourcePrId),
+}));
+
+export const evalSuiteRuns = pgTable('eval_suite_runs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  workspaceId: uuid('workspace_id')
+    .notNull()
+    .references(() => workspaces.id, { onDelete: 'cascade' }),
+  agentId: uuid('agent_id')
+    .notNull()
+    .references(() => agents.id, { onDelete: 'cascade' }),
+  agentVersion: integer('agent_version').notNull(),
+  provider: text('provider').notNull(),
+  model: text('model').notNull(),
+  skills: jsonb('skills').notNull(),
+  status: text('status', { enum: ['running', 'completed', 'failed'] }).notNull(),
+  startedAt: timestamp('started_at', { withTimezone: true }).defaultNow().notNull(),
+  finishedAt: timestamp('finished_at', { withTimezone: true }),
+  casesTotal: integer('cases_total').notNull().default(0),
+  casesDone: integer('cases_done').notNull().default(0),
+  casesPassed: integer('cases_passed').notNull().default(0),
+  casesErrored: integer('cases_errored').notNull().default(0),
+  recall: doublePrecision('recall'),
+  precision: doublePrecision('precision'),
+  citationAccuracy: doublePrecision('citation_accuracy'),
+  costUsd: doublePrecision('cost_usd'),
+}, (t) => ({
+  agentStartedIdx: index('eval_suite_runs_agent_started_idx').on(t.agentId, t.startedAt),
+  workspaceStartedIdx: index('eval_suite_runs_workspace_started_idx').on(t.workspaceId, t.startedAt),
+}));
+
+export const evalCaseResults = pgTable('eval_case_results', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  suiteRunId: uuid('suite_run_id')
+    .notNull()
+    .references(() => evalSuiteRuns.id, { onDelete: 'cascade' }),
+  // Deleting a case cascades its results; the run's stored metrics stay.
+  caseId: uuid('case_id').references(() => evalSuiteCases.id, { onDelete: 'cascade' }),
+  caseName: text('case_name').notNull(),
+  result: jsonb('result').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  runIdx: index('eval_case_results_run_idx').on(t.suiteRunId),
+  caseIdx: index('eval_case_results_case_idx').on(t.caseId),
+}));

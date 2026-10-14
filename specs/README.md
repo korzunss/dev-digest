@@ -16,7 +16,7 @@ before it reaches the `implementation-planner`.
 
 One repo-wide sequence across `specs/` and every `<pkg>/specs/`. The file is
 `NNN-slug.md` and `Spec ID: SPEC-NN` shares its number. Numbers are never
-reused. The next one is `SPEC-11` (`011-slug.md`). A spec spanning more than
+reused. The next one is `SPEC-13` (`013-slug.md`). A spec spanning more than
 one package, or a `@devdigest/shared` contract, lives here; a single-package
 spec lives in `<pkg>/specs/`.
 
@@ -96,3 +96,5 @@ migrated.
 | [008 — Project Context](008-project-context.md) | implemented | shared, reviewer-core, server, client |
 | [009 — Onboarding Generator](009-onboarding-generator.md) | implemented | shared, server, client |
 | [010 — PR Brief](010-pr-brief.md) | implemented | shared, server, client |
+| [011 — Eval Pipeline](011-eval-pipeline.md) | implemented | shared, server, client |
+| [012 — Agent versions tab](012-agent-versions.md) | implemented | shared, server, client |

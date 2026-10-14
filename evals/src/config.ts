@@ -1,0 +1,45 @@
+/**
+ * All tunables in one place. No logic here — just the knobs the rest of the package reads.
+ * Nothing in this module imports from another src module (it is the bottom of the dependency
+ * graph): config knows nothing of runtime, scoring, or the SDK.
+ */
+
+// --- Models -----------------------------------------------------------------
+// Cheap model under test by default; the judge is a stronger family to soften self-preference.
+export const EVAL_MODEL = process.env.EVAL_MODEL ?? "claude-haiku-4-5";
+export const EVAL_JUDGE_MODEL = process.env.EVAL_JUDGE_MODEL ?? "claude-sonnet-5";
+export const MAX_TURNS = Number(process.env.EVAL_MAX_TURNS ?? "8");
+
+// --- Configuration tag ------------------------------------------------------
+// "candidate" = artifact injected (normal). "baseline" = no artifact (benchmark lift baseline).
+export const EVAL_CONFIG = process.env.EVAL_CONFIG ?? "candidate";
+export const IS_BASELINE = EVAL_CONFIG === "baseline";
+
+// --- Scoring / statistics thresholds ---------------------------------------
+export const DEFAULT_THRESHOLD = 0.6; // judge score gate for a quality case
+export const FLAKY_LOW = 0.2; // pass rate strictly inside (20%, 80%) is "flaky"
+export const FLAKY_HIGH = 0.8;
+export const COST_REGRESSION_RATIO = 1.25; // candidate mean tokens > 125% of baseline
+
+// --- Tool allow-lists -------------------------------------------------------
+// Subagent-spawning tool name varies by harness; count both.
+export const SPAWN_TOOLS = new Set(["Task", "Agent"]);
+// workflowTask runs against the LIVE repo with bypassPermissions — keep this read-only.
+export const WORKFLOW_ALLOWED_TOOLS = ["Read", "Grep", "Glob", "Task", "Agent", "Skill"];
+// Under bypassPermissions allowedTools only pre-approves; it does not restrict. Without these a
+// workflow session (and the subagents it launches) used Write/Edit/Bash and wrote to
+// server/INSIGHTS.md and docs/ideas/ during an eval run.
+// Removed from the model's tool list outright:
+export const WORKFLOW_DISALLOWED_TOOLS = ["NotebookEdit", "Bash"];
+// Left visible but denied by a PreToolUse hook, so a case can see that the model TRIED to write:
+export const WORKFLOW_BLOCKED_TOOLS = ["Write", "Edit", "MultiEdit"];
+// agentTask runs from the live REPO_ROOT under bypassPermissions, where allowedTools restricts
+// nothing (root INSIGHTS.md 2026-10-11) — remove Bash, every mutating tool, subagent spawning
+// (Task/Agent: subagent tool calls never reach trace.tools) and web access outright.
+export const AGENT_DISALLOWED_TOOLS = [
+  "Bash", "Write", "Edit", "MultiEdit", "NotebookEdit", "Task", "Agent", "WebFetch", "WebSearch",
+];
+
+// --- Output verbosity -------------------------------------------------------
+// Set EVAL_QUIET to suppress per-run trace/verdict spam during multi-run aggregation.
+export const QUIET = Boolean(process.env.EVAL_QUIET);

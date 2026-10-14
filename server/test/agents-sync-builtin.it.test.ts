@@ -131,6 +131,7 @@ d('agents:sync-builtin', () => {
       .select()
       .from(t.agentVersions)
       .where(and(eq(t.agentVersions.agentId, generalId), eq(t.agentVersions.version, after!.version)));
+    expect(snap!.message).toBe('Synced built-in prompt');
     const skillIds = (snap!.configJson as { skills: string[] }).skills;
     const names = await db().select({ id: t.skills.id, name: t.skills.name }).from(t.skills);
     const snapNames = skillIds.map((id) => names.find((n) => n.id === id)!.name);
@@ -267,14 +268,31 @@ d('agents:sync-builtin', () => {
     expect((await service.get(workspaceId, generalId))!.version).toBe(versionBefore);
   });
 
-  // the happy path of the same call: replaces the whole set in order, without a version bump (D2-A)
-  it('setSkills replaces the set in order and does not bump the version', async () => {
+  // the happy path of the same call: replaces the set in order and bumps the version once, with names
+  it('setSkills replaces the set in order, bumps the version once and snapshots ids + names', async () => {
     const versionBefore = (await service.get(workspaceId, generalId))!.version;
     const a = await ensureSkill('order-a');
     const b = await ensureSkill('order-b');
-    const links = await service.setSkills(workspaceId, generalId, [b, a]);
+    const links = await service.setSkills(workspaceId, generalId, [b, a], 'Reordered');
     expect(links!.map((l) => l.skill_id)).toEqual([b, a]);
     expect(await skillNamesOf(generalId)).toEqual(['order-b', 'order-a']);
+    expect((await service.get(workspaceId, generalId))!.version).toBe(versionBefore + 1);
+    const snap = await new AgentsRepository(db()).getVersion(generalId, versionBefore + 1);
+    expect(snap!.message).toBe('Reordered');
+    expect(snap!.configJson).toMatchObject({
+      skills: [b, a],
+      skill_names: { [a]: 'order-a', [b]: 'order-b' },
+    });
+  });
+
+  it('setSkills with the same ordered ids writes nothing', async () => {
+    const [first] = await new AgentsRepository(db()).skillIdsForAgent(generalId);
+    const ids = await new AgentsRepository(db()).skillIdsForAgent(generalId);
+    const versionBefore = (await service.get(workspaceId, generalId))!.version;
+    const count = await versionCount(generalId);
+    expect(first).toBeDefined();
+    await service.setSkills(workspaceId, generalId, ids, 'ignored');
     expect((await service.get(workspaceId, generalId))!.version).toBe(versionBefore);
+    expect(await versionCount(generalId)).toBe(count);
   });
 });

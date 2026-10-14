@@ -21,6 +21,7 @@ import type { FindingRecord, FindingActionKind } from "@devdigest/shared";
 import { severityColor } from "@/lib/severity";
 import { lineLabel } from "./helpers";
 import { forgeBlobUrl, type ForgeRepoRef } from "../../../../../../../lib/forge-urls";
+import { TurnIntoEvalCase } from "../TurnIntoEvalCase";
 import { s } from "./styles";
 
 export function FindingCard({
@@ -52,7 +53,7 @@ export function FindingCard({
   const muted = accepted || dismissed;
 
   return (
-    <div data-finding-id={f.id} style={s.card(!!focused, sevColor, muted)}>
+    <div id={`finding-${f.id}`} data-finding-id={f.id} style={s.card(!!focused, sevColor, muted)}>
       <div onClick={() => setExpanded((e) => !e)} style={s.header}>
         <div style={s.badgeWrap}>
           <SeverityBadge severity={f.severity as Severity} compact />
@@ -109,6 +110,7 @@ export function FindingCard({
             >
               {t("finding.dismiss")}
             </Button>
+            <TurnIntoEvalCase finding={f} />
           </div>
         </div>
       )}

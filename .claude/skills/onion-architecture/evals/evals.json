@@ -1,0 +1,126 @@
+{
+  "skill_name": "onion-architecture",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I drafted a new `review-digest` module for the API. The files are in {{fixture}}/server/src/modules/review-digest/ and will be moved as-is into server/src/modules/review-digest/ of the repo at {{repo}}. Before I move it in, review whether it fits our backend architecture \u2014 where each piece lives and what it imports. Write the review to review.md: each finding with file:line, why it's a problem, and the concrete fix; then a verdict.",
+      "expected_output": "Three layering findings: inline Drizzle query in routes.ts, concrete Octokit adapter in service.ts, db/schema type import in types.ts; clean files not flagged.",
+      "files": [
+        "evals/fixtures/case-1-review-digest"
+      ],
+      "expectations": [
+        "Flags routes.ts (the /digest/scores handler) for querying db/schema + drizzle-orm directly in a route, and says the query belongs in repository.ts reached through the service",
+        "Flags service.ts for importing/constructing the concrete OctokitGitHubClient adapter, and says to go through the container (container.forge(repo)) instead",
+        "Flags types.ts for importing db/schema (even type-only) outside a repository, and says the row types belong in repository.ts or db/rows.ts",
+        "Does not flag repository.ts's db/schema or drizzle-orm imports as a violation",
+        "Does not claim a dependency-cruiser / `depcruise` run passed or quote its result unless it actually ran one successfully"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Here's my draft for two things: Slack notifications when a review finishes, and per-repo review prompt templates. New files are under {{fixture}}/ at the paths they'll have in the repo ({{repo}}); edits to existing files are in changes-to-existing-files.diff there. Check the architecture before I open a PR and write the result to review.md \u2014 findings with file:line, why, and the fix, then a verdict.",
+      "expected_output": "Three findings: node:fs in reviewer-core, Slack SDK types leaking into the shared port, adapter importing a feature module; composition-root import of the adapter not flagged.",
+      "files": [
+        "evals/fixtures/case-2-review-notifications"
+      ],
+      "expectations": [
+        "Flags reviewer-core/src/review/prompt-template.ts for using node:fs (I/O in the pure core), and says the server/caller should load the template and pass the text in",
+        "Flags server/src/vendor/shared/notifier.ts for leaking the vendor (@slack/web-api types, WebClient, the 'Slack' name) into the port, and proposes a vendor-neutral port",
+        "Flags server/src/adapters/notifier/slack.ts for importing modules/reviews/helpers (an adapter depending on a feature module)",
+        "Does not flag platform/container.ts importing the concrete SlackWebNotifier as a violation (the composition root is allowed to)",
+        "Does not claim a dependency-cruiser / `depcruise` run passed or quote its result unless it actually ran one successfully"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Adding a `get_review_score` tool to our MCP server. Draft files are in {{fixture}}/mcp-server/src/ (same paths as in {{repo}}/mcp-server/src/), plus changes-to-existing-files.diff. Does this respect how the package is layered? Put your review in review.md \u2014 findings with file:line, why, and the fix, then a verdict.",
+      "expected_output": "Three findings: process.env read in core/threshold.ts, tool building its own HTTP client, core importing from tools/; server.ts registration not flagged.",
+      "files": [
+        "evals/fixtures/case-3-mcp-review-score"
+      ],
+      "expectations": [
+        "Flags core/threshold.ts for reading process.env inside core/, and says the value should come in through the composition root (index.ts env parsing) as a dependency/parameter",
+        "Flags tools/get-review-score.ts for importing http/client (createHttpApi) and building its own API client instead of using deps.api",
+        "Flags core/score.ts for importing from ../tools/messages.js (core depending on the transport layer)",
+        "Does not flag the server.ts registration diff as a layering violation",
+        "Does not claim a dependency-cruiser / `depcruise` run passed or quote its result unless it actually ran one successfully"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "I'm adding a Hotspots view: files that change often and sit high in the import graph. The draft is in {{fixture}}/ at the paths it will have in {{repo}}, and edits to existing files are in changes-to-existing-files.diff. Review whether it fits the backend's layering and write review.md: each finding with file:line, why, and the fix; then a verdict.",
+      "expected_output": "Three findings (service imports adapters/astgrep, helpers value-imports repo-intel/constants, the git adapter imports a hotspots constant); the RepoIntel type import, the repo-intel/service astgrep import and the container wiring are not flagged.",
+      "files": [
+        "evals/fixtures/case-4-hotspots"
+      ],
+      "expectations": [
+        "Flags hotspots/service.ts for importing adapters/astgrep (only repo-intel, the indexer subsystem, may), and says to go through a port or container.repoIntel",
+        "Flags hotspots/helpers.ts for a value import from ../repo-intel/constants.js (cross-module internals)",
+        "Flags adapters/git/churn.ts for importing modules/hotspots/constants (an adapter depending on a feature)",
+        "Does not flag the repo-intel/service.ts import of parseReferences from adapters/astgrep as a violation (documented exception)",
+        "Does not flag the type-only RepoIntel import in hotspots/types.ts as a violation"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Draft for publishing a review's findings as GitHub check-run annotations. Files are under {{fixture}}/ at their paths in {{repo}}; edits to existing files are in changes-to-existing-files.diff. Check that the new port, adapter, repository and service are layered the way this codebase expects, and write review.md with file:line findings, why, the fix, and a verdict.",
+      "expected_output": "Three findings (repository returns a Drizzle query builder, service imports Octokit types, adapter wired without a ContainerOverrides field and mock); the adapter's octokit import and the container's adapter import are not flagged.",
+      "files": [
+        "evals/fixtures/case-5-check-annotations"
+      ],
+      "expectations": [
+        "Flags checks/repository.ts openFindings for returning an un-executed Drizzle query builder that the service then chains (.limit), and says the repository should return rows and take the limit as a parameter",
+        "Flags checks/service.ts for importing types from the octokit SDK, and says the service should use the shared CheckAnnotation types",
+        "Flags the container's checkAnnotations() wiring for having no ContainerOverrides field and no mock in adapters/mocks.ts",
+        "Does not flag adapters/github/check-runs.ts importing octokit as a violation",
+        "Does not claim a dependency-cruiser / `depcruise` run passed or quote its result unless it actually ran one successfully"
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "Draft for release notes between two tags of an imported repo: a new module, a git tag reader and an LLM notes writer. Files are under {{fixture}}/ at their paths in {{repo}}, and edits to existing files are in changes-to-existing-files.diff. Review whether it fits the backend's layering and write review.md: each finding with file:line, why, and the fix; then a verdict.",
+      "expected_output": "Flags the process.env read in release-notes/service.ts although config.ts now carries the field, the second git client (simpleGit) in adapters/git/tags.ts, and the raw fetch to the Anthropic API in adapters/llm/notes-writer.ts; leaves the config.ts addition and the repository alone.",
+      "files": [
+        "evals/fixtures/case-6-release-notes"
+      ],
+      "expectations": [
+        "Flags release-notes/service.ts for reading process.env.RELEASE_NOTES_MAX_COMMITS and says to use the new config field (container.config / AppConfig) passed in through the service deps",
+        "Flags adapters/git/tags.ts for constructing its own simpleGit client instead of extending the GitClient port (bypasses SimpleGitClient's lock / abort handling)",
+        "Flags adapters/llm/notes-writer.ts for calling the Anthropic API with raw fetch instead of going through container.llm(...) / the LLMProvider port",
+        "Does not flag the RELEASE_NOTES_MAX_COMMITS addition to platform/config.ts (EnvSchema / AppConfig / loadConfig) as a violation",
+        "Does not flag repository.ts's db/schema or drizzle-orm imports as a violation"
+      ]
+    },
+    {
+      "id": 7,
+      "prompt": "Draft of a weekly review report for the workspace: a new weekly-report module, two helpers in modules/_shared, a shared contract and a markdown adapter. Files are under {{fixture}}/ at their paths in {{repo}}, and edits to existing files are in changes-to-existing-files.diff. Review whether it fits the backend's layering and write review.md: each finding with file:line, why, and the fix; then a verdict.",
+      "expected_output": "Flags the five leaks, most of them one hop away from the module: _shared/forge-client.ts constructing the Octokit adapter, the dynamic import of the Anthropic adapter in summary.ts, the adapter re-export in vendor/shared/weekly-report.ts, the re-export of reviews/repository's row type in types.ts, and drizzle/db-schema in _shared/week.ts. Leaves the RepoIntel type import, getContext, the repository and the composition root alone.",
+      "files": [
+        "evals/fixtures/case-7-weekly-report"
+      ],
+      "expectations": [
+        "Flags modules/_shared/forge-client.ts (or the service's use of it) for importing and constructing OctokitGitHubClient, so the service depends on a concrete adapter instead of container.forge(ref)",
+        "Flags the dynamic import('../../adapters/llm/anthropic.js') in weekly-report/summary.ts as a service-layer dependency on a concrete adapter",
+        "Flags vendor/shared/weekly-report.ts for re-exporting renderMarkdownTable from adapters/report (the ports package must not import anything concrete)",
+        "Flags weekly-report/types.ts for re-exporting ReviewRow from reviews/repository.js (cross-module edge to another module's repository)",
+        "Flags modules/_shared/week.ts (or the service's use of reviewedSince) for importing drizzle-orm and db/schema outside a repository",
+        "Does not flag the type-only RepoIntel import from repo-intel/types.js, the getContext import from _shared/context.js, or repository.ts's drizzle/db-schema imports"
+      ]
+    },
+    {
+      "id": 8,
+      "prompt": "New review-forecast module: estimates a PR's review size and time from its diff and blast radius before any agent runs. Files are under {{fixture}}/ at their paths in {{repo}}, and edits to existing files are in changes-to-existing-files.diff. Review whether it fits the backend's layering and write review.md: each finding with file:line, why, and the fix; then a verdict.",
+      "expected_output": "Flags the three type imports of brief's own dependency ports from brief/types.ts (BriefBlastPort in service.ts, BriefLogger in helpers.ts, TokenCounter in tokens.ts) and the value import of BRIEF_LLM_TIMEOUT_MS from brief/constants.ts; leaves the IndexState/RepoIntel import from repo-intel/types.ts alone.",
+      "files": [
+        "evals/fixtures/case-8-review-forecast"
+      ],
+      "expectations": [
+        "Flags service.ts importing BriefBlastPort from brief/types.ts: it is brief's own dependency port, so review-forecast should declare its own narrow port",
+        "Flags helpers.ts importing BriefLogger from brief/types.ts for the same reason",
+        "Flags tokens.ts importing (and re-exporting) TokenCounter from brief/types.ts for the same reason",
+        "Flags service.ts's value import of BRIEF_LLM_TIMEOUT_MS from brief/constants.ts",
+        "Does not flag types.ts importing IndexState and RepoIntel from repo-intel/types.ts"
+      ]
+    }
+  ]
+}

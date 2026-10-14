@@ -1,0 +1,45 @@
+--- a/server/src/platform/container.ts
++++ b/server/src/platform/container.ts
+@@
+ import { OctokitGitHubClient } from '../adapters/github/octokit.js';
++import { SlackWebNotifier } from '../adapters/notifier/slack.js';
+@@
+ export interface ContainerOverrides {
+   codeIndex?: CodeIndex;
++  notifier?: SlackNotifier | null;
+@@
+   private _codeIndex?: CodeIndex;
++  private _notifier?: SlackNotifier | null;
+@@
++  async notifier(): Promise<SlackNotifier | null> {
++    if (this.overrides.notifier !== undefined) return this.overrides.notifier;
++    if (this._notifier !== undefined) return this._notifier;
++    const token = await this.secrets.get('SLACK_BOT_TOKEN');
++    this._notifier = token ? new SlackWebNotifier(token) : null;
++    return this._notifier;
++  }
+--- a/server/src/vendor/shared/index.ts
++++ b/server/src/vendor/shared/index.ts
+@@
+ export * from './adapters.js';
++export * from './notifier.js';
+--- a/server/src/modules/reviews/run-executor.ts
++++ b/server/src/modules/reviews/run-executor.ts
+@@
++import { notifyOnComplete } from './notify-on-complete.js';
+@@ (after the review row is persisted and the run is marked done)
++    await notifyOnComplete(this.container, {
++      repoFullName: repo.fullName,
++      pullNumber: pull.number,
++      title: pull.title,
++      score: review.score,
++      critical: findings.filter((f) => f.severity === 'CRITICAL').length,
++      url: pull.url,
++    }).catch((err) => this.log.warn({ err }, 'slack notify failed'));
+--- a/reviewer-core/src/prompt.ts
++++ b/reviewer-core/src/prompt.ts
+@@
++import { buildPreamble } from './review/prompt-template.js';
+@@ export function assemblePrompt(input: PromptInput): AssembledPrompt {
+-  const preamble = defaultPreamble(input.agent, input.task);
++  const preamble = buildPreamble(input.clonePath, { agent: input.agent.name, task: input.task });

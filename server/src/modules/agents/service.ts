@@ -1,9 +1,13 @@
 import type { Container } from '../../platform/container.js';
+import { AgentVersionConfig } from '@devdigest/shared';
+import { SYNC_VERSION_MESSAGE, restoreVersionMessage } from './constants.js';
 import type {
   Agent,
   AgentContext,
   AgentSkillLink,
   AgentVersion,
+  AgentVersionDiff,
+  AgentVersionRestoreResult,
   CiFailOn,
   InheritedContextDoc,
   ModelInfo,
@@ -12,7 +16,7 @@ import type {
 } from '@devdigest/shared';
 import { AgentsRepository } from './repository.js';
 import { NotFoundError, ValidationError } from '../../platform/errors.js';
-import { toAgentDto, toAgentVersionDto } from './helpers.js';
+import { buildVersionDiff, canonicalJson, recordedSkillIds, toAgentDto, toAgentVersionDto } from './helpers.js';
 
 /**
  * A2 — agents service. Business logic for the Agents tab + Agent Editor.
@@ -50,6 +54,9 @@ export interface UpdateAgentInput {
   repo_intel?: boolean;
   enabled?: boolean;
 }
+
+/** A blank (whitespace-only) note counts as no note. */
+const cleanMessage = (m: string | undefined): string | undefined => m?.trim() || undefined;
 
 export class AgentsService {
   private repo: AgentsRepository;
@@ -97,8 +104,24 @@ export class AgentsService {
     workspaceId: string,
     id: string,
     patch: UpdateAgentInput,
+    message?: string,
   ): Promise<Agent | undefined> {
-    const row = await this.repo.update(workspaceId, id, {
+    const note = cleanMessage(message);
+    // Row lock: the version bump reads `existing.version`, so concurrent saves must queue.
+    return this.repo.transaction(async (repo) => {
+      if (!(await repo.lockById(workspaceId, id))) return undefined;
+      const row = await repo.update(
+        workspaceId,
+        id,
+        this.toRepoPatch(patch),
+        note !== undefined ? { message: note } : {},
+      );
+      return row ? toAgentDto(row) : undefined;
+    });
+  }
+
+  private toRepoPatch(patch: UpdateAgentInput) {
+    return {
       ...(patch.name !== undefined ? { name: patch.name } : {}),
       ...(patch.description !== undefined ? { description: patch.description } : {}),
       ...(patch.provider !== undefined ? { provider: patch.provider } : {}),
@@ -109,8 +132,7 @@ export class AgentsService {
       ...(patch.ci_fail_on !== undefined ? { ciFailOn: patch.ci_fail_on } : {}),
       ...(patch.repo_intel !== undefined ? { repoIntel: patch.repo_intel } : {}),
       ...(patch.enabled !== undefined ? { enabled: patch.enabled } : {}),
-    });
-    return row ? toAgentDto(row) : undefined;
+    };
   }
 
   /**
@@ -205,12 +227,28 @@ export class AgentsService {
     workspaceId: string,
     agentId: string,
     skillIds: string[],
+    message?: string,
   ): Promise<AgentSkillLink[] | undefined> {
     const agent = await this.repo.getById(workspaceId, agentId);
     if (!agent) return undefined;
     await this.assertSkillsInWorkspace(workspaceId, skillIds);
-    await this.repo.transaction((r) => r.setSkills(agentId, skillIds));
-    return this.skillLinks(agentId);
+    const note = cleanMessage(message);
+    const found = await this.repo.transaction(async (repo) => {
+      if (!(await repo.lockById(workspaceId, agentId))) return false;
+      const current = await repo.skillIdsForAgent(agentId);
+      const same = current.length === skillIds.length && current.every((id, i) => id === skillIds[i]);
+      if (same) return true; // no-op save: no write, no version
+      await repo.setSkills(agentId, skillIds);
+      const row = await repo.update(
+        workspaceId,
+        agentId,
+        {},
+        { bumpVersion: true, ...(note !== undefined ? { message: note } : {}) },
+      );
+      if (!row) throw new NotFoundError(`agent ${agentId} vanished during set-skills`);
+      return true;
+    });
+    return found ? this.skillLinks(agentId) : undefined;
   }
 
   /**
@@ -249,11 +287,75 @@ export class AgentsService {
         workspaceId,
         agentId,
         promptChanged ? { systemPrompt: input.systemPrompt } : {},
-        { bumpVersion: true },
+        { bumpVersion: true, message: SYNC_VERSION_MESSAGE },
       );
       // Throw, don't return: a vanished row must roll back the detach above.
       if (!row) throw new NotFoundError(`agent ${agentId} vanished during sync`);
       return { detached, changed, fromVersion: v, toVersion: row.version };
+    });
+  }
+
+  /**
+   * Promote a past version's config: write it as a NEW version (past versions
+   * stay untouched) and restore the skill set it recorded, in ONE transaction.
+   * `config` is a stored `agent_versions.config_json`; a malformed one is a 422.
+   * Returns undefined when the agent isn't in this workspace.
+   */
+  async promote(
+    workspaceId: string,
+    agentId: string,
+    input: {
+      config: Record<string, unknown>;
+      skillIds: string[];
+      message?: string;
+      /**
+       * Drop skill ids that no longer exist in the workspace instead of a 422. The
+       * check runs inside the agent's row lock, so a skill deleted in between is
+       * dropped and reported, never a failed restore.
+       */
+      dropMissingSkills?: boolean;
+    },
+  ): Promise<{ version: number; droppedSkillIds: string[] } | undefined> {
+    const parsed = AgentVersionConfig.omit({ skills: true }).safeParse(input.config);
+    if (!parsed.success) {
+      throw new ValidationError('Stored version config is malformed', {
+        issues: parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
+      });
+    }
+    const cfg = parsed.data;
+    const note = cleanMessage(input.message);
+    if (!input.dropMissingSkills) await this.assertSkillsInWorkspace(workspaceId, input.skillIds);
+    return this.repo.transaction(async (repo) => {
+      const agent = await repo.lockById(workspaceId, agentId);
+      if (!agent) return undefined;
+      let skillIds = input.skillIds;
+      let droppedSkillIds: string[] = [];
+      if (input.dropMissingSkills) {
+        const live = await repo.skillNamesByIds(workspaceId, skillIds);
+        skillIds = skillIds.filter((id) => live.has(id));
+        droppedSkillIds = input.skillIds.filter((id) => !live.has(id));
+      }
+      await repo.setSkills(agentId, skillIds);
+      const schemaDiffers =
+        cfg.output_schema != null &&
+        canonicalJson(cfg.output_schema) !== canonicalJson(agent.outputSchema);
+      const row = await repo.update(
+        workspaceId,
+        agentId,
+        {
+          provider: cfg.provider,
+          model: cfg.model,
+          systemPrompt: cfg.system_prompt,
+          strategy: cfg.strategy,
+          ciFailOn: cfg.ci_fail_on,
+          repoIntel: cfg.repo_intel,
+          ...(schemaDiffers ? { outputSchema: cfg.output_schema } : {}),
+        },
+        { bumpVersion: true, ...(note !== undefined ? { message: note } : {}) },
+      );
+      // Throw, don't return: a vanished row must roll back the skill restore above.
+      if (!row) throw new NotFoundError(`agent ${agentId} vanished during promote`);
+      return { version: row.version, droppedSkillIds };
     });
   }
 
@@ -263,14 +365,97 @@ export class AgentsService {
     agentId: string,
     skillId: string,
     order?: number,
+    message?: string,
   ): Promise<AgentSkillLink[] | undefined> {
     const agent = await this.repo.getById(workspaceId, agentId);
     if (!agent) return undefined;
     await this.assertSkillsInWorkspace(workspaceId, [skillId]);
-    const existing = await this.repo.linkedSkills(agentId);
-    const resolvedOrder = order ?? existing.length;
-    await this.repo.linkSkill(agentId, skillId, resolvedOrder);
-    return this.skillLinks(agentId);
+    const ok = await this.repo.transaction(async (repo) => {
+      if (!(await repo.lockById(workspaceId, agentId))) return false;
+      const existing = await repo.linkedSkills(agentId);
+      const current = existing.find((l) => l.skill.id === skillId);
+      // Already linked (anywhere when no order is given, else at that position): no write, no version.
+      if (current && (order === undefined || current.order === order)) return true;
+      const target = order ?? existing.length;
+      await repo.linkSkill(agentId, skillId, target);
+      const note = cleanMessage(message);
+      const row = await repo.update(
+        workspaceId,
+        agentId,
+        {},
+        { bumpVersion: true, ...(note !== undefined ? { message: note } : {}) },
+      );
+      if (!row) throw new NotFoundError(`agent ${agentId} vanished during link`);
+      return true;
+    });
+    return ok ? this.skillLinks(agentId) : undefined;
+  }
+
+  /**
+   * A stored version against the agent's current config: prompt patch, changed
+   * fields and skill-set changes. Undefined when the agent or version is missing.
+   */
+  async versionDiff(
+    workspaceId: string,
+    agentId: string,
+    version: number,
+  ): Promise<AgentVersionDiff | undefined> {
+    const agent = await this.repo.getById(workspaceId, agentId);
+    if (!agent) return undefined;
+    const row = await this.repo.getVersion(agentId, version);
+    if (!row) return undefined;
+    const linked = await this.repo.linkedSkills(agentId);
+    const currentSkills = linked.map((l) => ({ id: l.skill.id, name: l.skill.name }));
+    const recordedIds = recordedSkillIds(row.configJson);
+    const ids = [...new Set([...recordedIds, ...currentSkills.map((s) => s.id)])];
+    const liveNames = await this.repo.skillNamesByIds(workspaceId, ids);
+    return buildVersionDiff({
+      from: version,
+      fromConfig: row.configJson,
+      current: {
+        version: agent.version,
+        provider: agent.provider,
+        model: agent.model,
+        systemPrompt: agent.systemPrompt,
+        outputSchema: agent.outputSchema,
+        strategy: agent.strategy,
+        ciFailOn: agent.ciFailOn,
+        repoIntel: agent.repoIntel,
+      },
+      currentSkills,
+      liveNames,
+    });
+  }
+
+  /**
+   * Restore a past version as a NEW version (always appends). Skills deleted
+   * since are dropped and reported. Undefined when the agent or version is missing.
+   */
+  async restore(
+    workspaceId: string,
+    agentId: string,
+    version: number,
+    message?: string,
+  ): Promise<AgentVersionRestoreResult | undefined> {
+    const agent = await this.repo.getById(workspaceId, agentId);
+    if (!agent) return undefined;
+    const row = await this.repo.getVersion(agentId, version);
+    if (!row) return undefined;
+    const parsed = AgentVersionConfig.safeParse(row.configJson);
+    if (!parsed.success) throw new ValidationError('Stored version config is malformed');
+    const out = await this.promote(workspaceId, agentId, {
+      config: parsed.data,
+      skillIds: parsed.data.skills,
+      dropMissingSkills: true,
+      message: cleanMessage(message) ?? restoreVersionMessage(version),
+    });
+    if (!out) return undefined;
+    return {
+      agent_id: agentId,
+      version: out.version,
+      restored_from: version,
+      dropped_skill_ids: out.droppedSkillIds,
+    };
   }
 
   /**

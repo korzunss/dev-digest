@@ -3,6 +3,10 @@
 Deterministic browser flows for the web app, driven by Vercel **agent-browser**
 (a Rust + CDP CLI). No Playwright, no LLM, no API key. Package manager: **npm**.
 
+**First step of any task here**, before planning, searching or editing: read
+`insights/gotchas.md` (the rules in force for this package) and name the items that
+bear on the task, or say none do. This is the root `CLAUDE.md` session protocol.
+
 ## Commands
 
 ```sh

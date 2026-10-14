@@ -59,6 +59,18 @@ write-up here. That keeps `AGENTS.md` short without losing the reasoning.
 
 ## What Works
 
+### 2026-10-12 — commit one finished plan while another plan's edits sit in the same package
+**Symptom:** plan 34 was signed off while plan 35 had already edited three `client/` files (the vendored contract copy, `TurnIntoEvalCase.tsx`, one line of a plan-34 test). Staging only plan 34's files would be denied by the test gate, and the plan-34 test no longer typechecked without plan 35's contract.
+**Cause:** `.claude/hooks/test-gate.sh` denies a commit when a touched package still has untracked files or unstaged edits (the tests would see a different tree than the commit), so a package cannot be committed in parts.
+**Rule:** copy the other plan's files of that package to the scratchpad and record `shasum`; return them to the committed plan's state (`git checkout -- <file>`, or undo the one mixed line); stage and commit; copy the files back and `shasum -c`. Docs outside packages can be staged partially. Never bypass the gate.
+**Evidence:** commit `3504068` · `.claude/hooks/test-gate.sh` (decision model, header) · `docs/plans/35-skill-eval-suites.md` Verification log (REC3 entry)
+
+### 2026-10-11 — a doc-routing eval question must be unanswerable from the always-loaded docs
+**Symptom:** the server routing trace passed 1/5: the model answered "which file and key holds the self-hosted GitLab token" and "where does a contract change start" correctly but never opened `adapters/secrets/local.ts` or `vendor/shared`.
+**Cause:** both answers sit verbatim in docs that load into every session (`server/AGENTS.md`, `server/insights/gotchas.md`, root `CLAUDE.md`), so reading the routed file is unnecessary. The same goes for anything a `Grep` hit already shows, such as a function signature.
+**Rule:** ask for a fact that exists only in the routed file (`local.ts` silently treats a missing or corrupt secrets file as empty and caches it; the repo-intel README lists the facade methods wired in the starter). Name the source kind ("за документацією модуля") when code holds a competing answer, or the model answers from `service.ts`. Check each fact with `grep` against CLAUDE.md, the package AGENTS.md and gotchas before using it. After the rewrite, both routed files were read in every run. Two side lessons: a dispatch case needs the thing to review in the prompt (with "оціни мій план" and no plan, the model asked which plan), and `/sdd` allows `brainstormer` before `spec-creator`, so a feature case must accept either first step.
+**Evidence:** `evals/workflow/review-workflow.cases.ts` (server, API-route, feature cases with their comments) · `evals/results/repeat-wf-gotchas-n5.json` · commits `47fd5e8`, `aaca7d8`
+
 ### 2026-10-05 — checkpoint the working tree without a commit: temp index + `write-tree` + a tree ref
 **Symptom:** R3 and delta reviews need a baseline, but the user does not want commits during a pipeline run, and `git add` on the real index re-stages over the approved text (2026-09-30 entry) and changes `git status`, which reviewers use as their read-only proof.
 **Cause:** an approved state has to live somewhere addressable that is neither a commit nor the real index.
@@ -68,6 +80,31 @@ write-up here. That keeps `AGENTS.md` short without losing the reasoning.
 **Addendum 2026-10-06 (plan 28):** a read-only reviewer cannot run `sdd.sh delta` against the working tree — with no second tree it calls `make_tree ""` (`sdd.sh:405`), which writes git objects, so plan-verifier and architecture-reviewer refused it in four delta passes. Give them the recipe in the prompt instead: `git diff --name-status <ref>` for tracked files plus `git show <ref>:<f> | diff - <f>` per untracked file (in plan 28, 38 `D` entries came down to 3 real changes).
 
 ## What Doesn't Work
+
+### 2026-10-14 — splitting one broad CI `paths:` filter into per-tier filters leaves the router script reacting to paths no workflow triggers on
+**Symptom:** plan 39 split `harness-evals.yml` (one `paths:` incl. `evals/**`) into four per-tier workflows. `ci-detect.mjs` still set `run_workflow=true` for an `evals/skills/<n>/**` change of a skill named in the workflow cases, but `harness-evals-workflow.yml`'s `paths:` had no `evals/skills/**` — that rule was dead in CI, yet live under `CI_DETECT_ALL` and locally (architecture-reviewer F1).
+**Cause:** the script decides on paths that the workflow filter has already narrowed; with one broad filter the two never disagreed, with several narrow ones every rule the script has but the filter lacks silently stops firing.
+**Rule:** when a workflow's `paths:` and a router script both select by path, keep one table as the truth and pin the other with a test (plan 39 F3: `evals/src/ci-detect.test.ts` reads each `harness-evals-<tier>.yml` `on.pull_request.paths` and checks it against the script's engine table).
+**Evidence:** `evals/scripts/ci-detect.mjs:171-173` (mention rule, now `.claude/skills/<n>/` only) · `.github/workflows/harness-evals-workflow.yml:3-23` · plan 39 Verification log "architecture-reviewer: PASS; F1 MEDIUM …"
+
+### 2026-10-11 — "no Bash/Write/Edit in `trace.tools`" does not prove an agent eval left the repo alone
+**Symptom:** plan 32 added `disallowedTools` (Bash, Write, Edit, MultiEdit, NotebookEdit) to `agentTask`. Its M1 gate checked with `jq` that no `agents/*` record lists those tools in `trace.tools`, and every record passed.
+**Cause:** `runClaude` collects `tool_use` blocks from the main stream only, so tool calls made inside a subagent never reach `trace.tools`. `agentTask` still offers `Task`/`Agent` (and `WebFetch`/`WebSearch`) under `bypassPermissions`. Whether the SDK's `disallowedTools` also binds a spawned subagent was not checked.
+**Rule:** for an agent eval, prove isolation with the repo's `git status --porcelain` before vs after the run, as `workflowTask` does. Treat a clean `trace.tools` as evidence about the main session only. Until `Task`/`Agent` are disallowed in `agentTask`, assume a subagent may write.
+**Evidence:** `evals/src/runtime/run-claude.ts:30-33` (only `writeAttempts`, set by the hook, sees subagent calls) · `evals/src/config.ts:38` · `evals/src/tasks.ts:44` · plan 32 M1 log (before/after status diff: unchanged) · security-reviewer manual check, plan 32 Verification log
+
+### 2026-10-11 — `allowedTools` and a PreToolUse deny hook do not keep an SDK workflow eval read-only
+**Symptom:** `pnpm eval:repeat workflow` sessions wrote to the repo: a fabricated pgvector entry in `server/INSIGHTS.md` + `server/insights/gotchas.md` (the engineering-insights activation case) and an idea brief in `docs/ideas/` (the feature case: brainstormer, then the main session saved the brief per CLAUDE.md). After `Write`/`Edit` got a deny hook, one run still landed a `Write` + `Edit` pair: the trace listed both tools, `write_attempts` was empty, so the hook was never called.
+**Cause:** under `permissionMode: "bypassPermissions"` the SDK's `allowedTools` only pre-approves the listed tools; it restricts nothing. A hook is fail-open: when it does not fire, the tool just runs. The miss did not reproduce in 8 targeted probes (write before and after a subagent, after `brainstormer`, from Claude Code and from a plain terminal).
+**Rule:** isolation, not tool lists, is the guard. `workflowTask` runs every session in a throwaway worktree of the current tree (`git stash create` or HEAD) and compares the real repo's `git status` before and after, failing on any new change. `disallowedTools` removes tools a case never needs (`Bash`). The hook stays only to log write attempts. To debug a hook, run with `EVAL_SDK_DEBUG=1`: the per-session log under `evals/results/sdk-debug/` shows `Hook denied tool use for Write` when it fired. Revert anything an eval session wrote; never keep it.
+**Evidence:** `evals/src/runtime/sandbox.ts` · `evals/src/tasks.ts:57` (`workflowTask`) · `evals/src/config.ts:33-35` · the wf-baseline run-2 record of the feature case (`tools: Read, Grep, Agent, Write, Edit`, `write_attempts: []`) · commits `0d1de7d`, `265bda3`
+
+### 2026-10-09 — the upstream `evals/agents/architecture-reviewer` cases graded a different agent than ours
+**Symptom:** the imported cases required rule ids `inward-only-dependencies`, `di-discipline`, `reviewer-core-zero-io`, `reviewer-core-ground-findings-gate`; none exists in `.claude/agents/architecture-reviewer.md` (its rules are check ids `A1`…`A13` + a source doc), so those practices fail for every variant. Their prompt said only "Audit this diff", while the agent's Step 0 builds the diff from `git` and `agentTask` strips `Bash` — the agent can answer `Status: blocked`.
+**Cause:** the eval package was imported wholesale (commit `221623e`) from a repo with another reviewer prompt; the cases were never re-aligned.
+**Rule:** an agent-eval practice may only name ids/phrases the agent's own prompt defines — grep the agent file for each before running. For a git-driven reviewer, the prompt must say the patch is inline and not applied (see `reviewPrompt` in the cases file). A copy of an agent for an A/B (`architecture-reviewer-lite`) needs its own `description` marked eval-only, or it competes with the original for dispatch in real sessions and in `workflowTask` evals.
+**Evidence:** `evals/agents/architecture-reviewer/architecture-reviewer.cases.ts` (`reviewPrompt`, rewritten 2026-10-09) · `git show 221623e --stat` · `evals/src/tasks.ts` `agentTask` → `agentTools()` drops `Bash` (`evals/src/artifacts/load.ts`)
+**Addendum (same day, after the first run):** a fixture diff must target a path that exists in the repo. The reviewer runs against the live repo, so `reviewer-core-gate.diff` (`reviewer-core/src/pipeline/run.ts`, real file: `src/review/run.ts`) drew a *Clarification needed* (score 0), and `benign-refactor.diff` (`blast/score.ts`, absent) drew an A6 "undocumented file" MEDIUM — failures of the fixture, not the variant. Read the run's text in `results/outputs/<run>/` before reading a delta.
 
 ### 2026-10-06 — "T1–T11 present and green" does not mean every AC in a test row's *Covers* column is asserted
 **Symptom:** after plan 28's test-writer reported all eleven Tests-table rows covered and green, the full plan-verifier pass still came back `incomplete`: T3, T6 and T10 claimed AC-11, AC-18, AC-4/13/27 but no assertion checked them (default budget never exercised; blast-missing only in an `.it` that accepted `missing` *or* `partial`; empty states, truncated note and skeleton never rendered in a test).
@@ -139,6 +176,16 @@ Plan 05's pass-1 size cap was an HTML comment one line **after** the closing
 fence in `planner.md`, so the copied template never carried it; plan-verifier
 flagged it as partial (S1/P1). Place such rules as comments inside the fence,
 before its last line.
+**Extension (2026-10-08):** skills behave the same way, and real numbers in a worked
+example leak as facts. In the `dependency-checker` quality evals (`skillTask` = SKILL.md
+only), the chat-summary example said "6 packages · 1.3 GB", and an answer about pasted data
+with 4 packages wrote "6 packages" in its Key numbers. The prose said `flowchart`, but with
+no literal diagram skeleton the model drew `graph LR`, which failed the
+`` ```mermaid ``/`flowchart`
+grounding. Fix that worked (3/3 cases on the re-run): write examples with `<placeholders>`,
+not this repo's numbers, and give the diagram as a literal fenced skeleton. Evidence:
+`.claude/skills/dependency-checker/SKILL.md` → *Chat summary format*, *When the data is
+given to you instead* · `cd evals && pnpm run eval:skills dependency-checker`.
 
 ### 2026-09-26 — the onion skill's `depcruise` gate and its baseline are not real
 **Symptom:** the planner and architecture-reviewer both reached for
@@ -203,6 +250,12 @@ whole-file equality — that check is red today and will stay red.
 
 ## Codebase Patterns
 
+### 2026-10-11 — an eval record's outcome falls back to "the session did not error" unless the case passes `passed`
+**Symptom:** `eval:repeat workflow` showed the server case 2/2 while it had read none of its expected files, and activation cases 0/2 while the skill had engaged both times (they hit `maxTurns` 4).
+**Cause:** `record()` derives `outcome` from a grounding gate or a judge verdict; workflow cases have neither, so it fell back to `!result.isError`, and the `expect` calls after it never reached the stats.
+**Rule:** a runner branch without a judge collects its failures first, calls `record(name, { result, passed })`, then asserts (the `finish` helper in `runWorkflowCases`). Any new case kind must pass `passed` too, or `eval:repeat` and `eval:delta` report session health, not the assertions.
+**Evidence:** `evals/src/records/record.ts:52` · `evals/src/dsl/case.ts:130` (`finish`) · commit `0d1de7d`
+
 ### 2026-09-26 — a feature model's default lives in three places, not two
 **Symptom:** changing `review_intent`'s default model (spec 006, D2-B) in
 `server/src/vendor/shared` and its client mirror still left Settings → Models
@@ -228,6 +281,28 @@ that path; it's runtime data, and the next resync overwrites it.
 **Evidence:** `CLAUDE.md` → "Do not touch"; `.gitignore` → `clones/`
 
 ## Tool & Library Notes
+
+### 2026-10-11 — a Claude Code background command dies at 2 h, and `eval:benchmark -n 5` can take longer
+**Symptom:** `pnpm eval:benchmark skills/onion-architecture -n 5` (80 Haiku sessions plus a Sonnet judge, subscription) was started as a background command. It was killed with exit 143 during baseline run 5/5, when only 4 of its 8 records had been written, and no `benchmark.md` was produced. Single runs took 10–17 minutes each.
+**Cause:** a background Bash command has a hard limit of 7 200 000 ms. `benchmark.ts` writes its report only after all 2×N runs, although each run appends its records to `records.jsonl` as it goes.
+**Rule:**
+- Estimate first: cases × runs × 2 × ~1.5 min. If that is over ~100 min, split the work, for example by running `-n 3` twice.
+- To recover a killed run, keep its records. Re-run only the missing configuration run, using the exact per-run invocation: `EVAL_CONFIG=<config> EVAL_QUIET=1 pnpm exec vitest run --reporter=dot <pattern>`.
+- Then rebuild the report from `records.jsonl`. Take the records from the benchmark's start line, drop the partial `run_id`, and pass them through the same `aggregate`/`byConfig`/`computeFlags` path as `benchmark.ts` (a scratch copy with only the record source changed).
+- Run long jobs under `caffeinate -dimsu` so the Mac does not sleep.
+**Evidence:** `evals/src/records/benchmark.ts:96-106` · plan 32 *Handoffs → M2* (partial run `20261011T184647`, rebuilt report `evals/results/benchmarks/2026-10-11T19-03-26-504Z/`)
+
+### 2026-10-11 — the LiteLLM `main-stable` image refuses to start without a master key
+**Symptom:** in CI the `agents` and `workflow` jobs of `harness-evals.yml` failed at `Start LiteLLM proxy` with `error: proxy did not become healthy`. The container log said `LiteLLM proxy refused to start: no master key is set, so every request would be accepted without authentication.` The same config had worked earlier in no-auth mode.
+**Cause:** `ghcr.io/berriai/litellm:main-stable` is a moving tag, and a newer build now enforces a master key at boot (`enforce_master_key_boot_verdict`).
+**Rule:** set `LITELLM_MASTER_KEY` to the `OPENROUTER_API_KEY` value in `evals/proxy/docker-compose.yml`. The eval clients already send that key as Bearer, so no code changes. Pin the image by digest (`tag@sha256:…` pulls by digest; the tag is only a label) and bump it by hand. When probing the proxy, use POST, because GET `/v1/messages` returns 405. Only a missing key gives 401 `No api key passed in`; a wrong key gives 400 `No connected db.` (no DB is configured); a valid key is forwarded to OpenRouter.
+**Evidence:** `evals/proxy/docker-compose.yml` · commit `6ca27f4` · local `docker run … main-stable` reproduced the boot refusal · plan 31 D7
+
+### 2026-10-08 — correction: a subagent transcript's `output_tokens` is far too low, so its weighted total can't be trusted
+**Symptom:** in a zod-skill A/B run (12 general-purpose subagents), the deduplicated transcript `usage.output_tokens` came to 29–353 per agent. Every one of those agents had written a 60–160 line `.ts` file through `Write`, which alone takes well over 1k output tokens. Taking the last line or the max line per `message.id` gave the same sums.
+**Cause:** the transcript stores `usage` as it stood when the message was first streamed, so `output_tokens` misses the content that came after (inferred: it holds for every message checked). The input side (`input` / `cache_read` / `cache_creation`) looks plausible. This changes the 2026-10-05 entry below: its weight `5·output` multiplies a figure that is too small, so its "weighted tokens" mostly measure context size.
+**Rule:** use transcript usage only for the input/cache split. Don't compare runs by output or by the weighted total until `output_tokens` is checked against a known-size `Write`. For skill-creator benchmarks, `total_tokens` is the notification's `subagent_tokens` (its documented contract).
+**Evidence:** `~/.claude/projects/-Users-sergey--projects-www-ai-dev-digest/98568580-…/subagents/agent-a5e91214e530a3b24.jsonl`: 7 messages, output sum 100, one of them a `Write` of a 161-line `schemas.ts` · notification `subagent_tokens` 59 637 for the same agent
 
 ### 2026-10-07 — prove a refactored `.mjs` script prints the same output by running the old version straight from a git ref
 **Symptom:** plan 29 moved the weights out of `.claude/skills/sdd/scripts/flags.mjs`; "output unchanged" needed the pre-refactor script, but writing a copy into the tree breaks the reviewers' read-only proof.
@@ -391,6 +466,22 @@ tree looks right in exactly the case the index is wrong.
 
 ## Recurring Errors & Fixes
 
+### 2026-10-11 — a green `harness-evals` run can mean nothing ran, or every eval failed
+**Symptom:** on PR #21:
+- Run 1 skipped every model job. A local `git diff main...HEAD` showed 144 changed files, so the detector should have selected suites, and the first guess was a missing secret.
+- After the eval steps became non-blocking, every job was green although every case had failed with `401 … OpenrouterException {"message":"User not found."}`. The tool-tier cases each burned ~3 minutes (`1 turns · 182799ms · 0→0 tok`), while the direct skills tier failed in 2 s.
+- Once the key worked, 3 of 4 `architecture-reviewer` cases failed with `Test timed out in 240000ms`.
+**Cause:**
+- Run 1: the PR's base was `L06_lab`, not `main`, and its real diff was 5 files that mapped to no suite.
+- Run 2: OpenRouter's `User not found` means the key value is invalid; the proxy and the code were fine.
+- Run 3: `evals/vitest.config.ts` sets `testTimeout: 240_000`, which was sized for Haiku on the subscription; DeepSeek through the proxy needs longer.
+**Rule:** read a `harness-evals` run from its logs, not from its check icons:
+- For skipped jobs, reproduce detection with the PR's own base: `CHANGED_FILES="$(git diff --name-only <base_sha>...<head_sha>)" node evals/scripts/ci-detect.mjs`. Find the base in the PR, not by assuming `main`.
+- For a green job, open the eval step and look for `::warning … non-blocking` and the `Tests N failed` line.
+- `401 User not found` from the skills tier means: replace the `OPENROUTER_API_KEY` secret.
+- A `Test timed out in 240000ms` is a time limit, not a wrong answer. Do not score it as model quality.
+**Evidence:** `.github/workflows/harness-evals.yml` · `evals/scripts/ci-detect.mjs` · `evals/vitest.config.ts:9` · PR #21 runs on `65e331c` and `6ca27f4` · plan 31 Verification log
+
 ### 2026-10-04 — an implementer hand-back can be the single word "placeholder" although the edits landed
 **Symptom:** in plan 20 the implementer's hand-back was literally `placeholder` twice (G1, and the AC8a fix-mode run) — no step table, no Done-when output, no handoff — while the files were in fact edited. Asking for "the full report before handing back" in the prompt did not prevent the second one.
 **Cause:** the agent called its hand-back before writing the report (its own words when resumed); the run is short (5–8 tool uses), so nothing in the transcript forces the report.
@@ -418,9 +509,19 @@ of the type or a tsconfig `paths` problem.
 
 ## Session Notes
 
-_Nothing yet._
+### 2026-10-11 — plan 31: harness evals on GitHub Actions with DeepSeek V4 Flash
+Harness evals now run on every PR that touches the harness (`.github/workflows/harness-evals.yml`), on OpenRouter, with Flash as the task model and Pro as the judge. Eval failures are non-blocking for now (plan 31 D1 rev 2). The first full run, n=1, on V4 Flash:
+- workflow tier: 7/9; the subagent-dispatch case passed, so unlike `deepseek/deepseek-chat` in the README table, V4 Flash does dispatch subagents;
+- `architecture-reviewer`: 1/4, with all 3 failures being the 240 s timeout.
+Before making the evals blocking again, raise the CI test timeout and measure with `eval:repeat`.
 
 ## Open Questions
+
+### 2026-10-08 — the `dependency-checker` eval asks for "three zod versions" while its data has two
+**Symptom:** the practice "the three different zod versions across server, client, and reviewer-core are called out explicitly as version drift" fails for answers that call out the drift correctly. The judge's evidence quotes a correct finding (`zod 3.23.8 vs 3.22.4`).
+**Cause:** `REPO_DATA` in the case file lists `zod@3.23.8` (server), `zod@3.22.4` (client) and `zod@3.23.8` (reviewer-core). That is two distinct versions in three packages, and the sentence "three different resolved zod versions" contradicts its own list. An accurate skill cannot satisfy the practice.
+**Rule:** don't tune `SKILL.md` to chase this practice. Either give reviewer-core a third version (e.g. `3.24.1`) in `REPO_DATA`, or reword the practice to "zod drift across the three packages". That is an eval change, so the user decides.
+**Evidence:** `evals/skills/dependency-checker/dependency-checker.cases.ts` (`REPO_DATA` zod lines, case 3 practices) · `cd evals && pnpm run eval:skills dependency-checker` → case 3, 1 FAIL out of 5, all 3 tests passing
 
 ### 2026-10-04 — does `spec-creator` pass 1 over-classify display details as blocking?
 **Symptom:** in the plan 20 smoke test (T1, feature "show the run's total token count in the review header") pass 1 returned B1–B5 as blocking; B3 (in/out split in a tooltip) and B4 (show cost too) are display details that fit an inline `[NEEDS CLARIFICATION: Qn]` in the draft.

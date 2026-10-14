@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import { createDb, type Db } from './client.js';
 import * as t from './schema.js';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, inArray } from 'drizzle-orm';
 import {
   GENERAL_REVIEWER_PROMPT,
   SECURITY_REVIEWER_PROMPT,
@@ -9,6 +9,7 @@ import {
   TEST_QUALITY_REVIEWER_PROMPT,
   API_CONTRACT_REVIEWER_PROMPT,
 } from './seed-prompts.js';
+import { buildAgentSnapshotConfig } from './agent-snapshot.js';
 import { SEED_SKILLS, SEED_AGENT_SKILLS } from './seed-skills.js';
 import { SEED_CONVENTIONS, seedConventionFingerprint } from './seed-conventions.js';
 
@@ -305,6 +306,49 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
       .map((name, i) => ({ agentId: agent.id, skillId: skillIdByName.get(name), order: i }))
       .filter((v): v is { agentId: string; skillId: string; order: number } => !!v.skillId);
     if (values.length > 0) await db.insert(t.agentSkills).values(values);
+  }
+
+  // ---- version snapshot for each seeded agent (its current version) ----
+  // Idempotent: (agent_id, version) is the primary key.
+  // Two queries for all agents instead of three per agent.
+  const seededAgents = await db
+    .select()
+    .from(t.agents)
+    .where(
+      and(
+        eq(t.agents.workspaceId, workspaceId),
+        inArray(
+          t.agents.name,
+          seedAgents.map((a) => a.name),
+        ),
+      ),
+    );
+  const linkRows =
+    seededAgents.length === 0
+      ? []
+      : await db
+          .select({ agentId: t.agentSkills.agentId, id: t.skills.id, name: t.skills.name })
+          .from(t.agentSkills)
+          .innerJoin(t.skills, eq(t.skills.id, t.agentSkills.skillId))
+          .where(
+            inArray(
+              t.agentSkills.agentId,
+              seededAgents.map((a) => a.id),
+            ),
+          )
+          .orderBy(t.agentSkills.order);
+  for (const agent of seededAgents) {
+    const linked = linkRows
+      .filter((r) => r.agentId === agent.id)
+      .map((r) => ({ id: r.id, name: r.name }));
+    await db
+      .insert(t.agentVersions)
+      .values({
+        agentId: agent.id,
+        version: agent.version,
+        configJson: buildAgentSnapshotConfig(agent, linked),
+      })
+      .onConflictDoNothing();
   }
 
   return { workspaceId, userId };

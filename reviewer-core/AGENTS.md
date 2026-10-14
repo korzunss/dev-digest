@@ -3,6 +3,10 @@
 The pure review engine: **diff → prompt → LLM → grounded findings**.
 Package manager: **npm** (not pnpm).
 
+**First step of any task here**, before planning, searching or editing: read
+`insights/gotchas.md` (the rules in force for this package) and name the items that
+bear on the task, or say none do. This is the root `CLAUDE.md` session protocol.
+
 ## Commands
 
 `npm test` (vitest, hermetic) · `npm run typecheck` — **typecheck is the build**;

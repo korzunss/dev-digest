@@ -66,3 +66,4 @@ why, in one or two lines.
 | [05-truncated-chunk-runaways](05-truncated-chunk-runaways.md) | chosen | go (Opt1) | [plan 08](../plans/08-llm-call-reliability.md) Amendment A1 |
 | [06-fewer-false-criticals](06-fewer-false-criticals.md) | chosen | go (Opt2) + Opt1 | [plan 10](../plans/10-agent-precision.md) |
 | [07-workflow-retro](07-workflow-retro.md) | chosen | go (Opt4) + Opt1 | [plan 23](../plans/23-workflow-retro-skill.md) |
+| [08-sdd-repeat-flags](08-sdd-repeat-flags.md) | open | go (Opt3) | — |

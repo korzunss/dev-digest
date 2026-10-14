@@ -2,7 +2,10 @@ import { describe, it, expect, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import type { FindingRecord } from "@devdigest/shared";
+import { QueryClientProvider, QueryClient } from "@tanstack/react-query";
 import messages from "../../../../../../../../messages/en/prReview.json";
+import evalMessages from "../../../../../../../../messages/en/eval.json";
+import { ToastProvider } from "@/lib/toast";
 import { FindingCard } from "./FindingCard";
 
 afterEach(cleanup);
@@ -28,9 +31,13 @@ const FINDING: FindingRecord = {
 
 function renderWithIntl(ui: React.ReactElement) {
   return render(
-    <NextIntlClientProvider locale="en" messages={{ prReview: messages }}>
-      {ui}
-    </NextIntlClientProvider>,
+    <QueryClientProvider client={new QueryClient()}>
+      <ToastProvider>
+        <NextIntlClientProvider locale="en" messages={{ prReview: messages, eval: evalMessages }}>
+          {ui}
+        </NextIntlClientProvider>
+      </ToastProvider>
+    </QueryClientProvider>,
   );
 }
 
@@ -56,5 +63,10 @@ describe("FindingCard (smoke, both themes)", () => {
     expect(onAction).toHaveBeenCalledWith("accept");
     fireEvent.click(screen.getByText("Dismiss"));
     expect(onAction).toHaveBeenCalledWith("dismiss");
+  });
+
+  it("anchors the card at #finding-<id> for the case's source link (AC-77)", () => {
+    const { container } = renderWithIntl(<FindingCard f={FINDING} onAction={() => {}} />);
+    expect(container.querySelector("#finding-f1")).not.toBeNull();
   });
 });

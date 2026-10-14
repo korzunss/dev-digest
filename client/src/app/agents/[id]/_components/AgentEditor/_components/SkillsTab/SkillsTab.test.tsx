@@ -5,7 +5,7 @@ import type { Agent, Skill } from "@devdigest/shared";
 import agentMessages from "../../../../../../../../messages/en/agents.json";
 import skillMessages from "../../../../../../../../messages/en/skills.json";
 import commonMessages from "../../../../../../../../messages/en/common.json";
-import { attachedIds, orderedRows } from "./helpers";
+import { attachedIds, orderedRows, sameOrder } from "./helpers";
 
 const mutate = vi.fn();
 
@@ -90,16 +90,16 @@ afterEach(() => {
   skillsState.isError = false;
 });
 
-function renderTab() {
+function renderTab(props: { onDirtyChange?: (dirty: boolean) => void } = {}) {
   skillsState.data = SKILLS;
   skillsState.isLoading = false;
   skillsState.isError = false;
   return render(
     <NextIntlClientProvider
       locale="en"
-      messages={{ agents: agentMessages, skills: skillMessages }}
+      messages={{ agents: agentMessages, skills: skillMessages, common: commonMessages }}
     >
-      <SkillsTab agent={AGENT} />
+      <SkillsTab agent={AGENT} {...props} />
     </NextIntlClientProvider>,
   );
 }
@@ -119,6 +119,14 @@ describe("SkillsTab helpers", () => {
   });
 });
 
+describe("sameOrder", () => {
+  it("is order-sensitive", () => {
+    expect(sameOrder(["a", "b"], ["a", "b"])).toBe(true);
+    expect(sameOrder(["a", "b"], ["b", "a"])).toBe(false);
+    expect(sameOrder(["a"], ["a", "b"])).toBe(false);
+  });
+});
+
 describe("SkillsTab", () => {
   it("lists every workspace skill with the attached ones first", () => {
     renderTab();
@@ -127,26 +135,78 @@ describe("SkillsTab", () => {
     expect(names).toEqual(["beta-rule", "alpha-rule", "gamma-rule"]);
   });
 
-  it("attaching posts the WHOLE ordered id list, with the new one last", () => {
-    renderTab();
+  it("stages edits without writing anything, then Save posts the WHOLE ordered list once", () => {
+    const onDirtyChange = vi.fn();
+    renderTab({ onDirtyChange });
+    expect(screen.queryByText(agentMessages.skills.unsaved)).not.toBeInTheDocument();
+
     // Checkboxes follow row order: beta (on), alpha (on), gamma (off).
     fireEvent.click(screen.getAllByRole("checkbox")[2]!);
-    expect(mutate).toHaveBeenCalledWith({
+    expect(mutate).not.toHaveBeenCalled();
+    expect(onDirtyChange).toHaveBeenLastCalledWith(true);
+    expect(screen.getByText(agentMessages.skills.unsaved)).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(agentMessages.skills.note), {
+      target: { value: " add gamma " },
+    });
+    fireEvent.click(screen.getByRole("button", { name: agentMessages.skills.save }));
+    expect(mutate).toHaveBeenCalledTimes(1);
+    expect(mutate.mock.calls[0]![0]).toEqual({
       agentId: "ag1",
       skillIds: ["sk2", "sk1", "sk3"],
+      message: "add gamma",
     });
   });
 
   it("detaching posts the remaining ids in their existing order", () => {
     renderTab();
     fireEvent.click(screen.getAllByRole("checkbox")[0]!);
-    expect(mutate).toHaveBeenCalledWith({ agentId: "ag1", skillIds: ["sk1"] });
+    fireEvent.click(screen.getByRole("button", { name: agentMessages.skills.save }));
+    expect(mutate.mock.calls[0]![0]).toEqual({ agentId: "ag1", skillIds: ["sk1"] });
   });
 
-  it("the arrow keys reorder — the handle is not pointer-only", () => {
+  it("the arrow keys reorder (staged) — the handle is not pointer-only", () => {
     renderTab();
     fireEvent.keyDown(screen.getByLabelText("Reorder alpha-rule"), { key: "ArrowUp" });
-    expect(mutate).toHaveBeenCalledWith({ agentId: "ag1", skillIds: ["sk1", "sk2"] });
+    expect(mutate).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: agentMessages.skills.save }));
+    expect(mutate.mock.calls[0]![0]).toEqual({ agentId: "ag1", skillIds: ["sk1", "sk2"] });
+  });
+
+  it("Cancel drops the staged edits; reverting by hand also clears the dirty state", () => {
+    const onDirtyChange = vi.fn();
+    renderTab({ onDirtyChange });
+    fireEvent.click(screen.getAllByRole("checkbox")[0]!);
+    fireEvent.click(screen.getByRole("button", { name: agentMessages.skills.cancel }));
+    expect(onDirtyChange).toHaveBeenLastCalledWith(false);
+    expect(screen.queryByText(agentMessages.skills.unsaved)).not.toBeInTheDocument();
+    expect(screen.getByText("2 of 3 enabled")).toBeInTheDocument();
+
+    // Toggle off and on again: the order matches the stored list, so nothing to save.
+    fireEvent.click(screen.getAllByRole("checkbox")[0]!);
+    fireEvent.click(screen.getAllByRole("checkbox")[2]!);
+    expect(screen.getByText(agentMessages.skills.unsaved)).toBeInTheDocument();
+  });
+
+  it("disables Save for a note over the limit and keeps the staged edits", () => {
+    renderTab();
+    fireEvent.click(screen.getAllByRole("checkbox")[2]!);
+    fireEvent.change(screen.getByLabelText(agentMessages.skills.note), {
+      target: { value: "x".repeat(501) },
+    });
+    expect(screen.getByRole("alert")).toHaveTextContent("max 500");
+    expect(screen.getByRole("button", { name: agentMessages.skills.save })).toBeDisabled();
+    expect(screen.getByText("3 of 3 enabled")).toBeInTheDocument();
+  });
+
+  it("measures the note after trimming, as the save sends it trimmed", () => {
+    renderTab();
+    fireEvent.click(screen.getAllByRole("checkbox")[2]!);
+    fireEvent.change(screen.getByLabelText(agentMessages.skills.note), {
+      target: { value: `${"x".repeat(500)}   ` },
+    });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: agentMessages.skills.save })).toBeEnabled();
   });
 
   it("does not offer reordering for a skill that is not attached", () => {

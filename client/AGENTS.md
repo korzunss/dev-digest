@@ -2,6 +2,10 @@
 
 Next.js 15 App Router studio for DevDigest. Package manager: **pnpm**.
 
+**First step of any task here**, before planning, searching or editing: read
+`insights/gotchas.md` (the rules in force for this package) and name the items that
+bear on the task, or say none do. This is the root `CLAUDE.md` session protocol.
+
 ## Commands
 
 `pnpm dev` (:3000) · `pnpm build` · `pnpm test` (vitest + jsdom) · `pnpm typecheck`

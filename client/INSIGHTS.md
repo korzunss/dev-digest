@@ -78,6 +78,15 @@ if it is hover-only — it sits on the cursor's path to the row and would otherw
 swallow clicks meant for the row underneath.
 **Evidence:** `src/app/repos/[repoId]/pulls/styles.ts` → `tableCard.overflow` ·
 `src/components/findings-preview/FindingsPreview.tsx`
+**Addendum (2026-10-12):** the same holds for full modals. The vendored `Modal`
+(`src/vendor/ui/kit/Modal.tsx:20`, `position: fixed; zIndex: 50`) does **not**
+portal itself, so opened from inside a `FindingCard` its layer stays in the card's
+stacking context and the sibling cards paint over the dialog and its footer
+(plan 34, EvalCaseModal on a PR page). Portal the whole returned tree — nested
+confirm modals included — with `createPortal(tree, document.body)`; jsdom tests
+pass either way unless one asserts the dialog's parent
+(`src/components/eval-case-modal/EvalCaseModal.tsx`, its test "renders the dialog
+under document.body").
 
 ## Tool & Library Notes
 
@@ -161,6 +170,12 @@ client/package.json` before reaching for it out of habit.
 `src/app/repos/[repoId]/pulls/[number]/_components/RunReviewDropdown/RunReviewDropdown.test.tsx`
 
 ## Recurring Errors & Fixes
+
+### 2026-10-12 — a value import from `@devdigest/shared` 500s every page in `next dev`, while typecheck and vitest stay green
+**Symptom:** plan 37: `/agents/:id` returned 500 with `Module not found: Can't resolve './contracts/findings.js'` from `src/vendor/shared/index.ts`; client typecheck and all 652 tests had passed.
+**Cause:** four new files imported the value `AGENT_VERSION_MESSAGE_MAX` from `@devdigest/shared`. Every other client import from it is type-only and erased, so Next had never bundled the vendored index, whose `./contracts/*.js` specifiers webpack does not map to `.ts` (no `extensionAlias` in `next.config.mjs`). tsc and vitest do map them.
+**Rule:** import only types from `@devdigest/shared` in `client/`; mirror a needed constant locally with a comment naming the shared one. `src/lib/shared-type-only-imports.test.ts` fails on a value import. Never edit `vendor/**` to fix it.
+**Evidence:** `client/src/app/agents/[id]/_components/AgentEditor/constants.ts` (`AGENT_NOTE_MAX`) · `client/src/lib/shared-type-only-imports.test.ts` · `client/next.config.mjs` · plan 37 Verification log (BLD1)
 
 ### 2026-09-27 — TS2742 from a `styles.ts` that spreads a separately typed base object
 **Symptom:** `pnpm typecheck` failed on a new colocated `styles.ts` with

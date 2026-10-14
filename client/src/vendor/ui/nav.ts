@@ -43,6 +43,9 @@ export const NAV: NavGroup[] = [
       // deep links can reach is not shipped. Expect the next vendor refresh to
       // drop this line; see client/INSIGHTS.md.
       { key: "conventions", label: "Conventions", icon: "ListChecks", href: "/repos/:repoId/conventions", gKey: "c" },
+      // Signed-off exception (plan 34, spec 011): same seam as above. A vendor refresh drops this
+      // line — see client/INSIGHTS.md.
+      { key: "eval", label: "Eval Dashboard", icon: "Gauge", href: "/eval" },
     ],
   },
 ];

@@ -9,6 +9,8 @@
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
+    "mutation:eval-scoring": "stryker run",
+    "verify:l06": "bash ../scripts/verify-l06.sh",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts",
     "db:seed": "tsx src/db/seed.ts",
@@ -45,6 +47,8 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@stryker-mutator/core": "10.0.0",
+    "@stryker-mutator/vitest-runner": "10.0.0",
     "@testcontainers/postgresql": "^10.16.0",
     "@types/diff": "^8.0.0",
     "@types/node": "^22.10.0",

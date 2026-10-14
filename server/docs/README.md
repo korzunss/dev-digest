@@ -9,6 +9,9 @@ enough to decide whether to open it.
 | [`architecture.md`](./architecture.md) | Placing new code in the right layer, adding an adapter/module, or tracing a request (or a background review run) from route to database |
 | [`../src/modules/repo-intel/README.md`](../src/modules/repo-intel/README.md) | Working on repo indexing, the symbol/import graph, or the repo map fed into review prompts |
 
+| [`eval-pipeline.md`](./eval-pipeline.md) | Changing how eval suite cases are saved, run or scored, adding an `/eval` route, or checking what `pnpm verify:l06` and `pnpm mutation:eval-scoring` prove |
+| [`eval-pipeline-demo.md`](./eval-pipeline-demo.md) | Demoing the eval pipeline with a live model: building a suite from accepted/dismissed findings, comparing prompt versions, promoting one |
+
 _No other server docs yet — add a row above when you add one._
 
 ## What belongs here
