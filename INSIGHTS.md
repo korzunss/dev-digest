@@ -517,6 +517,12 @@ Before making the evals blocking again, raise the CI test timeout and measure wi
 
 ## Open Questions
 
+### 2026-10-14 — vitest 2.1.9 carries 6 audit advisories in every package, and only vitest 5 fixes them (deferred)
+**Symptom:** `npm audit` in `agent-runner/` reports 6 vulnerabilities (3 moderate, 1 high, 2 critical) — `tinypool` prototype-pollution → RCE (GHSA-5gmw-xhrv-c9v3, GHSA-85c8-ppgw-ccpr), `esbuild` dev-server read (GHSA-67mh-4wv8-2f99) via `vite`/`vite-node`, `@vitest/mocker` path traversal (GHSA-82fw-gwwq-j7x9). The only offered fix is `npm audit fix --force` → `vitest@5.0.4`, a breaking change.
+**Cause:** it is not an `agent-runner` problem: `server`, `client`, `reviewer-core`, `mcp-server`, `evals` and `agent-runner` all resolve `vitest` 2.1.9, the last 2.x release, so no in-range bump exists. `e2e` has no vitest. All of it is dev tooling: `ncc` does not bundle vitest into `agent-runner/dist/index.js`, so nothing reaches a target repo's CI.
+**Rule:** planned fix (user, 2026-10-14: "later", no plan yet): upgrade vitest to 5.x in all six packages in one plan via `implementation-planner`, each with its own package manager. Never bump one package alone (e.g. `npm audit fix --force` in `agent-runner/`) — that creates version drift, and npm there would also write a second lock file next to `pnpm-lock.yaml`. Expect config changes: every `vitest.config.ts`, plus `server/vitest.mutation.config.ts` and the `@stryker-mutator/vitest-runner` plugin (`server/stryker.config.json`), which must support vitest 5.
+**Evidence:** `cd agent-runner && npm audit` · `for p in server client reviewer-core mcp-server evals agent-runner; do node -p "require('./$p/node_modules/vitest/package.json').version"; done` → 2.1.9 ×6
+
 ### 2026-10-08 — the `dependency-checker` eval asks for "three zod versions" while its data has two
 **Symptom:** the practice "the three different zod versions across server, client, and reviewer-core are called out explicitly as version drift" fails for answers that call out the drift correctly. The judge's evidence quotes a correct finding (`zod 3.23.8 vs 3.22.4`).
 **Cause:** `REPO_DATA` in the case file lists `zod@3.23.8` (server), `zod@3.22.4` (client) and `zod@3.23.8` (reviewer-core). That is two distinct versions in three packages, and the sentence "three different resolved zod versions" contradicts its own list. An accurate skill cannot satisfy the practice.
