@@ -1,6 +1,6 @@
 # DevDigest — repo map
 
-Local-first AI pull-request review. Six **standalone** packages, not a workspace:
+Local-first AI pull-request review. Seven **standalone** packages, not a workspace:
 each has its own `package.json` + lockfile; cross-package code is shared through
 tsconfig path aliases, never published modules.
 
@@ -16,6 +16,7 @@ Node ≥22 · TypeScript 5 · vitest everywhere · Docker runs Postgres only.
 | `reviewer-core/`           | pure engine: diff → prompt → LLM → findings | —   |
 | `e2e/`                     | deterministic agent-browser flows          | —    |
 | `mcp-server/`              | local stdio MCP server, thin client over the API | — |
+| `agent-runner/`            | CI runner: reviewer-core bundled by ncc, runs in a target repo's Actions | — |
 | `evals/`                   | harness evals: skills, agents, `CLAUDE.md` workflow | — |
 | `server/src/vendor/shared` | `@devdigest/shared` — Zod contracts        | —    |
 
@@ -42,7 +43,7 @@ and the full table → `evals/README.md` (*Which change → which run*).
 
 ## Conventions (non-default)
 
-- **Package managers differ.** `client/` and `server/` use **pnpm**, as do `mcp-server/` and `evals/`;
+- **Package managers differ.** `client/` and `server/` use **pnpm**, as do `mcp-server/`, `evals/` and `agent-runner/`;
   `reviewer-core/` and `e2e/` use **npm**. Use the one matching the lockfile.
 - **Contracts change in `shared` first** (`server/src/vendor/shared`), then in the
   consumers. `client/src/vendor/shared` is a vendored copy — keep them in sync.
