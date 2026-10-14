@@ -1,10 +1,10 @@
 ---
 name: sdd
 description: "Drives a feature through spec → plan → implement → review → hand-over in the main session, stopping at every user gate and handing over a commit message at the end (never commits). Invoke only on demand via /sdd."
-argument-hint: "<spec path | \"requirements\"> [--designs <paths…> | figma:<url>] [--ref-repo <git url | path>] [--req \"<extra>\"] [--mode single|multi] [--skip-research] [--resume <spec|plan path>]"
+argument-hint: "<spec path | \"requirements\"> [--designs <paths…> | figma:<url>] [--ref-repo <git url | path>] [--req \"<extra>\"] [--mode single|multi] [--skip-research] [--no-retro] [--resume <spec|plan path>]"
 disable-model-invocation: true
 user-invocable: true
-version: "1.0.0"
+version: "1.1.0"
 ---
 
 # /sdd — spec-driven pipeline, end to end
@@ -25,6 +25,7 @@ Input: `$ARGUMENTS`. Per-stage detail (prompts, checks, `--resume` table): [stag
 | `--req "<extra>"` | extra requirements appended to the spec-creator input |
 | `--mode single\|multi` | pre-answers the execution-mode row; a conflict with the mode rule in `docs/plans/README.md` is one AskUserQuestion |
 | `--skip-research` | skips the repo research stage (`research`); default is to ask, default yes |
+| `--no-retro` | the hand-over skips the automatic retro and logs `retro: skipped (--no-retro)`; it applies to this invocation only, so a `--resume` run must pass it again |
 | `--resume <spec\|plan path>` | re-enter: run `sdd.sh state <path>`, show its `because:` line, confirm with the user, jump to the stage it names |
 
 **Entry rule.** Approved spec → `plan-p1`'s stage chain (`research` first unless skipped). Draft spec → a `spec-creator` correction round. Free text → `spec-creator` pass 1. `--resume` → by `sdd.sh state`, never by memory of the conversation.
@@ -57,7 +58,7 @@ One row per stage, in order. Gate = what stops the run for the user (AskUserQues
 | `insights` | main session | none | `engineering-insights` wrap-up | `log` | — |
 | `self-review` | main session | none | `/pr-self-review` result | `log` | — |
 | `metrics` | main session | none | usage rows and flags (no model call) | `usage-scan`, `flags`, `cost`, `log` | — |
-| `handover` | main session | none | final message (below) | — | — |
+| `handover` | main session | none | auto retro (when flagged), then the final message (below) | `log` | — |
 
 Checkpoint labels: `spec-approved`, `plan-approved`, `wave-<n>`, `review-<i>` — all via `sdd.sh checkpoint <NN> <label>`, `NN` is the plan number.
 
@@ -73,8 +74,8 @@ Checkpoint labels: `spec-approved`, `plan-approved`, `wave-<n>`, `review-<i>` �
 
 ## 4. Hand-over
 
-The final message gives: a commit message (Conventional Commits, in the style of `git log`), a PR title and body, the plan's `## Follow-ups`, the flags the `metrics` stage printed, the session's required attribution lines, and a note that the local `refs/sdd/*` pins can be dropped with `git update-ref -d <ref>` after the PR. The user runs git. The hand-over also asks (AskUserQuestion, default no) whether to run `/workflow-retro <plan>`; it is never run without a yes.
+The final message gives: a commit message (Conventional Commits, in the style of `git log`), a PR title and body, the plan's `## Follow-ups`, the flags the `metrics` stage printed, the session's required attribution lines, and a note that the local `refs/sdd/*` pins can be dropped with `git update-ref -d <ref>` after the PR. The user runs git. Before the final message, the hand-over runs the retro as `stages.md` → `handover` says (no question). The final message then also names the retro file for the commit and lists its `retro P<n>` follow-ups.
 
 ## 5. Repeated flags
 
-When `flags` printed a `repeat:` line, the hand-over lists it and asks (AskUserQuestion) whether to run `brainstormer` with the flag ids and the plan paths; its brief is saved as `AGENTS.md` says. A `repeat:` line is also named in the retro question of §4, so the user can choose a retro, a `brainstormer` run, both or neither. No `repeat:` line means no model review.
+When `flags` printed a `repeat:` line, the hand-over lists it and asks (AskUserQuestion) whether to run `brainstormer` with the flag ids and the plan paths; its brief is saved as `AGENTS.md` says. The retro (which runs because a repeat implies a flag) lists the `repeat:` lines in its §6. No `repeat:` line means no model review.
