@@ -27,7 +27,7 @@ that package's `AGENTS.md`, which loads automatically when you work in its folde
 ## Harness evals — which one after which change
 
 After editing the harness, run the matching eval from `evals/` (pnpm) before
-handing the work back. CI (`harness-evals.yml`) runs the same suites on the PR.
+handing the work back. CI runs the same suites on the PR, one workflow per tier: `harness-evals-skills.yml`, `harness-evals-agents.yml`, `harness-evals-workflow.yml`, plus `harness-evals-static.yml` for the no-model checks.
 
 | Changed | Run |
 |---|---|

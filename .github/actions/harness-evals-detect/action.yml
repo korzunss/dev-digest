@@ -1,0 +1,97 @@
+# Shared detect step for the harness-evals workflows: API-key check + suite detection for one tier.
+# The caller checks out first with fetch-depth: 0. The API key never enters this action, only the
+# boolean `has-key`. Every input reaches a script through env:, never inline in a run: body.
+name: harness-evals-detect
+description: Check that the OpenRouter key is available and list the suites of one tier a change touches
+
+inputs:
+  tier:
+    description: skills | agents | workflow (CI_DETECT_TIER)
+    required: true
+  has-key:
+    description: 'true when the OPENROUTER_API_KEY secret is set (a boolean, never the key)'
+    required: true
+  event-name:
+    description: github.event_name
+    required: true
+  scope:
+    description: 'all | changed (workflow_dispatch only); empty = all'
+    required: false
+    default: ''
+  base-sha:
+    description: pull request base sha
+    required: false
+    default: ''
+  head-sha:
+    description: pull request head sha
+    required: false
+    default: ''
+  default-branch:
+    description: repository default branch
+    required: false
+    default: ''
+  head-repo:
+    description: pull request head repository (fork-controlled)
+    required: false
+    default: ''
+  base-repo:
+    description: github.repository
+    required: false
+    default: ''
+
+outputs:
+  skills:
+    description: JSON array of skill suites to run
+    value: ${{ steps.changes.outputs.skills }}
+  agents:
+    description: JSON array of agent suites to run
+    value: ${{ steps.changes.outputs.agents }}
+  run_workflow:
+    description: 'true when the workflow tier should run'
+    value: ${{ steps.changes.outputs.run_workflow }}
+  has_key:
+    description: 'true when the API key is available'
+    value: ${{ steps.key.outputs.has_key }}
+
+runs:
+  using: composite
+  steps:
+    - name: Check OPENROUTER_API_KEY
+      id: key
+      shell: bash
+      env:
+        HAS_KEY: ${{ inputs.has-key }}
+        EVENT_NAME: ${{ inputs.event-name }}
+        HEAD_REPO: ${{ inputs.head-repo }}
+        BASE_REPO: ${{ inputs.base-repo }}
+      run: |
+        echo "has_key=$HAS_KEY" >> "$GITHUB_OUTPUT"
+        if [ "$HAS_KEY" != "true" ]; then
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] || { [ "$EVENT_NAME" = "pull_request" ] && [ "$HEAD_REPO" = "$BASE_REPO" ]; }; then
+            echo "::error title=harness evals::OPENROUTER_API_KEY is not set — add it under Settings → Secrets and variables → Actions"
+            exit 1
+          fi
+          echo "::notice::OPENROUTER_API_KEY not available (fork PR) — model evals skipped"
+        fi
+
+    - name: Detect suites
+      id: changes
+      shell: bash
+      env:
+        CI_DETECT_TIER: ${{ inputs.tier }}
+        EVENT_NAME: ${{ inputs.event-name }}
+        SCOPE: ${{ inputs.scope }}
+        BASE_SHA: ${{ inputs.base-sha }}
+        HEAD_SHA: ${{ inputs.head-sha }}
+        DEFAULT_BRANCH: ${{ inputs.default-branch }}
+      run: |
+        if [ "$EVENT_NAME" = "pull_request" ]; then
+          CHANGED_FILES="$(git diff --name-only "$BASE_SHA...$HEAD_SHA")"
+        elif [ "$SCOPE" = "changed" ]; then
+          CHANGED_FILES="$(git diff --name-only "origin/$DEFAULT_BRANCH...HEAD")"
+        else
+          CI_DETECT_ALL=1
+          export CI_DETECT_ALL
+        fi
+        export CHANGED_FILES
+        node evals/scripts/ci-detect.mjs

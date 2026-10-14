@@ -24,7 +24,7 @@ is in the cited plan's Verification log or in root `INSIGHTS.md`.
 - `src/artifacts/load.ts:43` `MUTATING_TOOLS` lacks `MultiEdit` (harmless today: the
   denylist covers it).
 
-## 2. CI (`.github/workflows/harness-evals.yml`)
+## 2. CI (`.github/workflows/harness-evals-*.yml`)
 
 - **Test timeout for the tool tiers.** On DeepSeek V4 Flash via the LiteLLM proxy, agent cases
   hit vitest's 240 s `testTimeout` (`vitest.config.ts:9`); locally on Haiku they take ≤ 90 s.

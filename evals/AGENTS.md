@@ -9,7 +9,7 @@ that bear on the task (see Gotchas).
 
 ## Commands
 
-- No model: `pnpm typecheck` · `pnpm eval:quality` · `pnpm vitest run src/records/stats.test.ts`.
+- No model: `pnpm typecheck` · `pnpm eval:quality` · `pnpm vitest run src/records/stats.test.ts` · `pnpm vitest run src/ci-detect.test.ts`.
 - Model (Claude Code subscription by default; `EVAL_BACKEND=openrouter` → `README.md`):
   `pnpm eval:skills` · `pnpm eval:agents` · `pnpm eval:workflow` · `pnpm eval` (everything).
 - Measuring: `pnpm eval:repeat` · `pnpm eval:delta` · `pnpm eval:compare` ·

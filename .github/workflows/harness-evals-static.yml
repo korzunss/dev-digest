@@ -1,0 +1,37 @@
+# Harness evals, no-model checks: typecheck, skill-quality lint, and unit tests of the eval tooling
+# (stats, ci-detect). No secret, no model, blocking.
+name: harness-evals-static
+
+on:
+  pull_request:
+    paths:
+      - 'evals/**'
+      - '.claude/skills/**'
+      - '.github/actions/harness-evals-setup/**'
+      - '.github/workflows/harness-evals-static.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: harness-evals-static-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  static:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: evals
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/harness-evals-setup
+
+      - run: pnpm typecheck
+
+      - run: pnpm eval:quality
+
+      - run: pnpm exec vitest run src/records/stats.test.ts src/ci-detect.test.ts
