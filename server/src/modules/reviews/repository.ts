@@ -22,6 +22,16 @@ export type ReviewRow = typeof t.reviews.$inferSelect;
 import * as reviewRepo from './repository/review.repo.js';
 import * as runRepo from './repository/run.repo.js';
 import * as pullRepo from './repository/pull.repo.js';
+import * as multiRepo from './repository/multi-agent.repo.js';
+import type {
+  AgentRunWithMultiId,
+  AgentRunWithName,
+  DoneRunSample,
+  MultiAgentRunHeader,
+  ReviewWithFindings,
+  ReviewSummaryRow,
+} from './repository/multi-agent.repo.js';
+export type { AgentRunRow, MultiReviewRow, MultiAgentRunHeader } from './repository/multi-agent.repo.js';
 
 export class ReviewRepository {
   constructor(private db: Db) {}
@@ -135,6 +145,7 @@ export class ReviewRepository {
     prId: string;
     provider: string | null;
     model: string | null;
+    multiAgentRunId?: string | null;
   }): Promise<string> {
     return runRepo.createAgentRun(this.db, values);
   }
@@ -175,5 +186,55 @@ export class ReviewRepository {
 
   getRunTrace(runId: string): Promise<RunTrace | undefined> {
     return runRepo.getRunTrace(this.db, runId);
+  }
+
+  // ---- multi-agent runs ---------------------------------------------------
+
+  insertMultiAgentRun(values: { workspaceId: string; prId: string }): Promise<{ id: string; ranAt: Date }> {
+    return multiRepo.insertMultiAgentRun(this.db, values);
+  }
+
+  deleteMultiAgentRun(workspaceId: string, id: string): Promise<void> {
+    return multiRepo.deleteMultiAgentRun(this.db, workspaceId, id);
+  }
+
+  failRunningRunsOfMultiRun(workspaceId: string, multiAgentRunId: string, error: string): Promise<void> {
+    return multiRepo.failRunningRunsOfMultiRun(this.db, workspaceId, multiAgentRunId, error);
+  }
+
+  getMultiAgentRun(workspaceId: string, id: string): Promise<MultiAgentRunHeader | undefined> {
+    return multiRepo.getMultiAgentRun(this.db, workspaceId, id);
+  }
+
+  agentRunsForMultiRun(multiAgentRunId: string): Promise<AgentRunWithName[]> {
+    return multiRepo.agentRunsForMultiRun(this.db, multiAgentRunId);
+  }
+
+  recentMultiAgentRunsForRepo(
+    workspaceId: string,
+    repoId: string,
+    limit = 10,
+  ): Promise<MultiAgentRunHeader[]> {
+    return multiRepo.recentMultiAgentRunsForRepo(this.db, workspaceId, repoId, limit);
+  }
+
+  latestMultiAgentRunForPull(workspaceId: string, prId: string): Promise<MultiAgentRunHeader | undefined> {
+    return multiRepo.latestMultiAgentRunForPull(this.db, workspaceId, prId);
+  }
+
+  agentRunsForMultiRuns(ids: string[]): Promise<AgentRunWithMultiId[]> {
+    return multiRepo.agentRunsForMultiRuns(this.db, ids);
+  }
+
+  reviewsWithFindingsForRuns(runIds: string[]): Promise<ReviewWithFindings[]> {
+    return multiRepo.reviewsWithFindingsForRuns(this.db, runIds);
+  }
+
+  lastDoneRunsPerAgent(workspaceId: string, limit = 5): Promise<DoneRunSample[]> {
+    return multiRepo.lastDoneRunsPerAgent(this.db, workspaceId, limit);
+  }
+
+  summariesForRuns(runIds: string[]): Promise<ReviewSummaryRow[]> {
+    return multiRepo.summariesForRuns(this.db, runIds);
   }
 }

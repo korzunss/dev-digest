@@ -1,6 +1,6 @@
 # server — current gotchas
 
-Last reconciled with ../INSIGHTS.md: 2026-10-12
+Last reconciled with ../INSIGHTS.md: 2026-10-15
 
 This is a curated index of rules still in force. Full write-ups live in
 [`server/INSIGHTS.md`](../INSIGHTS.md) (append-only log). A rule that stops
@@ -20,6 +20,10 @@ holding is edited or removed here. Items are added or updated by the
 
 ## Tests
 
+- **Prove a child read's workspace filter with a child row stamped with another workspace under a parent of *this* workspace** — a foreign-parent request is stopped by the scoped parent lookup (`getPull` → 404) before the filter runs. — spot it: removing the filter leaves the "foreign PR → 404" test green. — [INSIGHTS: 2026-10-15 — a "foreign PR → 404" test cannot prove a workspace filter that sits behind `getPull`](../INSIGHTS.md#2026-10-15--a-foreign-pr--404-test-cannot-prove-a-workspace-filter-that-sits-behind-getpull)
+- **A deferred/gated LLM stub must reject the PR-intent call at once (`system.includes('You classify the INTENT')`)** — the shared preparation calls it before any agent, so a stub that holds every call hangs the whole run. — spot it: a concurrency `.it` test times out waiting for N pending review calls with 0 pending. — [INSIGHTS: 2026-10-15 — an `.it` test with `DeferredLLMProvider` hangs before any agent starts](../INSIGHTS.md#2026-10-15--an-it-test-with-deferredllmprovider-hangs-before-any-agent-starts)
+- **The seeded PR #482 has no base SHA and no `pr_files` patches, so any review on it runs on an empty diff; a "diff fails" test must leave its PR with no `pr_files`** (`loadDiff` falls back to them). — spot it: a demo/measurement run with 0 findings and ~2.4k input tokens, log line "reviewing an empty diff"; or a diff-failure test whose run ends `done`. — [INSIGHTS: 2026-10-15 — demoing or measuring reviews on the seeded PR #482 reviews an empty diff](../INSIGHTS.md#2026-10-15--demoing-or-measuring-reviews-on-the-seeded-pr-482-reviews-an-empty-diff)
+- **An empty body sent as `application/json` is rejected with 400 by Fastify's parser, not 422 by the schema** — assert it separately in body-negative tests. — spot it: one negative case of an otherwise-422 table returns 400 (`FST_ERR_CTP_EMPTY_JSON_BODY`). — [INSIGHTS: 2026-10-15 — an empty body sent as `application/json` gets 400](../INSIGHTS.md#2026-10-15--an-empty-body-sent-as-applicationjson-gets-400-from-fastify-not-422-from-the-schema)
 - **If every `.it` file shows `skipped` with "Expected Reaper to map exposed port 8080", the run did not happen — rerun with `TESTCONTAINERS_RYUK_DISABLED=true`.** — spot it: `Tests N skipped` plus a `FAIL` on the suite's `describe`, even for long-stable files. — [INSIGHTS: 2026-10-05 — `.it` tests all skip with "Expected Reaper…"](../INSIGHTS.md#2026-10-05--it-tests-all-skip-with-expected-reaper-to-map-exposed-port-8080)
 - **Write import-boundary tests on the TypeScript AST with resolved, `src/`-relative specifiers, a recursive walk, the type-only flag and named-import allow-lists; prove each rule with a planted violation.** — spot it: a boundary test that regex-strips comments or skips `../../`. — [INSIGHTS: 2026-10-05 — an import-boundary test that strips comments with a regex](../INSIGHTS.md#2026-10-05--an-import-boundary-test-that-strips-comments-with-a-regex-and-ignores--passes-real-violations)
 

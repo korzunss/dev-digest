@@ -11,7 +11,7 @@ import { Button, Drawer, LiveLogStream, Tabs, type LogLine } from "@devdigest/ui
 import type { FindingRecord } from "@devdigest/shared";
 import { useRunTrace } from "@/lib/hooks/trace";
 import { useRunEvents } from "@/lib/hooks/reviews";
-import { DRAWER_WIDTH, LOG_HEIGHT, TABS } from "./constants";
+import { DRAWER_WIDTH, LOG_HEIGHT, TABS, TRACE_PENDING_MS } from "./constants";
 import { eventsToLog, traceLog } from "./helpers";
 import { s } from "./styles";
 import { TraceBody } from "./_components/TraceBody";
@@ -25,6 +25,8 @@ export interface RunTraceDrawerProps {
   findings?: FindingRecord[];
   /** When true, the drawer defaults to the live log and streams SSE. */
   running?: boolean;
+  /** When the run ended (ISO). Starts the 30 s wait for its trace; absent -> counted from first sight. */
+  endedAt?: string | null;
   onClose: () => void;
 }
 
@@ -39,14 +41,42 @@ export default function RunTraceDrawer({
   prNumber,
   findings = [],
   running = false,
+  endedAt = null,
   onClose,
 }: RunTraceDrawerProps) {
   const t = useTranslations("runs");
   const [tab, setTab] = React.useState<string>(running ? "log" : "trace");
-  const { events, running: liveRunning } = useRunEvents(running ? [runId] : []);
-  // Load the persisted trace once we're not (or no longer) running.
-  const stillRunning = running && liveRunning;
-  const { data: trace, isLoading } = useRunTrace(runId, !stillRunning);
+  // The SSE stream only feeds the live log. "Ended" is decided by the parent's
+  // `running` prop (+ `endedAt`): a stream that closes on a transient error while
+  // the run is still running must not fetch the trace or flip the status.
+  const { events } = useRunEvents(running ? [runId] : []);
+  const stillRunning = running;
+  // The trace is written shortly AFTER a run ends: wait for it for 30 s from
+  // the end time (or from the first moment we see the run not running).
+  const [firstSeenEnded, setFirstSeenEnded] = React.useState<number | null>(null);
+  React.useEffect(() => {
+    if (!stillRunning && firstSeenEnded === null) setFirstSeenEnded(Date.now());
+  }, [stillRunning, firstSeenEnded]);
+  const endedMs = endedAt ? Date.parse(endedAt) : NaN;
+  const endMs = Number.isNaN(endedMs) ? firstSeenEnded : endedMs;
+  const deadline = stillRunning || endMs === null ? null : endMs + TRACE_PENDING_MS;
+  // The wait is over only for the deadline whose timer fired; a later deadline
+  // (the end time arrived after the timer) is not timed out. Only ever set from
+  // the timer below, never from a clock read during render.
+  const [expiredDeadline, setExpiredDeadline] = React.useState<number | null>(null);
+  React.useEffect(() => {
+    if (deadline === null) return;
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) {
+      setExpiredDeadline(deadline);
+      return;
+    }
+    const id = setTimeout(() => setExpiredDeadline(deadline), remaining);
+    return () => clearTimeout(id);
+  }, [deadline]);
+  const timedOut = deadline !== null && expiredDeadline === deadline;
+  const waiting = !stillRunning && !timedOut;
+  const { data: trace, isLoading } = useRunTrace(runId, !stillRunning, { pollUntil: deadline });
 
   // Copy the model's raw output to the clipboard (footer button), with a brief
   // visual confirmation. Disabled until the trace (and its raw output) loads.
@@ -89,12 +119,12 @@ export default function RunTraceDrawer({
       <Tabs tabs={[...TABS]} value={tab} onChange={setTab} pad="0" />
       <div style={s.tabBody}>
         {tab === "trace" ? (
-          isLoading && !trace ? (
-            <div style={s.emptyNote}>
-              {stillRunning ? t("drawer.tracePending") : t("drawer.loadingTrace")}
-            </div>
-          ) : trace ? (
+          trace ? (
             <TraceBody trace={trace} findings={findings} />
+          ) : stillRunning || (!isLoading && waiting) ? (
+            <div style={s.emptyNote}>{t("drawer.tracePending")}</div>
+          ) : isLoading ? (
+            <div style={s.emptyNote}>{t("drawer.loadingTrace")}</div>
           ) : (
             <div style={s.emptyNote}>{t("drawer.noTrace")}</div>
           )

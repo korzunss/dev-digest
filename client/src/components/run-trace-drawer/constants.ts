@@ -3,6 +3,9 @@
 /** Drawer width (px). */
 export const DRAWER_WIDTH = 720;
 
+/** How long (ms) after a run ends the drawer keeps waiting for its trace. */
+export const TRACE_PENDING_MS = 30_000;
+
 /** Live-log stream viewport height (px). */
 export const LOG_HEIGHT = 420;
 

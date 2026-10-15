@@ -13,15 +13,15 @@ import {
   MonoLink,
   ConfidenceNum,
   Button,
-  Markdown,
   type Severity,
   type Category,
 } from "@devdigest/ui";
 import type { FindingRecord, FindingActionKind } from "@devdigest/shared";
+import { SafeMarkdown } from "@/components/safe-markdown";
 import { severityColor } from "@/lib/severity";
 import { lineLabel } from "./helpers";
-import { forgeBlobUrl, type ForgeRepoRef } from "../../../../../../../lib/forge-urls";
-import { TurnIntoEvalCase } from "../TurnIntoEvalCase";
+import { forgeBlobUrl, type ForgeRepoRef } from "@/lib/forge-urls";
+import { TurnIntoEvalCase } from "@/components/turn-into-eval-case";
 import { s } from "./styles";
 
 export function FindingCard({
@@ -78,13 +78,13 @@ export function FindingCard({
       {expanded && (
         <div style={s.body}>
           <div style={s.prose}>
-            <Markdown>{f.rationale}</Markdown>
+            <SafeMarkdown>{f.rationale}</SafeMarkdown>
           </div>
           {f.suggestion && (
             <div style={s.suggestionWrap}>
               <div style={s.suggestionLabel}>{t("finding.suggestedFix")}</div>
               <div style={s.prose}>
-                <Markdown>{f.suggestion}</Markdown>
+                <SafeMarkdown>{f.suggestion}</SafeMarkdown>
               </div>
             </div>
           )}

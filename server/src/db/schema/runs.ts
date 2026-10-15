@@ -9,6 +9,7 @@ import {
   doublePrecision,
   primaryKey,
 } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 import { workspaces } from './core';
 import { agents } from './agents';
 import { skills } from './skills';
@@ -45,6 +46,12 @@ export const agentRuns = pgTable('agent_runs', {
   score: integer('score'),
   /** Findings that tripped the agent's gate (severity ≥ ciFailOn). */
   blockers: integer('blockers'),
+  /** The multi-agent review this run belongs to; null for a single-agent run. */
+  multiAgentRunId: uuid('multi_agent_run_id').references(() => multiAgentRuns.id, {
+    onDelete: 'set null',
+  }),
+  /** When the run reached a terminal state; null while running (and for older runs). */
+  finishedAt: timestamp('finished_at', { withTimezone: true }),
 }, (t) => ({
   // Every read of this table is "the runs of these PRs": the PR timeline, the
   // in-flight check, and the PR list's cost rollup. Postgres does not index a
@@ -53,6 +60,13 @@ export const agentRuns = pgTable('agent_runs', {
   // Skill stats and "this agent's runs" both filter on agent_id, which is a FK
   // and therefore carries no index of its own.
   agentIdx: index('agent_runs_agent_idx').on(t.agentId),
+  // "The columns of this multi-agent run" is a read over a FK column.
+  multiAgentRunIdx: index('agent_runs_multi_agent_run_idx').on(t.multiAgentRunId),
+  // `lastDoneRunsPerAgent` ranks each agent's newest finished runs: a partial
+  // index on the done rows serves its partition-by-agent / order-by-ran_at scan.
+  doneAgentRanIdx: index('agent_runs_done_agent_ran_idx')
+    .on(t.agentId, t.ranAt.desc())
+    .where(sql`${t.status} = 'done'`),
 }));
 
 /**
@@ -97,4 +111,8 @@ export const multiAgentRuns = pgTable('multi_agent_runs', {
     .notNull()
     .references(() => pullRequests.id, { onDelete: 'cascade' }),
   ranAt: timestamp('ran_at', { withTimezone: true }).defaultNow().notNull(),
-});
+}, (t) => ({
+  // "Latest run of this PR" and "recent runs of this repo" (via the PR join)
+  // both read by pr_id, a FK, which Postgres does not index on its own.
+  prRanIdx: index('multi_agent_runs_pr_ran_idx').on(t.prId, t.ranAt),
+}));

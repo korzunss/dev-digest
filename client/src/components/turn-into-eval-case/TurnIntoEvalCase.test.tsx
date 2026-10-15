@@ -8,7 +8,7 @@ import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/re
 import { NextIntlClientProvider } from "next-intl";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { FindingRecord } from "@devdigest/shared";
-import evalMessages from "../../../../../../../../messages/en/eval.json";
+import evalMessages from "../../../messages/en/eval.json";
 
 const get = vi.fn();
 vi.mock("@/lib/api", async (importActual) => ({

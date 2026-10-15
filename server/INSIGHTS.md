@@ -25,6 +25,18 @@ the section guide and the promotion rule (a standing rule becomes one line under
 
 ## What Doesn't Work
 
+### 2026-10-15 — a "foreign PR → 404" test cannot prove a workspace filter that sits behind `getPull`
+**Symptom:** dropping the `workspace_id` condition from `latestMultiAgentRunForPull` left every existing test green, including "foreign PR → 404".
+**Cause:** the route resolves the PR through the workspace-scoped `getPull` first and answers 404 there, so the query's own filter is never reached by a foreign-PR request.
+**Rule:** to prove a child read's workspace filter, insert a child row stamped with another workspace that points at a parent of *this* workspace, and assert it is not returned.
+**Evidence:** `server/test/multi-agent-recent.it.test.ts` › "does not return a run stamped with another workspace for this workspace's PR" · `docs/plans/assets/40-multi-agent-review/test-report-uf.md` (Proof)
+
+### 2026-10-15 — demoing or measuring reviews on the seeded PR #482 reviews an empty diff
+**Symptom:** a multi-agent run on the seed's `acme/payments-api` #482 finishes in ~4 s with 0 findings and ~2.4k input tokens per agent; the run log says "no base SHA, no PR file patches, and the legacy branch diff failed — reviewing an empty diff".
+**Cause:** `seed.ts` inserts #482 with no `base_sha` and no `pr_files` patches, and the repo has no clone, so `loadDiff` exhausts its chain (git → `pr_files` → legacy branch) and returns an empty diff instead of failing (`diff-loader.ts:87,99`). The converse also holds: while a PR has `pr_files` patches, a failing `diffCommits` still ends `done` via the `pr_files` fallback.
+**Rule:** demo or measure reviews on a synced PR with a base SHA and patches (pick one with `pr_files` rows and past findings); a test of the "diff fails" path must leave the PR with no `pr_files`.
+**Evidence:** `server/src/modules/reviews/diff-loader.ts:87,99` · plan 40 Verification log (multi-runs `3746b3c1-…`, `bc926137-…`) · `server/test/multi-agent-run.it.test.ts` (diff-failure case)
+
 ### 2026-10-12 — an id-less, bodyless POST that spends money is reachable from any web page, despite CORS
 **Symptom:** plan 34 review (SF1): `POST /eval/run-all` took no path id and no body; `fetch('http://localhost:3001/eval/run-all',{method:'POST',mode:'no-cors'})` from any visited page is a "simple" request, gets no preflight, and starts a paid suite run for every enabled agent. CORS (`app.ts`, `origin: config.webOrigin`) only stops the page from *reading* the response.
 **Cause:** the other paid POSTs (`/eval-cases/:id/runs`, `/agents/:id/eval-runs`, `/eval-runs/:id/promote`) are safe only because their path needs a server-issued UUID a cross-origin page cannot read; a route with neither an id nor an object body has no barrier at all.
@@ -214,6 +226,12 @@ foreign key POINTS AT"
 
 ## Tool & Library Notes
 
+### 2026-10-15 — an empty body sent as `application/json` gets 400 from Fastify, not 422 from the schema
+**Symptom:** a body-negatives test expecting 422 for every bad body fails on one case: `''` with `content-type: application/json` returns 400.
+**Cause:** Fastify's JSON parser rejects an empty JSON body (`FST_ERR_CTP_EMPTY_JSON_BODY`) before `fastify-type-provider-zod` validates; every other malformed body reaches the schema and gets 422. No row is created either way.
+**Rule:** in route negative tests, assert 400 for the empty-JSON-body case and 422 for the rest.
+**Evidence:** `server/test/multi-agent-boundaries.it.test.ts` › "rejects an invalid body with 422…" (plan 40)
+
 ### 2026-10-12 — an optional POST body declared `.optional()` rejects the bodyless request with 422
 **Symptom:** plan 35 G3: `POST /eval-cases/:id/runs` got `body: EvalCaseRunBody.optional()` so the existing bodyless agent single run kept working; the bodyless call returned 422 `Expected object, received null`. Caught by `eval-pipeline-skill-runs.it.test.ts`.
 **Cause:** with `fastify-type-provider-zod` an absent request body reaches the body schema as `null`, not `undefined`, and `.optional()` accepts only `undefined`.
@@ -363,6 +381,12 @@ list-endpoint test that several PRs were exercised — one was.
 rollup test inserts PR #999 for exactly this reason
 
 ## Recurring Errors & Fixes
+
+### 2026-10-15 — an `.it` test with `DeferredLLMProvider` hangs before any agent starts
+**Symptom:** a concurrency `.it` test that waits for "N pending review calls" times out with zero pending calls, although the agents are queued.
+**Cause:** the executor's shared preparation resolves the PR intent with an LLM call first (`reviewer-core/src/intent/classify.ts:31`), and that call also lands on the deferred stub registered under every provider id — so the preparation never finishes and no agent call is ever made.
+**Rule:** in a deferred/gated provider, reject the intent call by its system prompt (`system.includes('You classify the INTENT')`) right away; intent failure is non-fatal and never fails a run.
+**Evidence:** `server/test/review-concurrency.it.test.ts:44`, `server/test/multi-agent-run.it.test.ts:45` (plan 40)
 
 ### 2026-09-26 — `.it` tests read the developer's real secrets and make live LLM calls
 **Symptom:** after spec 006 added intent classification to review pre-work,

@@ -4,9 +4,49 @@
     "trifecta": "trifecta"
   },
   "column": {
+    "deletedAgent": "Deleted agent",
+    "status": {
+      "running": "running",
+      "done": "done",
+      "failed": "failed",
+      "cancelled": "cancelled"
+    },
     "noFindings": "No findings.",
     "findingsCount": "{count, plural, one {# finding} other {# findings}}"
   },
+  "configure": {
+    "crumb": "Configure run",
+    "title": "Run a Multi-Agent Review",
+    "subtitle": "Pick a pull request and choose which agents to fan out — they run in parallel and you compare their findings side by side.",
+    "startFailed": "Could not start the multi-agent review. Try again.",
+    "step1": "Pull request",
+    "step2": "Agents to run",
+    "selectPrPlaceholder": "Select a pull request…",
+    "pickPrFirst": "Pick a pull request first",
+    "pickPrFirstBody": "Choose which PR to review above, then select the agents to run on it.",
+    "selectAll": "Select all",
+    "noEstimate": "no estimate yet",
+    "aggregate": "≈ {duration}s · {cost} · parallel fan-out",
+    "run": "Run multi-agent review ({count})",
+    "noAgents": {
+      "title": "No agents yet",
+      "body": "Create an agent to run a multi-agent review.",
+      "cta": "Go to Agents"
+    }
+  },
+  "recent": {
+    "title": "Recent runs",
+    "empty": "No multi-agent runs yet — runs you start appear here.",
+    "agentsCount": "{count} agents",
+    "latestFor": "Latest run for #{number}"
+  },
+  "overallStatus": {
+    "running": "running",
+    "done": "done",
+    "partially_failed": "partially failed",
+    "failed": "failed"
+  },
+  "alsoFlaggedBy": "also flagged by {agents}",
   "conflicts": {
     "title": "Where agents disagree",
     "onlyConflicts": "Show only conflicts",
@@ -125,7 +165,12 @@
     },
     "runAll": "Run all agents",
     "running": "Running…",
-    "meta": "{count} agents · fan-out via p-queue · {duration}s total · {cost}",
+    "meta": "{count} agents · parallel fan-out · {duration}s total · {cost}",
+    "metaRunning": "{count} agents · parallel fan-out · running… · {cost}",
+    "selectedAgents": "{count} selected agents · parallel",
+    "configureRun": "Configure run",
+    "costPartial": "partial — some agents report no cost",
+    "notFound": "This multi-agent run was not found.",
     "noAgents": {
       "title": "Enable agents to run reviews",
       "body": "Multi-agent review runs the PR through every enabled agent in parallel. You have no agents enabled yet.",
