@@ -784,6 +784,15 @@ The spec wins where it differs (no Learn/Reply, bare "did not flag", "parallel f
 - **DG8 — Nav placement (3.png).** "Multi-Agent Review" sits in a GLOBAL group (below SKILLS LAB) with the users icon, not in WORKSPACE with "Layers". Only this item is added to GLOBAL (Memory / Agent Performance / CI Runs stay out of scope).
 - Results page (5.png/6.png) not yet checked live — needs a run; checked during S20.
 
+## Follow-ups
+- 2026-10-15 retro P1: pass mockup file paths to spec-creator and every UI implementer group; screenshot-compare before the verifier — .claude/skills/sdd/SKILL.md
+- 2026-10-15 retro P2: a step naming a spec field quotes the AC id + definition in its text and Done-when — .claude/agents/implementation-planner.md
+- 2026-10-15 retro P3: run the pipeline through /sdd (or log agent: lines) so sdd.sh cost attributes runs — .claude/skills/sdd/SKILL.md
+- 2026-10-15 retro P4: run /pr-self-review before the final plan-verifier pass, not after done — .claude/skills/sdd/stages.md
+- 2026-10-15 retro P5: test-writer mocks a hook from its real initial value — .claude/agents/test-writer.md
+- 2026-10-15 retro P6: hand-back check that every skill named on a step has a Skills row with that step — sdd.sh handback-check
+- 2026-10-15 retro P7: workflow-retro gains session overlap, conflict count, human review time and a docs/retros/ledger.md append — new plan
+
 ## Verification log
 - 2026-10-15 — main session: full server `.it` suite `TESTCONTAINERS_RYUK_DISABLED=true pnpm exec vitest run .it.test` → 39 files, 336 passed (after G8 + test-writer, before the DG fix pass; the DG pass is client-only).
 - 2026-10-15 — test-writer: `server/test/multi-agent-boundaries.it.test.ts` (5, tenancy 404s, AC-21 body negatives, duplicates, estimates on real rows; break-checked twice) and +1 contract unit test. Empty JSON body → 400 from Fastify's parser (not 422), no rows created.
@@ -833,6 +842,16 @@ On PR #12 the disagree entry `routes.ts:14` "Missing authentication/authorizatio
 - 2026-10-15 — fix mode GR1 (implementer): `MULTI_AGENT_WIDE_FINDING_MAX_LINES = 10` in `reviews/constants.ts`; `groupFindings` groups a finding spanning > 10 lines by `[start_line, start_line]` (new `groupEndOf`), output keeps the full range; T2 +2 tests (14–53 vs 18/24 not grouped, 14 still joins, `end_line` stays 53; a 10-line 14–23 finding still groups with 23). Server typecheck clean, unit 71 files / 954 passed. Skills: `onion-architecture` (preload), `typescript-expert` (on demand) — GR1.
 - 2026-10-15 — R4 evidence (the user did not accept the one-line log): test-writer re-ran break checks and its Test Report with a *Proof* table is saved verbatim at `docs/plans/assets/40-multi-agent-review/test-report-proof.md` — T4/boundaries (workspace filter, `status='done'` filter, and the never-proved `AgentsRepository.list` scoping), T2 (GR1 wide-finding rule), T3 (concurrency 1 and 100), T7 (polling; 30 s fallback). All subjects restored (shasums match; `git diff -- server/src/modules/agents/repository.ts` empty). Caveat: the T7 30 s fallback is doubly implemented (timer + render-time deadline), so only removing both mechanisms fails the test.
 - 2026-10-15 — plan-verifier delta: **complete** — 191/191 met, nothing to sign off (R3 rebuilt independently from the planner transcript; R4 Proof table; GR1/AC-43). Plan → `done`, spec 013 → `implemented` (main session).
+- 2026-10-15 retro-fact: pipeline run by hand in the main session, not via /sdd — no agent:/stage log lines; sdd.sh usage-scan: 45 subagents of session 26541aca all unmatched, sdd.sh cost: no rows for plan 40
+- 2026-10-15 retro-fact: researcher stopped at its 40-turn limit with a partial result and was resumed once to write the report
+- 2026-10-15 retro-fact: UI implementers of G5/G6 were not given the user's mockup image paths (G6 handoff: built from AC text only) → main-session design review DG1–DG8 and one fix round
+- 2026-10-15 retro-fact: post-verification reopenings: option C (GR1, spec draft→approved) after live data; UF1/UF2 from the user's live check reopened spec and plan done→draft and added G9–G10 (7 steps, 10 ACs)
+- 2026-10-15 retro-fact: verifier AC15C gap: plan step S25 said 'time' while spec AC-15c meant AC-31 wall-clock; implementer and its test both rendered the age
+- 2026-10-15 retro-fact: /pr-self-review after done produced 3 fix rounds (14+4, 4+2, 5 gaps); round-1 PR-C9 introduced regression PR2-H1 that tests missed (useRunEvents mocked live from first render), caught by the round-2 re-review, not by plan-verifier
+- 2026-10-15 retro-fact: user declined sign-off for R3/R4: R3 baseline rebuilt from the planner's transcript; test-writer proof runs ×3 (UF, fix rounds) saved under assets
+- 2026-10-15 retro-fact: eval:workflow on A 7/9; the two failing cases fail at the same rate on the base commit (server 1/4 vs 0/3, client 2/4 vs 2/3 passes) — pre-existing flake
+- 2026-10-15 retro-fact: fan-out: A PR #31 merged 12:44:36Z, B PR #32 merged 13:27:27Z, L07 full check green 13:30:00Z; ledger row docs/retros/ledger.md (53.5 M weighted tokens A+B, 20 min human review)
+- 2026-10-15 retro: docs/plans/assets/40-multi-agent-review/workflow-retro.md
 
 ## User review (live check, 2026-10-15)
 Collected from the user's own check of the worktree build; to be applied in one spec-correction round once the user has sent all remarks (the plan and spec 013 reopen then).
