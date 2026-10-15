@@ -16,7 +16,7 @@ Node ≥22 · TypeScript 5 · vitest everywhere · Docker runs Postgres only.
 | `reviewer-core/`           | pure engine: diff → prompt → LLM → findings | —   |
 | `e2e/`                     | deterministic agent-browser flows          | —    |
 | `mcp-server/`              | local stdio MCP server, thin client over the API | — |
-| `agent-runner/`            | CI runner: reviewer-core bundled by ncc, runs in a target repo's Actions | — |
+| `agent-runner/`            | review runner bundled to one `dist/index.js`, exported to users' CI | — |
 | `evals/`                   | harness evals: skills, agents, `CLAUDE.md` workflow | — |
 | `server/src/vendor/shared` | `@devdigest/shared` — Zod contracts        | —    |
 
@@ -43,8 +43,8 @@ and the full table → `evals/README.md` (*Which change → which run*).
 
 ## Conventions (non-default)
 
-- **Package managers differ.** `client/` and `server/` use **pnpm**, as do `mcp-server/`, `evals/` and `agent-runner/`;
-  `reviewer-core/` and `e2e/` use **npm**. Use the one matching the lockfile.
+- **Package managers differ.** `client/` and `server/` use **pnpm**, as do `mcp-server/` and `evals/`;
+  `reviewer-core/`, `e2e/` and `agent-runner/` use **npm**. Use the one matching the lockfile.
 - **Contracts change in `shared` first** (`server/src/vendor/shared`), then in the
   consumers. `client/src/vendor/shared` is a vendored copy — keep them in sync.
 - **`reviewer-core` stays pure** — no db, github, or fs imports. That purity is

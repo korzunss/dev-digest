@@ -202,7 +202,10 @@ export async function reviewsWithFindingsForRuns(
 
 // ---- estimates -------------------------------------------------------------
 
-/** Each agent's newest `limit` finished runs (status 'done') in the workspace. */
+/**
+ * Each agent's newest `limit` finished local runs (status 'done') in the workspace.
+ * CI runs (source 'ci', spec 014 AC-69) stay out of these estimates.
+ */
 export async function lastDoneRunsPerAgent(
   db: Db,
   workspaceId: string,
@@ -224,6 +227,7 @@ export async function lastDoneRunsPerAgent(
       and(
         eq(t.agentRuns.workspaceId, workspaceId),
         eq(t.agentRuns.status, 'done'),
+        eq(t.agentRuns.source, 'local'),
         isNotNull(t.agentRuns.agentId),
       ),
     )

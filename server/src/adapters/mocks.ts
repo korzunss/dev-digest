@@ -11,6 +11,10 @@ import type {
   ForgeClient,
   MergedPrTouching,
   MergedPrLookup,
+  BranchState,
+  CommitAhead,
+  WorkflowRunMeta,
+  RunArtifactMeta,
   ForgeProvider,
   RepoRef,
   PrMeta,
@@ -34,6 +38,7 @@ import type {
   AuthUser,
   AuthWorkspace,
   SecretsProvider,
+  RunnerBundleSource,
   SecretKey,
 } from '@devdigest/shared';
 import { parseUnifiedDiff } from './git/diff-parser.js';
@@ -156,6 +161,47 @@ export interface MockForgeOptions {
   provider?: ForgeProvider;
   /** Merged PRs returned by listMergedPullsTouching. */
   mergedPulls?: MergedPrTouching[];
+  /** State for the Export-to-CI methods; absent → the defaults documented on each method. */
+  ci?: MockForgeCiOptions;
+}
+
+/** The ForgeClient methods the Export-to-CI flow adds (each can be made to throw). */
+export type MockForgeCiMethod =
+  | 'getDefaultBranch'
+  | 'getBranch'
+  | 'listCommitsAhead'
+  | 'deleteBranch'
+  | 'tokenScopes'
+  | 'getPullState'
+  | 'listWorkflowRuns'
+  | 'listRunArtifacts'
+  | 'firstJobUrl'
+  | 'downloadArtifact'
+  | 'commitFiles'
+  | 'openPullRequest';
+
+export interface MockForgeCiOptions {
+  /** Branches by name. Mutated by commitFiles (creates) and deleteBranch (removes). */
+  branches?: Map<string, BranchState>;
+  /** Commits ahead of the default branch, keyed by head branch name. Default: none. */
+  commitsAhead?: Record<string, CommitAhead[]>;
+  /** OAuth scopes; `null` (default) simulates a fine-grained token. */
+  scopes?: string[] | null;
+  /** Default `main`. */
+  defaultBranch?: string;
+  runs?: WorkflowRunMeta[];
+  /** Artifacts by workflow run id. */
+  artifacts?: Record<number, RunArtifactMeta[]>;
+  /** Artifact zip bytes by artifact id; a missing id behaves like an expired artifact (410). */
+  artifactBytes?: Record<number, Uint8Array>;
+  /** Default `null`. */
+  jobUrl?: string | null;
+  /** Pull state by PR number. Default `open`. */
+  pullStates?: Record<number, 'open' | 'merged' | 'closed'>;
+  /** An already-open PR returned by findOpenPr (in addition to PRs opened through the mock). */
+  openPr?: { url: string; number: number };
+  /** Errors thrown by the named method instead of its normal result. */
+  errors?: Partial<Record<MockForgeCiMethod, unknown>>;
 }
 
 export class MockForgeClient implements ForgeClient {
@@ -163,6 +209,8 @@ export class MockForgeClient implements ForgeClient {
   public openedPrs: OpenPrPayload[] = [];
   public committed: CommitFilesPayload[] = [];
   public createdComments: CreateReviewCommentInput[] = [];
+  /** Branch names removed through deleteBranch, in call order. */
+  public deletedBranches: string[] = [];
 
   readonly provider: ForgeProvider;
 
@@ -254,19 +302,105 @@ export class MockForgeClient implements ForgeClient {
     };
   }
 
-  async openPullRequest(_repo: RepoRef, payload: OpenPrPayload): Promise<{ url: string }> {
+  private ciFail(method: MockForgeCiMethod): void {
+    const err = this.opts.ci?.errors?.[method];
+    if (err !== undefined) throw err;
+  }
+
+  async openPullRequest(
+    _repo: RepoRef,
+    payload: OpenPrPayload,
+  ): Promise<{ url: string; number: number }> {
+    this.ciFail('openPullRequest');
     this.openedPrs.push(payload);
-    return { url: 'https://github.com/mock/mock/pull/1' };
+    return { url: 'https://github.com/mock/mock/pull/1', number: 1 };
   }
 
   async commitFiles(_repo: RepoRef, payload: CommitFilesPayload): Promise<{ branch: string }> {
+    this.ciFail('commitFiles');
     this.committed.push(payload);
+    const branches = this.opts.ci?.branches;
+    if (branches) {
+      branches.set(payload.branch, { sha: `mock-commit-${this.committed.length}`, protected: false });
+    }
     return { branch: payload.branch };
   }
 
-  async findOpenPr(_repo: RepoRef, branch: string): Promise<{ url: string } | null> {
+  async findOpenPr(
+    _repo: RepoRef,
+    branch: string,
+  ): Promise<{ url: string; number: number } | null> {
     const pr = this.openedPrs.find((p) => p.head === branch);
-    return pr ? { url: 'https://github.com/mock/mock/pull/1' } : null;
+    if (pr) return { url: 'https://github.com/mock/mock/pull/1', number: 1 };
+    return this.opts.ci?.openPr ?? null;
+  }
+
+  async getDefaultBranch(_repo: RepoRef): Promise<string> {
+    this.ciFail('getDefaultBranch');
+    return this.opts.ci?.defaultBranch ?? 'main';
+  }
+
+  async getBranch(_repo: RepoRef, name: string): Promise<BranchState | null> {
+    this.ciFail('getBranch');
+    return this.opts.ci?.branches?.get(name) ?? null;
+  }
+
+  async listCommitsAhead(
+    _repo: RepoRef,
+    _base: string,
+    head: string,
+  ): Promise<CommitAhead[]> {
+    this.ciFail('listCommitsAhead');
+    return this.opts.ci?.commitsAhead?.[head] ?? [];
+  }
+
+  async deleteBranch(_repo: RepoRef, name: string): Promise<void> {
+    this.ciFail('deleteBranch');
+    this.deletedBranches.push(name);
+    this.opts.ci?.branches?.delete(name);
+  }
+
+  async tokenScopes(): Promise<string[] | null> {
+    this.ciFail('tokenScopes');
+    return this.opts.ci?.scopes ?? null;
+  }
+
+  async getPullState(_repo: RepoRef, n: number): Promise<'open' | 'merged' | 'closed'> {
+    this.ciFail('getPullState');
+    return this.opts.ci?.pullStates?.[n] ?? 'open';
+  }
+
+  async listWorkflowRuns(
+    _repo: RepoRef,
+    _workflowFile: string,
+    opts: { perPage: number; page?: number; createdSince?: string },
+  ): Promise<WorkflowRunMeta[]> {
+    this.ciFail('listWorkflowRuns');
+    const page = opts.page ?? 1;
+    const since = opts.createdSince ? Date.parse(opts.createdSince) : 0;
+    const runs = (this.opts.ci?.runs ?? []).filter((r) => Date.parse(r.created_at) >= since);
+    return runs.slice((page - 1) * opts.perPage, page * opts.perPage);
+  }
+
+  async listRunArtifacts(_repo: RepoRef, runId: number): Promise<RunArtifactMeta[]> {
+    this.ciFail('listRunArtifacts');
+    return this.opts.ci?.artifacts?.[runId] ?? [];
+  }
+
+  async firstJobUrl(_repo: RepoRef, _runId: number, _attempt: number): Promise<string | null> {
+    this.ciFail('firstJobUrl');
+    return this.opts.ci?.jobUrl ?? null;
+  }
+
+  async downloadArtifact(
+    _repo: RepoRef,
+    artifactId: number,
+    _maxBytes: number,
+  ): Promise<Uint8Array> {
+    this.ciFail('downloadArtifact');
+    const bytes = this.opts.ci?.artifactBytes?.[artifactId];
+    if (!bytes) throw Object.assign(new Error('artifact expired'), { status: 410 });
+    return bytes;
   }
 
   async getIssue(_repo: RepoRef, n: number): Promise<IssueMeta> {
@@ -400,5 +534,15 @@ export class MockSecretsProvider implements SecretsProvider {
   constructor(private secrets: Partial<Record<string, string>> = {}) {}
   async get(key: SecretKey): Promise<string | undefined> {
     return this.secrets[key as string];
+  }
+}
+
+/** Serves a fixed agent-runner bundle (header line + body) instead of reading it from disk. */
+export class MockRunnerBundleSource implements RunnerBundleSource {
+  constructor(
+    private text = `// devdigest-agent-runner v1.0.0 sha256:${'a'.repeat(64)}\nconsole.log('runner');\n`,
+  ) {}
+  async read(): Promise<string> {
+    return this.text;
   }
 }

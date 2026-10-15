@@ -172,6 +172,84 @@ export interface OpenPrPayload {
   body: string;
 }
 
+/** A single file to write in a commit (path relative to repo root + UTF-8 text). */
+export interface CommitFile {
+  path: string;
+  contents: string;
+}
+
+export interface CommitFilesPayload {
+  /** Branch to create-or-update with the commit (e.g. "devdigest/ci"). */
+  branch: string;
+  /** Base branch to fork from when `branch` does not yet exist (e.g. "main"). */
+  base: string;
+  message: string;
+  files: CommitFile[];
+  /**
+   * Head sha the caller last saw on `branch`. When set and the branch has moved,
+   * the commit is refused (`branch_moved`); `null` means "create the branch fresh".
+   */
+  expectedHeadSha: string | null;
+  /**
+   * Stale-file pruning: after layering `files` on the parent tree, every existing
+   * blob whose path starts with `prefix` (a directory, trailing `/`), ends with
+   * `suffix`, and is not in `files` is deleted in the same commit.
+   */
+  prune?: CommitPruneRule[];
+}
+
+/** One directory + extension whose files not in the commit are removed. */
+export interface CommitPruneRule {
+  /** Directory path with a trailing slash, e.g. `.devdigest/agents/`. Direct children only. */
+  prefix: string;
+  /** File-name suffix, e.g. `.yaml`. */
+  suffix: string;
+}
+
+/** One commit of a branch, as the forge reports it. Author and date are untrusted display text. */
+export interface CommitAhead {
+  sha: string;
+  message: string;
+  /** Author login, else the git author name; null when the forge reports neither. */
+  author?: string | null;
+  /** Author date, ISO 8601. */
+  date?: string | null;
+}
+
+/** A branch as seen on the forge. */
+export interface BranchState {
+  sha: string;
+  protected: boolean;
+}
+
+/** One GitHub Actions workflow run (metadata only). */
+export interface WorkflowRunMeta {
+  id: number;
+  run_attempt: number;
+  head_sha: string;
+  status: string;
+  conclusion: string | null;
+  created_at: string;
+  /** Last change of the run; a re-run (same `created_at`, new attempt) moves it. */
+  updated_at: string;
+  html_url: string;
+  /** Numbers of the PRs the run is associated with. */
+  pr_numbers: number[];
+}
+
+/** One artifact attached to a workflow run. */
+export interface RunArtifactMeta {
+  id: number;
+  name: string;
+  size_in_bytes: number;
+  expired: boolean;
+}
+
+/** Where the studio reads the committed agent-runner bundle from. */
+export interface RunnerBundleSource {
+  read(): Promise<string>;
+}
+
 /** A merged PR that touched some of the queried paths. */
 export interface MergedPrTouching {
   number: number;
@@ -200,7 +278,40 @@ export interface ForgeClient {
     n: number,
     input: CreateReviewCommentInput,
   ): Promise<PrReviewComment>;
-  openPullRequest(repo: RepoRef, payload: OpenPrPayload): Promise<{ url: string }>;
+  openPullRequest(repo: RepoRef, payload: OpenPrPayload): Promise<{ url: string; number: number }>;
+  /**
+   * Commit `files` onto `branch` as ONE atomic commit (Git Data API: blobs →
+   * tree → commit → ref). Creates the branch from `base` if missing, else
+   * fast-forwards it. Never forces; refuses when `expectedHeadSha` is stale.
+   */
+  commitFiles(repo: RepoRef, payload: CommitFilesPayload): Promise<{ branch: string }>;
+  /** The open PR whose head is `branch`, if any (so re-publish reuses it). */
+  findOpenPr(repo: RepoRef, branch: string): Promise<{ url: string; number: number } | null>;
+  /** The repo's default branch name. */
+  getDefaultBranch(repo: RepoRef): Promise<string>;
+  /** The branch's head sha + protection flag, or null when it does not exist. */
+  getBranch(repo: RepoRef, name: string): Promise<BranchState | null>;
+  /** Commits on `head` that are not on `base` (compare API, capped), oldest first. */
+  listCommitsAhead(
+    repo: RepoRef,
+    base: string,
+    head: string,
+  ): Promise<CommitAhead[]>;
+  deleteBranch(repo: RepoRef, name: string): Promise<void>;
+  /** OAuth scopes of the token (classic PAT), or null when the forge reports none. */
+  tokenScopes(): Promise<string[] | null>;
+  getPullState(repo: RepoRef, n: number): Promise<'open' | 'merged' | 'closed'>;
+  /** Newest-first runs of one workflow file; `page` is 1-based, `createdSince` an ISO lower bound. */
+  listWorkflowRuns(
+    repo: RepoRef,
+    workflowFile: string,
+    opts: { perPage: number; page?: number; createdSince?: string },
+  ): Promise<WorkflowRunMeta[]>;
+  listRunArtifacts(repo: RepoRef, runId: number): Promise<RunArtifactMeta[]>;
+  /** URL of the first job of one run attempt, or null when it cannot be resolved. */
+  firstJobUrl(repo: RepoRef, runId: number, attempt: number): Promise<string | null>;
+  /** Download an artifact zip; rejects when it exceeds `maxBytes`. */
+  downloadArtifact(repo: RepoRef, artifactId: number, maxBytes: number): Promise<Uint8Array>;
   getIssue(repo: RepoRef, n: number): Promise<IssueMeta>;
   /** GET /user — for "posting as @user". */
   currentLogin(): Promise<string>;

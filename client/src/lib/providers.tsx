@@ -13,6 +13,13 @@ import { RepoProvider } from "./repo-context";
 import { ToastProvider, notify } from "./toast";
 import { ApiError } from "./api";
 
+/** A mutation whose component renders these error codes inline opts out of the global toast via `meta.inlineErrorCodes`. */
+export function shouldToastMutationError(err: unknown, meta: Record<string, unknown> | undefined): boolean {
+  const codes = meta?.inlineErrorCodes;
+  if (err instanceof ApiError && err.code && Array.isArray(codes) && codes.includes(err.code)) return false;
+  return true;
+}
+
 function errorMessage(e: unknown): string {
   if (e instanceof Error) return e.message;
   return "Something went wrong";
@@ -39,7 +46,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
           },
         }),
         mutationCache: new MutationCache({
-          onError: (err) => notify.error(errorMessage(err)),
+          onError: (err, _vars, _ctx, mutation) => {
+            if (shouldToastMutationError(err, mutation.meta)) notify.error(errorMessage(err));
+          },
         }),
       })
   );

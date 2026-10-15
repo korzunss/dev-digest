@@ -643,7 +643,7 @@ describe('GitLabRestClient — writes', () => {
       ],
     });
     const found = await new GitLabRestClient('tok').findOpenPr(REPO, 'devdigest/ci');
-    expect(found).toEqual({ url: 'https://gitlab.com/acme/api/-/merge_requests/3' });
+    expect(found).toEqual({ url: 'https://gitlab.com/acme/api/-/merge_requests/3', number: 0 });
     expect(calls[0]!.url).toContain('state=opened');
     expect(calls[0]!.url).toContain('source_branch=devdigest%2Fci');
 

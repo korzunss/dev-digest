@@ -4,6 +4,7 @@ import type {
   ForgeClient,
   ForgeProvider,
   GitClient,
+  RunnerBundleSource,
   CodeIndex,
   Embedder,
   LLMProvider,
@@ -20,6 +21,7 @@ import { LocalNoAuthProvider } from '../adapters/auth/local.js';
 import { OctokitGitHubClient } from '../adapters/github/octokit.js';
 import { GitLabRestClient } from '../adapters/gitlab/rest.js';
 import { forgeCacheKey, forgeTokenKeys } from './forge-resolve.js';
+import { FsRunnerBundleSource } from '../adapters/runner-bundle/fs.js';
 import { SimpleGitClient } from '../adapters/git/simple-git.js';
 import { RipgrepCodeIndex } from '../adapters/codeindex/ripgrep.js';
 import { OpenAIProvider } from '../adapters/llm/openai.js';
@@ -48,6 +50,8 @@ import { EvalPipelineService } from '../modules/eval/pipeline-service.js';
 import { EvalPipelineRepository } from '../modules/eval/repository/pipeline.repo.js';
 import { EvalSkillSuiteService } from '../modules/eval/skill-suite-service.js';
 import { EVAL_CASE_CALL_DEADLINE_MS } from '../modules/eval/constants.js';
+import { CiService } from '../modules/ci/service.js';
+import { CiRepository } from '../modules/ci/repository.js';
 import { ReviewService } from '../modules/reviews/service.js';
 import { AgentsService } from '../modules/agents/service.js';
 import {
@@ -88,6 +92,8 @@ export interface ContainerOverrides {
   /** repo-intel T3 adapters — only the indexer pipeline reads these. */
   depgraph?: DepGraph;
   tokenizer?: Tokenizer;
+  /** Export-to-CI: where the committed agent-runner bundle is read from. */
+  runnerBundle?: RunnerBundleSource;
 }
 
 export class Container {
@@ -119,6 +125,7 @@ export class Container {
   private _smartDiff?: SmartDiffService;
   private _blast?: BlastService;
   private _brief?: BriefService;
+  private _ci?: CiService;
   private _context?: ContextService;
   private _evalPipeline?: EvalPipelineService;
   private _evalSkillSuite?: EvalSkillSuiteService;
@@ -235,6 +242,20 @@ export class Container {
       llm: (id) => this.llm(id),
       tokenizer: this.tokenizer,
       resolveModel: (workspaceId, id) => resolveFeatureModel(this, workspaceId, id),
+    }));
+  }
+
+  /**
+   * Export-to-CI (plan 41). Agents come from the shared agents repo, the forge
+   * per repo, and the runner bundle from the fs adapter (path from config).
+   * One instance per app: it holds the refresh in-flight guard.
+   */
+  get ci(): CiService {
+    return (this._ci ??= new CiService({
+      repo: new CiRepository(this.db),
+      agents: this.agentsRepo,
+      forge: (ref) => this.forge(ref),
+      bundle: this.overrides.runnerBundle ?? new FsRunnerBundleSource(this.config.agentRunnerBundle),
     }));
   }
 
