@@ -1,4 +1,4 @@
-// devdigest-agent-runner v0.1.0 sha256:a8b5fa9d67ffd0eb969598b333bf623615de67a49123003846d3cfe90a522ede
+// devdigest-agent-runner v0.1.0 sha256:257484b39502a395bd336cb9e5b94b7622462cd704a993d8829a0069bc1ac553
 import { createRequire as __cr } from 'node:module'; const require = __cr(import.meta.url);
 var __create = Object.create;
 var __defProp = Object.defineProperty;
@@ -22396,7 +22396,9 @@ var RunSummary = import_zod2.z.object({
   // book doesn't know, or a run that predates cost persistence. Never 0 for
   // "unknown": 0 means a genuinely free model.
   cost_usd: import_zod2.z.number().nullable(),
-  cost_source: CostSource.nullable()
+  cost_source: CostSource.nullable(),
+  // The multi-agent run this run belongs to; null for a single-agent run.
+  multi_agent_run_id: import_zod2.z.string().nullable()
 });
 
 // ../server/src/vendor/shared/contracts/brief.ts
@@ -23805,53 +23807,93 @@ var EvalSkillRunAgentsPreview = EvalRunAllPreview.extend({
 // ../server/src/vendor/shared/contracts/observability.ts
 init_define_DEPS();
 var import_zod10 = __toESM(require_zod(), 1);
-var AgentColumnFinding = import_zod10.z.object({
-  id: import_zod10.z.string(),
-  severity: Severity,
-  category: import_zod10.z.string(),
-  title: import_zod10.z.string(),
-  file: import_zod10.z.string(),
-  start_line: import_zod10.z.number().int(),
-  kind: import_zod10.z.string().nullish()
+var MultiAgentRunRequest = import_zod10.z.object({
+  agent_ids: import_zod10.z.array(import_zod10.z.string().uuid()).min(1).max(20)
+});
+var AgentColumnStatus = import_zod10.z.enum(["running", "done", "failed", "cancelled"]);
+var AgentColumnFinding = FindingRecord.extend({
+  group_id: import_zod10.z.string().nullable(),
+  also_flagged_by: import_zod10.z.array(import_zod10.z.string())
 });
 var AgentColumn = import_zod10.z.object({
   run_id: import_zod10.z.string(),
-  agent_id: import_zod10.z.string(),
-  agent_name: import_zod10.z.string(),
+  agent_id: import_zod10.z.string().nullable(),
+  agent_name: import_zod10.z.string().nullable(),
+  agent_deleted: import_zod10.z.boolean(),
   provider: import_zod10.z.string().nullable(),
   model: import_zod10.z.string().nullable(),
-  status: import_zod10.z.enum(["done", "failed", "running"]),
+  status: AgentColumnStatus,
+  error: import_zod10.z.string().nullable(),
   verdict: import_zod10.z.string().nullable(),
   score: import_zod10.z.number().int().nullable(),
   summary: import_zod10.z.string().nullable(),
   duration_ms: import_zod10.z.number().int().nullable(),
   cost_usd: import_zod10.z.number().nullable(),
+  cost_source: CostSource.nullable(),
+  tokens_in: import_zod10.z.number().int().nullable(),
+  tokens_out: import_zod10.z.number().int().nullable(),
+  grounding: import_zod10.z.string().nullable(),
+  ran_at: import_zod10.z.string(),
+  finished_at: import_zod10.z.string().nullable(),
   findings: import_zod10.z.array(AgentColumnFinding)
 });
 var ConflictTake = import_zod10.z.object({
-  agent_id: import_zod10.z.string(),
-  persona: import_zod10.z.string(),
-  /** Severity if the agent flagged it, or 'ignored' when it did not. */
+  run_id: import_zod10.z.string(),
+  agent_id: import_zod10.z.string().nullable(),
+  agent_name: import_zod10.z.string().nullable(),
+  /** Severity if the agent flagged it, or 'ignored' when it did not ("did not flag"). */
   verdict: import_zod10.z.union([Severity, import_zod10.z.literal("ignored")]),
-  note: import_zod10.z.string()
+  finding_id: import_zod10.z.string().nullable(),
+  title: import_zod10.z.string().nullable()
 });
 var Conflict = import_zod10.z.object({
+  id: import_zod10.z.string(),
   file: import_zod10.z.string(),
   line: import_zod10.z.number().int(),
   title: import_zod10.z.string(),
+  severity: Severity,
+  is_conflict: import_zod10.z.boolean(),
   takes: import_zod10.z.array(ConflictTake)
 });
 var MultiAgentRun = import_zod10.z.object({
   id: import_zod10.z.string(),
   pr_id: import_zod10.z.string(),
   pr_number: import_zod10.z.number().int().nullish(),
+  pr_title: import_zod10.z.string().nullable(),
   ran_at: import_zod10.z.string(),
   agent_count: import_zod10.z.number().int(),
-  total_duration_ms: import_zod10.z.number().int(),
+  total_duration_ms: import_zod10.z.number().int().nullable(),
   total_cost_usd: import_zod10.z.number().nullable(),
+  /** True when at least one column has no cost yet (the total is a lower bound). */
+  total_cost_partial: import_zod10.z.boolean(),
   columns: import_zod10.z.array(AgentColumn),
   conflicts: import_zod10.z.array(Conflict)
 });
+var AgentEstimate = import_zod10.z.object({
+  agent_id: import_zod10.z.string(),
+  duration_ms: import_zod10.z.number().int().nullable(),
+  cost_usd: import_zod10.z.number().nullable(),
+  sample_size: import_zod10.z.number().int(),
+  last_verdict: import_zod10.z.string().nullable()
+});
+var AgentEstimates = import_zod10.z.array(AgentEstimate);
+var MultiAgentOverallStatus = import_zod10.z.enum(["running", "done", "partially_failed", "failed"]);
+var MultiAgentRunSummary = import_zod10.z.object({
+  id: import_zod10.z.string(),
+  pr_id: import_zod10.z.string(),
+  pr_number: import_zod10.z.number().int(),
+  pr_title: import_zod10.z.string().nullable(),
+  ran_at: import_zod10.z.string(),
+  status: MultiAgentOverallStatus,
+  agent_count: import_zod10.z.number().int(),
+  /** Agent names in column order; null = the agent was deleted. */
+  agent_names: import_zod10.z.array(import_zod10.z.string().nullable()),
+  total_duration_ms: import_zod10.z.number().int().nullable(),
+  total_cost_usd: import_zod10.z.number().nullable(),
+  total_cost_partial: import_zod10.z.boolean()
+});
+var MultiAgentRunSummaries = import_zod10.z.array(MultiAgentRunSummary);
+var LatestMultiAgentRun = import_zod10.z.object({ run: MultiAgentRunSummary.nullable() });
 var StatPoint = import_zod10.z.object({ label: import_zod10.z.string(), value: import_zod10.z.number() });
 var AgentStats = import_zod10.z.object({
   agent_id: import_zod10.z.string(),
