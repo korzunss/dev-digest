@@ -16,6 +16,7 @@ export {
   assemblePrompt,
   wrapUntrusted,
   INJECTION_GUARD,
+  OUTPUT_LANGUAGE_RULE,
   REPO_RULES_GUARD,
   type PromptParts,
   type ContextDoc,

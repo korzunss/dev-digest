@@ -4,7 +4,7 @@
  * truncation, and ordering (before the diff).
  */
 import { describe, it, expect } from 'vitest';
-import { assemblePrompt, wrapUntrusted, REPO_RULES_GUARD } from '../src/prompt.js';
+import { assemblePrompt, wrapUntrusted, REPO_RULES_GUARD, OUTPUT_LANGUAGE_RULE } from '../src/prompt.js';
 
 function userOf(parts: Parameters<typeof assemblePrompt>[0]): string {
   const { messages } = assemblePrompt(parts);
@@ -29,6 +29,12 @@ describe('assemblePrompt — shared injection guard (server + CI)', () => {
     expect(sys).toMatch(/test fixture|intentional|demo/i);
     expect(sys).toMatch(/never reduce|never .*descope|REPORT it/i);
     expect(sys).toMatch(/any language/i);
+  });
+
+  it('pins the review output to English after the guard', () => {
+    expect(sys.endsWith(OUTPUT_LANGUAGE_RULE)).toBe(true);
+    expect(OUTPUT_LANGUAGE_RULE).toMatch(/title, body and suggestion.*in English/s);
+    expect(assemblePrompt({ system: 'AGENT-SYS', diff: 'DIFF' }).assembly.system).toBe(sys);
   });
 });
 
