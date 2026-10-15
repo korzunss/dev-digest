@@ -1,4 +1,4 @@
-/* CiTab — where the agent runs in CI (spec 013). Data: installations + a 60 s
+/* CiTab — where the agent runs in CI (spec 014). Data: installations + a 60 s
    refresh that pulls new runs from GitHub only while the tab is mounted (AC-57).
    The tab opens the Export Wizard; it never builds files. */
 "use client";

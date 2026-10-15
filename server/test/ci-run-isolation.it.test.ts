@@ -9,6 +9,7 @@ import * as t from '../src/db/schema.js';
 import { MockForgeClient, MockSecretsProvider } from '../src/adapters/mocks.js';
 import { SkillsRepository } from '../src/modules/skills/repository.js';
 import { ARTIFACT_FILE } from '../src/modules/ci/constants.js';
+import { lastDoneRunsPerAgent } from '../src/modules/reviews/repository/multi-agent.repo.js';
 
 const hasDocker = await dockerAvailable();
 const d = hasDocker ? describe : describe.skip;
@@ -20,7 +21,7 @@ if (!hasDocker) {
 
 const SHA = 'c'.repeat(40);
 
-/** AC-69 (plan 40, S6/S7): CI runs never leak into skill stats or the PR list cost. */
+/** AC-69 (plan 41, S6/S7): CI runs never leak into skill stats, the PR list cost or multi-agent estimates. */
 d('CI runs are isolated from local stats (AC-69)', () => {
   let pg: PgFixture;
   beforeAll(async () => {
@@ -55,6 +56,27 @@ d('CI runs are isolated from local stats (AC-69)', () => {
     const since = new Date(Date.now() - 86_400_000);
     expect(await repo.completedRunCount(ws!.id, since)).toBe(1);
     expect((await repo.runCountsBySkill(ws!.id, [skill!.id], since)).get(skill!.id)).toBe(1);
+  });
+
+  // the multi-agent run picker estimates duration/cost from local runs only
+  it('multi-agent estimates sample local done runs only, never a CI run of the same agent', async () => {
+    const db = pg.handle.db;
+    const [ws] = await db.insert(t.workspaces).values({ name: 'ci-isolation-estimates' }).returning();
+    const [agent] = await db
+      .insert(t.agents)
+      .values({ workspaceId: ws!.id, name: 'EstAgent', provider: 'openrouter', model: 'x/y', systemPrompt: 'p' })
+      .returning();
+    const base = { workspaceId: ws!.id, agentId: agent!.id, status: 'done' };
+    const [local] = await db
+      .insert(t.agentRuns)
+      .values({ ...base, source: 'local', durationMs: 1_000, costUsd: 0.01, ranAt: new Date(Date.now() - 60_000) })
+      .returning();
+    await db
+      .insert(t.agentRuns)
+      .values({ ...base, source: 'ci', durationMs: 90_000, costUsd: 2, ranAt: new Date() });
+
+    const rows = await lastDoneRunsPerAgent(db, ws!.id);
+    expect(rows.map((r) => r.runId)).toEqual([local!.id]);
   });
 
   // an ingested CI run for PR #5 adds nothing to that PR's cost column

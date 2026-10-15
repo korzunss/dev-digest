@@ -171,5 +171,7 @@ export const RunSummary = z.object({
   // "unknown": 0 means a genuinely free model.
   cost_usd: z.number().nullable(),
   cost_source: CostSource.nullable(),
+  // The multi-agent run this run belongs to; null for a single-agent run.
+  multi_agent_run_id: z.string().nullable(),
 });
 export type RunSummary = z.infer<typeof RunSummary>;

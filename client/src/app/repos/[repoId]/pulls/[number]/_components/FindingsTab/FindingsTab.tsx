@@ -37,6 +37,8 @@ interface FindingsTabProps {
   onSelectSeverity: (severity: Severity | null, runId: string | null) => void;
   onOpenTrace: (id: string) => void;
   onDelete: (id: string) => void;
+  /** Href of a multi-agent run's results page, for the timeline's link icon. */
+  multiRunHref?: (multiAgentRunId: string) => string;
   onRunDone: () => void;
 }
 
@@ -56,6 +58,7 @@ export function FindingsTab({
   onSelectSeverity,
   onOpenTrace,
   onDelete,
+  multiRunHref,
   onRunDone,
 }: FindingsTabProps) {
   const t = useTranslations("prReview");
@@ -215,6 +218,7 @@ export function FindingsTab({
             onOpenTrace={handleOpenTrace}
             onGoToReview={handleGoToReview}
             onDelete={handleDelete}
+            multiRunHref={multiRunHref}
           />
         </div>
       )}

@@ -66,6 +66,7 @@ export async function listRunsForPull(
     blockers: run.blockers,
     cost_usd: run.costUsd,
     cost_source: run.costSource,
+    multi_agent_run_id: run.multiAgentRunId,
   }));
 }
 
@@ -95,7 +96,7 @@ export async function deleteAgentRun(
 export async function cancelRunIfRunning(db: Db, runId: string): Promise<boolean> {
   const rows = await db
     .update(t.agentRuns)
-    .set({ status: 'cancelled' })
+    .set({ status: 'cancelled', finishedAt: new Date() })
     .where(and(eq(t.agentRuns.id, runId), eq(t.agentRuns.status, 'running')))
     .returning({ id: t.agentRuns.id });
   return rows.length > 0;
@@ -106,7 +107,7 @@ export async function cancelRunIfRunning(db: Db, runId: string): Promise<boolean
 export async function reapStaleRunningRuns(db: Db): Promise<number> {
   const rows = await db
     .update(t.agentRuns)
-    .set({ status: 'failed' })
+    .set({ status: 'failed', finishedAt: new Date() })
     .where(eq(t.agentRuns.status, 'running'))
     .returning({ id: t.agentRuns.id });
   return rows.length;
@@ -123,6 +124,8 @@ export async function createAgentRun(
     prId: string;
     provider: string | null;
     model: string | null;
+    /** The multi-agent review this run belongs to; omitted for a single-agent run. */
+    multiAgentRunId?: string | null;
   },
 ): Promise<string> {
   const [row] = await db
@@ -135,6 +138,7 @@ export async function createAgentRun(
       model: values.model,
       status: 'running',
       source: 'local',
+      multiAgentRunId: values.multiAgentRunId ?? null,
     })
     .returning({ id: t.agentRuns.id });
   return row!.id;
@@ -176,6 +180,7 @@ export async function completeAgentRun(
       costUsd: values.costUsd ?? null,
       costSource: values.costSource ?? null,
       error: values.error ?? null,
+      finishedAt: new Date(),
     })
     .where(eq(t.agentRuns.id, runId));
 }

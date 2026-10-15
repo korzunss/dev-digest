@@ -1,4 +1,4 @@
-/** Export-to-CI constants (spec 013, plan 40 DN2). */
+/** Export-to-CI constants (spec 014, plan 41 DN2). */
 
 /** The branch the export commits to; DevDigest may recreate it (GAP1). */
 export const CI_BRANCH = 'devdigest/ci';

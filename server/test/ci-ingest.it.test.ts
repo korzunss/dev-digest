@@ -50,8 +50,8 @@ const artifactJson = (run: { id: number; attempt?: number; sha?: string }, over:
 });
 const zipOf = (json: unknown) => zipSync({ [ARTIFACT_FILE]: strToU8(JSON.stringify(json)) });
 
-/** Ingest + views (plan 40, S13, T9): real Postgres, MockForgeClient `ci` options. */
-d('CI ingest routes (plan 40)', () => {
+/** Ingest + views (plan 41, S13, T9): real Postgres, MockForgeClient `ci` options. */
+d('CI ingest routes (plan 41)', () => {
   let pg: PgFixture;
   let workspaceId: string;
   let seq = 0;

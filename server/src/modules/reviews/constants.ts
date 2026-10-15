@@ -12,6 +12,9 @@ import type { LlmRouting } from '@devdigest/shared';
  */
 export const REVIEW_STRATEGY = 'single-pass' as const;
 
+/** How many agents of one review batch run at the same time (the rest queue). */
+export const MAX_PARALLEL_AGENTS = 4;
+
 /** Upper bound for `GitClient.diffCommits` (fetch + deepen to a merge-base + diff). */
 export const DIFF_COMMITS_TIMEOUT_MS = 90_000;
 
@@ -47,3 +50,9 @@ export const REPO_RULES_MAX_FILE_CHARS = 12_000;
 
 /** Repo rules: deadline for the whole rule-file load (assumption: 10 s). */
 export const REPO_RULES_DEADLINE_MS = 10_000;
+
+/** Multi-agent grouping: a finding spanning more than this many lines groups by its start line only (spec 013, wide finding). */
+export const MULTI_AGENT_WIDE_FINDING_MAX_LINES = 10;
+
+/** How many multi-agent runs the repository's "Recent runs" list returns. */
+export const RECENT_RUNS_LIMIT = 10;

@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { Badge, Icon, CircularScore, type IconName } from "@devdigest/ui";
 import type { RunSummary, PrCommit, Severity, FindingRecord } from "@devdigest/shared";
@@ -98,6 +99,7 @@ export function RunHistory({
   onOpenTrace,
   onGoToReview,
   onDelete,
+  multiRunHref,
 }: {
   runs: RunSummary[];
   commits?: PrCommit[];
@@ -115,6 +117,8 @@ export function RunHistory({
   /** Jump to this run's inline review accordion below (clicking the agent name). */
   onGoToReview?: (runId: string) => void;
   onDelete?: (runId: string) => void;
+  /** Href of a multi-agent run's results page; a row that belongs to one links there. */
+  multiRunHref?: (multiAgentRunId: string) => string;
 }) {
   const t = useTranslations("prReview");
   if (runs.length === 0 && commits.length === 0) return null;
@@ -245,6 +249,16 @@ export function RunHistory({
                 />
               )}
             </div>
+            {multiRunHref && r.multi_agent_run_id && (
+              <Link
+                href={multiRunHref(r.multi_agent_run_id)}
+                title={t("timeline.openMultiRun")}
+                aria-label={t("timeline.openMultiRun")}
+                style={iconBtnStyle}
+              >
+                <Icon.Users size={13} />
+              </Link>
+            )}
             <button
               type="button"
               title={t("timeline.openTrace")}

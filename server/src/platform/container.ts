@@ -246,7 +246,7 @@ export class Container {
   }
 
   /**
-   * Export-to-CI (plan 40). Agents come from the shared agents repo, the forge
+   * Export-to-CI (plan 41). Agents come from the shared agents repo, the forge
    * per repo, and the runner bundle from the fs adapter (path from config).
    * One instance per app: it holds the refresh in-flight guard.
    */

@@ -9,7 +9,7 @@ import { Badge } from "@devdigest/ui";
 import type { OnboardingTour } from "@devdigest/shared";
 import { MermaidDiagram } from "@/components/mermaid-diagram";
 import { stripMarkdownImages } from "../../helpers";
-import { SafeMarkdown } from "../SafeMarkdown";
+import { SafeMarkdown } from "@/components/safe-markdown";
 
 const styles = {
   wrap: { display: "flex", flexDirection: "column", gap: 14 } satisfies React.CSSProperties,

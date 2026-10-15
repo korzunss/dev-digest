@@ -7,7 +7,7 @@ import { useTranslations } from "next-intl";
 import { Badge } from "@devdigest/ui";
 import type { OnboardingTask } from "@devdigest/shared";
 import { stripMarkdownImages } from "../../helpers";
-import { SafeMarkdown } from "../SafeMarkdown";
+import { SafeMarkdown } from "@/components/safe-markdown";
 
 const styles = {
   wrap: { display: "flex", flexDirection: "column", gap: 12 } satisfies React.CSSProperties,

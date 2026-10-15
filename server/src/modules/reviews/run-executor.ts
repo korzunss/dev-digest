@@ -1,3 +1,4 @@
+import PQueue from 'p-queue';
 import type { Container } from '../../platform/container.js';
 import type { Intent, Provider, Review, RunTrace, SpecSkipped, UnifiedDiff } from '@devdigest/shared';
 import type { ContextDoc } from '@devdigest/reviewer-core';
@@ -15,6 +16,7 @@ import {
   REVIEW_SINGLE_PASS_MAX_DIFF_TOKENS,
   REVIEW_MAX_SKIPPED_CHUNK_FRACTION,
   REVIEW_REPO_RULES_MAX_CHARS,
+  MAX_PARALLEL_AGENTS,
 } from './constants.js';
 import { taskLine, mergeContextPaths } from './helpers.js';
 import { loadRepoRules, type LoadedRepoRules } from './repo-rules.js';
@@ -193,34 +195,41 @@ export class ReviewRunExecutor {
       }
     }
 
+    // At most MAX_PARALLEL_AGENTS agents run at once; the rest wait their turn.
+    // The queue lives for this call only. Each task catches its own error, so one
+    // agent's failure never rejects `onIdle` or stops the others.
+    const queue = new PQueue({ concurrency: MAX_PARALLEL_AGENTS });
     for (const { agent, runId } of jobs) {
-      const agentStart = Date.now();
-      logger?.info(
-        { runId, agent: agent.name, provider: agent.provider, model: agent.model, prId: pull.id },
-        `review: agent "${agent.name}" started (${agent.provider}/${agent.model})`,
-      );
-      try {
-        const outcome = await this.runOneAgent(workspaceId, pull, repo, diff, intent, agent, runId, runLog, repoRules, changedPaths);
+      void queue.add(async () => {
+        const agentStart = Date.now();
         logger?.info(
-          {
-            runId,
-            agent: agent.name,
-            findings: outcome.findings.length,
-            grounding: outcome.grounding,
-            durationMs: Date.now() - agentStart,
-          },
-          `review: agent "${agent.name}" done — ${outcome.findings.length} finding(s)`,
+          { runId, agent: agent.name, provider: agent.provider, model: agent.model, prId: pull.id },
+          `review: agent "${agent.name}" started (${agent.provider}/${agent.model})`,
         );
-      } catch (err) {
-        // runOneAgent already persisted the failure/cancel (status + error +
-        // trace) and completed the bus; here we only log at the run level.
-        const cancelled = err instanceof RunCancelledError;
-        logger?.[cancelled ? 'info' : 'error'](
-          { runId, agent: agent.name, err: (err as Error).message, durationMs: Date.now() - agentStart },
-          `review: agent "${agent.name}" ${cancelled ? 'cancelled' : 'failed'}`,
-        );
-      }
+        try {
+          const outcome = await this.runOneAgent(workspaceId, pull, repo, diff, intent, agent, runId, runLog, repoRules, changedPaths);
+          logger?.info(
+            {
+              runId,
+              agent: agent.name,
+              findings: outcome.findings.length,
+              grounding: outcome.grounding,
+              durationMs: Date.now() - agentStart,
+            },
+            `review: agent "${agent.name}" done — ${outcome.findings.length} finding(s)`,
+          );
+        } catch (err) {
+          // runOneAgent already persisted the failure/cancel (status + error +
+          // trace) and completed the bus; here we only log at the run level.
+          const cancelled = err instanceof RunCancelledError;
+          logger?.[cancelled ? 'info' : 'error'](
+            { runId, agent: agent.name, err: (err as Error).message, durationMs: Date.now() - agentStart },
+            `review: agent "${agent.name}" ${cancelled ? 'cancelled' : 'failed'}`,
+          );
+        }
+      });
     }
+    await queue.onIdle();
   }
 
   /** Execute a single agent's review against a PR, streaming progress. */

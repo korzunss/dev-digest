@@ -17,7 +17,7 @@ import { OverviewTab } from "./_components/OverviewTab";
 import { FindingsTab } from "./_components/FindingsTab";
 import { DiffTab } from "./_components/DiffTab";
 import type { DiffTarget } from "@/components/diff-viewer";
-import RunTraceDrawer from "./_components/RunTraceDrawer";
+import RunTraceDrawer from "@/components/run-trace-drawer";
 import { usePullDetail, usePulls } from "../../../../../lib/hooks";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -199,6 +199,7 @@ export default function PRDetailPage() {
             cancelMutation={cancel}
             onOpenTrace={(id) => setParam("trace", id)}
             onDelete={(id) => setDeletingRunId(id)}
+            multiRunHref={(id) => `/repos/${repoId}/multi-agent/${id}`}
             onRunDone={() => {
               invalidateActiveRuns();
               invalidateRunHistory();
@@ -242,6 +243,7 @@ export default function PRDetailPage() {
 
       {prId && traceRunId && (
         <RunTraceDrawer
+          key={traceRunId}
           runId={traceRunId}
           prNumber={pr.number}
           findings={runs.find((r) => r.run_id === traceRunId)?.findings ?? []}

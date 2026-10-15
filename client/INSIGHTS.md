@@ -21,6 +21,12 @@ _Nothing yet._
 
 ## What Doesn't Work
 
+### 2026-10-15 — a hook mock that starts in the "live" state hides first-render bugs
+**Symptom:** a `RunTraceDrawer` fix passed every test and a plan-verifier pass, yet on the results page the drawer showed "No trace available yet" instead of "pending" for runs that ended > 30 s after it was opened; the trace was also fetched while the run was still running.
+**Cause:** the real `useRunEvents` returns `running: false` on the first render and flips to `true` in its effect; the tests mocked it as `running: true` from the first render, so the mount render that misread "not running yet" as "ended" was never exercised.
+**Rule:** mock a hook from its real initial value and flip it the way the hook does; and decide "ended" from the parent's `running`/`endedAt` props, not from the SSE hook (the hook also closes on a transient error).
+**Evidence:** `client/src/components/run-trace-drawer/RunTraceDrawer.tsx:53` · `RunTraceDrawer.pending.test.tsx` (PR2-H1, PR3-C2 cases) · plan 40 *Verification log* (PR2-H1, PR3-C2)
+
 ### 2026-10-05 — stripping Markdown images with regexes is bypassable; disallow `img` in the renderer
 **Symptom:** plan 26 security review (SF2): server and client regexes removed `![x](url)` and reference images, yet a shortcut image `![x]` with its definition on the next line (`[x]:\nhttps://t/p.png`) or inside a `>` quote still rendered a remote `<img>` (tracking pixel) through the vendored `Markdown`.
 **Cause:** CommonMark reference definitions are global and have several valid layouts; the vendored `Markdown` primitive accepts only `children`, so nothing at render time blocked `img`.
@@ -89,6 +95,12 @@ pass either way unless one asserts the dialog's parent
 under document.body").
 
 ## Tool & Library Notes
+
+### 2026-10-15 — polling for a resource that 404s until it is written: `refetchInterval` as a function keeps going with `retry: false`
+**Symptom:** the run trace is written after the run turns terminal, so the drawer's first `GET /runs/:id/trace` 404s; with `retry: false` and no interval the drawer showed "no trace" forever.
+**Cause:** `retry` only governs re-attempts of one failed fetch; a function `refetchInterval` is evaluated after each settle (success or error) and keeps scheduling refetches while it returns a number.
+**Rule:** for "pending until written", use `retry: false` plus `refetchInterval: (q) => keepPolling ? MS : false` and bound it by a deadline. Each mounted observer of the same key polls, so two components on one key double the request rate.
+**Evidence:** `client/src/lib/hooks/trace.ts:31-32`, `client/src/components/run-trace-drawer/RunTraceDrawer.pending.test.tsx` (AC-54/54a, plan 40)
 
 ### 2026-10-05 — `pnpm build` while `next dev` runs breaks the dev server (500 on every page)
 **Symptom:** after a Done-when ran `cd client && pnpm build`, the already-running dev server on :3000 answered 500 for `/`; the API was fine.

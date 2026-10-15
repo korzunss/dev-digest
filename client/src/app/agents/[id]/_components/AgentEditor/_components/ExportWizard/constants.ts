@@ -9,7 +9,7 @@ export const STEP_PREVIEW = 1;
 export const STEP_CONFIGURE = 2;
 export const STEP_INSTALL = 3;
 
-/** Only GitHub Actions is built; the other cards are shown disabled (spec 013). */
+/** Only GitHub Actions is built; the other cards are shown disabled (spec 014). */
 export const TARGETS: readonly { key: "gha" | "circle" | "jenkins" | "cli"; icon: IconName; enabled: boolean }[] = [
   { key: "gha", icon: "Workflow", enabled: true },
   { key: "circle", icon: "RefreshCw", enabled: false },

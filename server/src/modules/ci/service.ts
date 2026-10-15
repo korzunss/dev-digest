@@ -78,7 +78,7 @@ const TRAILER_LINE = new RegExp(`^${EXPORT_TRAILER}:`, 'm');
 type GithubRepo = { id: string; fullName: string; defaultBranch: string };
 
 /**
- * Export-to-CI application service (plan 40): preview / validate / install an
+ * Export-to-CI application service (plan 41): preview / validate / install an
  * agent as a GitHub Actions workflow, then ingest the runs it produced.
  * Depends on ports only (forge, runner bundle, agents) plus its own repository.
  */

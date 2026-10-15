@@ -32,6 +32,7 @@ function run(o: Partial<RunSummary>): RunSummary {
     blockers: null,
     cost_usd: null,
     cost_source: null,
+    multi_agent_run_id: null,
     ...o,
   };
 }
@@ -199,3 +200,24 @@ describe("RunHistory — severity chips (spec 002)", () => {
     expect(screen.getByText("3 finding(s)")).toBeInTheDocument();
   });
 });
+
+describe("RunHistory — multi-agent link (AC-15h)", () => {
+  it("links a run that belongs to a multi-agent run to its results, and not a single-agent run", () => {
+    render(
+      <NextIntlClientProvider locale="en" messages={{ prReview: messages }}>
+        <RunHistory
+          runs={[
+            run({ run_id: "run-a", multi_agent_run_id: "m1" }),
+            run({ run_id: "run-b", multi_agent_run_id: null, ran_at: "2026-06-11T17:00:00.000Z" }),
+          ]}
+          onOpenTrace={() => {}}
+          multiRunHref={(id) => `/repos/r1/multi-agent/${id}`}
+        />
+      </NextIntlClientProvider>,
+    );
+    const links = screen.getAllByRole("link", { name: "Open multi-agent results" });
+    expect(links).toHaveLength(1);
+    expect(links[0]).toHaveAttribute("href", "/repos/r1/multi-agent/m1");
+  });
+});
+

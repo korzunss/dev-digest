@@ -1,0 +1,47 @@
+import type { CSSProperties } from "react";
+
+/** Co-located styles for the Recent runs list (same card look as the agent list). */
+export const s = {
+  section: { display: "flex", flexDirection: "column", gap: 12 } satisfies CSSProperties,
+  title: { fontSize: 14, fontWeight: 600, color: "var(--text-primary)" } satisfies CSSProperties,
+  list: { display: "flex", flexDirection: "column", gap: 8, listStyle: "none", margin: 0, padding: 0 } satisfies CSSProperties,
+  row: {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: 12,
+    padding: "10px 14px",
+    minWidth: 0,
+    borderRadius: 8,
+    textDecoration: "none",
+    color: "inherit",
+    borderTop: "1px solid var(--border)",
+    borderRight: "1px solid var(--border)",
+    borderBottom: "1px solid var(--border)",
+    borderLeft: "1px solid var(--border)",
+    background: "var(--bg-surface)",
+  } satisfies CSSProperties,
+  text: { display: "flex", flexDirection: "column", gap: 2, minWidth: 0, flex: 1 } satisfies CSSProperties,
+  head: { fontSize: 14, fontWeight: 600, color: "var(--text-primary)", overflowWrap: "anywhere" } satisfies CSSProperties,
+  prNum: { color: "var(--text-muted)", fontWeight: 500 } satisfies CSSProperties,
+  agents: { fontSize: 12.5, lineHeight: 1.4, color: "var(--text-muted)", overflowWrap: "anywhere" } satisfies CSSProperties,
+  side: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-end",
+    gap: 4,
+    flexShrink: 0,
+    fontSize: 12,
+    fontFamily: "var(--font-mono, monospace)",
+    color: "var(--text-muted)",
+  } satisfies CSSProperties,
+  status: (color: string, bg: string): CSSProperties => ({
+    padding: "1px 8px",
+    borderRadius: 999,
+    fontSize: 11.5,
+    fontWeight: 600,
+    fontFamily: "inherit",
+    color,
+    background: bg,
+  }),
+  empty: { fontSize: 13, color: "var(--text-muted)" } satisfies CSSProperties,
+};

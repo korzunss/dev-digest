@@ -20,8 +20,8 @@ if (!hasDocker) {
 
 const TRAILER_MSG = 'Add DevDigest CI review\n\nDevDigest-Export: agent=x version=1';
 
-/** Export-to-CI preview / install (plan 40, S12, T8): real Postgres, MockForgeClient `ci` options. */
-d('CI export routes (plan 40)', () => {
+/** Export-to-CI preview / install (plan 41, S12, T8): real Postgres, MockForgeClient `ci` options. */
+d('CI export routes (plan 41)', () => {
   let pg: PgFixture;
   let workspaceId: string;
   let seq = 0;

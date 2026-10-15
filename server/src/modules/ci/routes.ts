@@ -18,7 +18,7 @@ import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
 
 /**
- * Export-to-CI routes (plan 40, DN1). Handlers only resolve the workspace and
+ * Export-to-CI routes (plan 41, DN1). Handlers only resolve the workspace and
  * call `CiService`. The two mutating routes that spend GitHub quota are rate
  * limited; `POST /ci/refresh` takes an object body so a bodyless cross-site
  * POST is refused (server gotchas → Security).

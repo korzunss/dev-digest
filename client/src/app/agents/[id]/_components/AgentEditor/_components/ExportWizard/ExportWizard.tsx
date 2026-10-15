@@ -1,4 +1,4 @@
-/* ExportWizard — Target → Preview → Configure → Install (spec 013). The caller
+/* ExportWizard — Target → Preview → Configure → Install (spec 014). The caller
    (CiTab) portals it; it owns one reducer and the data hooks, the steps render. */
 "use client";
 
