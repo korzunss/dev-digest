@@ -9,11 +9,26 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "../api";
 import type { RunTrace } from "@devdigest/shared";
 
-export function useRunTrace(runId: string | null | undefined, enabled = true) {
+/** How often a still-missing trace is re-requested while the drawer waits for it. */
+export const TRACE_POLL_MS = 2000;
+
+/**
+ * `opts.pollUntil` (epoch ms): while no trace has loaded and `Date.now()` is
+ * before it, re-request every TRACE_POLL_MS. The trace is written a moment
+ * after a run ends, so the first request can 404 (`retry` stays off).
+ */
+export function useRunTrace(
+  runId: string | null | undefined,
+  enabled = true,
+  opts?: { pollUntil?: number | null },
+) {
+  const pollUntil = opts?.pollUntil ?? null;
   return useQuery({
     queryKey: ["run-trace", runId],
     queryFn: () => api.get<RunTrace>(`/runs/${runId}/trace`),
     enabled: !!runId && enabled,
     retry: false,
+    refetchInterval: (query) =>
+      !query.state.data && pollUntil != null && Date.now() < pollUntil ? TRACE_POLL_MS : false,
   });
 }

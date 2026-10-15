@@ -8,7 +8,10 @@
     "refresh": "Refresh",
     "refreshing": "Refreshing…",
     "filters": {
+      "last24Hours": "Last 24 hours",
       "last7Days": "Last 7 days",
+      "last30Days": "Last 30 days",
+      "allTime": "All time",
       "allAgents": "All agents",
       "allRepos": "All repos",
       "allStatuses": "All statuses"
@@ -18,16 +21,31 @@
       "pullRequest": "Pull request",
       "source": "Source",
       "findings": "Findings",
+      "verdict": "Verdict",
       "cost": "Cost",
+      "duration": "Duration",
       "status": "Status"
+    },
+    "verdict": {
+      "approve": "Approve",
+      "comment": "Comment",
+      "request_changes": "Request changes"
     },
     "view": "View",
     "status": {
-      "succeeded": "Succeeded",
-      "noFindings": "No findings",
-      "failed": "Failed",
-      "running": "Running"
-    }
+      "passed": "Succeeded",
+      "gate_failed": "Gate failed",
+      "error": "Error"
+    },
+    "deletedAgent": "{name} (deleted)",
+    "loadMore": "Load more",
+    "loadingMore": "Loading…",
+    "loadError": "Could not load the CI runs.",
+    "retry": "Retry",
+    "noMatches": "No runs match these filters.",
+    "bannerRejected": "{repo}: run {run} was skipped ({reason})",
+    "bannerError": "{repo}: {message}",
+    "findingsNone": "—"
   },
   "exportWizard": {
     "title": "Export to CI",
@@ -54,12 +72,13 @@
       "cliDesc": "devdigest review --pr"
     },
     "recommended": "recommended",
+    "targetLabel": "Where the agent runs",
     "repoLabel": "Target repository",
     "repoHint": "owner/name — the repo to add the workflow to",
     "repoPlaceholder": "acme/payments-api",
     "filesToCreate": "FILES TO CREATE",
     "generating": "Generating…",
-    "editable": "editable",
+    "editable": "editable: name, timeout, runner",
     "triggerLabel": "Trigger",
     "postResultsLabel": "Post results as",
     "postAs": {
@@ -68,21 +87,115 @@
       "none": "None (exit code only)"
     },
     "blockMergeTitle": "Block merge on findings",
-    "blockMergeDesc": "Requires a GitHub App — not available with PAT in local mode",
+    "blockMergeDesc": "To block merges, set Fail CI on in the agent's CI tab so the run exits non-zero, then add it as a required status check in GitHub branch protection or rulesets. No GitHub App is needed. Also protect .github/ and .devdigest/ with CODEOWNERS and a ruleset: for pull_request events GitHub runs the workflow file from the PR itself.",
     "installCardTitle": "Open a PR with these files",
     "installCardBody": "DevDigest opens a PR in {repo} titled “Add DevDigest CI review” with the {count} generated files.",
     "ownerRepo": "owner/repo",
-    "secretNote": "Add {key} to the repo's Actions secrets before the workflow runs."
+    "secretNote": "Add {key} to the repo's Actions secrets before the workflow runs.",
+    "done": "Done",
+    "targetsLabel": "Where should it run?",
+    "targetSoon": "Not available yet",
+    "noGithubRepo": "Connect a GitHub repository first. GitHub Actions needs a connected GitHub repository to add the workflow to.",
+    "existingNote": "This agent is already installed in this repository. Continuing updates the existing configuration.",
+    "providerBlocked": "This agent uses the {provider} provider. The CI runner supports OpenRouter only, so it cannot be exported yet. Switch the provider to OpenRouter in Config.",
+    "filesCount": "{count, plural, one {# file} other {# files}}",
+    "generated": "generated",
+    "workflowEditNote": "Triggers and \"Post results as\" are set in Configure. Any further change to the workflow belongs in the export PR on GitHub, where you review it. The server refuses any other difference.",
+    "updateNote": "Update CI config: edits made by hand to these files in the repository are not carried over.",
+    "validating": "Checking…",
+    "workflowInvalid": "The workflow cannot be used:",
+    "issueLine": "line {line}",
+    "previewLoadError": "Could not generate the files.",
+    "previewLoading": "Generating the files…",
+    "triggers": {
+      "opened": "pull_request:opened",
+      "synchronize": "pull_request:synchronize",
+      "reopened": "pull_request:reopened"
+    },
+    "triggerMin": "Keep at least one trigger on.",
+    "secretsLabel": "Secrets expected",
+    "secretOpenrouterDesc": "Your OpenRouter key — the same key you set in Settings",
+    "secretGithubDesc": "Provided automatically by Actions",
+    "secretExpected": "expected · not verified",
+    "secretReady": "ready",
+    "installZipTitle": "Copy files as a zip",
+    "installZipHint": "add them manually",
+    "installZipBody": "DevDigest builds a zip with the {count} generated files. Unpack it in the repository root and commit it.",
+    "helpPrefix": "Need help? See the",
+    "helpLink": "GitHub Action setup docs",
+    "installedPr": "The export PR is open.",
+    "viewPr": "View export PR",
+    "zipDownloaded": "The zip was downloaded as devdigest-ci.zip.",
+    "downloadZipInstead": "Download a zip instead",
+    "errors": {
+      "provider_not_openrouter": "This agent does not use OpenRouter, so it cannot run in CI. Switch the provider in Config.",
+      "manifest_invalid": "The agent's configuration is not valid for export.",
+      "workflow_invalid": "The workflow breaks a safety rule. Go back to Preview and fix it.",
+      "token_missing": "No GitHub token is configured for this repository. Add one in Settings.",
+      "missing_workflow_permission": "The GitHub token can't write workflow files. Classic token: enable the <code>workflow</code> scope. Fine-grained token: set Workflows → Read and write (plus Contents and Pull requests → Read and write, Actions → Read). Edit it at <tokens>github.com/settings/tokens</tokens>, or paste a new one in <keys>Settings → API keys</keys>, then click Install again.",
+      "branch_protected": "The devdigest/ci branch is protected and cannot be replaced. Add the files by hand from a zip.",
+      "foreign_commits": "The devdigest/ci branch has commits that DevDigest did not make, so it was left untouched. Add the files by hand from a zip.",
+      "foreign_commits_detail": "The <code>devdigest/ci</code> branch already has a commit DevDigest did not make: <code>{sha}</code>{hasAuthor, select, yes { by {author}} other {}}{hasDate, select, yes { on {date}} other {}}{hasSubject, select, yes { — \"{subject}\"} other {}}. It is {ahead, plural, one {# commit} other {# commits}} ahead of the base branch. If it is stale, <branch>delete the branch on GitHub</branch> and click Install again; otherwise add the files by hand from a zip.",
+      "foreign_commits_truncated": "The <code>devdigest/ci</code> branch is more than 100 commits ahead of the base branch and has a commit DevDigest did not make. If it is stale, <branch>delete the branch on GitHub</branch> and click Install again; otherwise add the files by hand from a zip.",
+      "branch_moved": "The devdigest/ci branch changed while installing. Try again, or add the files by hand from a zip.",
+      "repo_not_github": "Only GitHub repositories are supported.",
+      "repo_has_other_agent": "This repository already runs a different DevDigest agent.",
+      "generic": "The export failed. Try again."
+    }
   },
   "ciTab": {
-    "heading": "Continuous Integration",
-    "subtitle": "Run this agent automatically on pull requests in a target repo.",
-    "exportToCi": "Export to CI",
-    "publish": "Publish to CI",
-    "update": "Update CI",
+    "heading": "CI deployment",
+    "activeBadge": "Active in {count, plural, one {# repo} other {# repos}}",
+    "updateConfig": "Update CI config",
+    "addToCi": "Add to CI",
+    "addRepository": "Add repository",
+    "githubActions": "GitHub Actions",
+    "noRuns": "no runs yet",
+    "loadError": "Could not load the CI installations.",
+    "emptyTitle": "Not deployed to CI yet",
+    "emptyBody": "Add this agent to CI to open a PR that adds the workflow and the agent config to a repository.",
     "noRepo": "Connect a repository first",
-    "empty": "Not deployed to CI yet. Use “Publish to CI” to open a PR that adds the workflow + agent config.",
-    "installed": "installed {date}"
+    "viewPr": "View export PR",
+    "prState": {
+      "open": "PR open",
+      "merged": "PR merged",
+      "closed": "PR closed",
+      "unknown": "PR state unknown",
+      "none": ""
+    },
+    "state": {
+      "active": "Active",
+      "pending_merge": "Pending merge",
+      "inactive": "Inactive"
+    },
+    "inactiveHint": "This repository is no longer connected in DevDigest, so its runs are not fetched.",
+    "pendingHint": "The export PR is not merged yet, so the agent does not run in this repo.",
+    "outOfDate": "Out of date",
+    "outOfDateHint": "The repo has an older agent or workflow version. Run Update CI config.",
+    "gateDrift": "This repo still uses the old gate ({exported}). The agent now blocks on {current}. Run Update CI config to apply it.",
+    "runStatus": {
+      "passed": "succeeded",
+      "gate_failed": "gate failed",
+      "error": "error"
+    },
+    "failOn": {
+      "label": "Fail CI on",
+      "hint": "Edits the agent's CI gate. Saving creates a new agent version; repos keep the old gate until you run Update CI config.",
+      "saving": "Saving…"
+    },
+    "remove": {
+      "action": "Remove",
+      "title": "Remove {repo} from CI?",
+      "body": "This deletes only the DevDigest installation record. Past CI runs are kept. The files DevDigest added to the repository (the workflow and .devdigest/) stay there and must be removed by hand.",
+      "confirm": "Remove installation",
+      "removing": "Removing…",
+      "done": "Removed {repo} from CI"
+    },
+    "update": {
+      "title": "Update CI config",
+      "body": "Which installation do you want to update?"
+    },
+    "cancel": "Cancel"
   },
   "publishDialog": {
     "title": "Publish to CI",

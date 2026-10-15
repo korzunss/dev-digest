@@ -1,0 +1,53 @@
+import type { CSSProperties } from "react";
+
+/** Co-located styles for the results header. */
+export const s = {
+  wrap: { display: "flex", flexDirection: "column", gap: 12 } satisfies CSSProperties,
+  row: { display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" } satisfies CSSProperties,
+  titleBlock: { display: "flex", alignItems: "baseline", gap: 12, flex: 1, minWidth: 0 } satisfies CSSProperties,
+  title: { fontSize: 22, fontWeight: 700, letterSpacing: "-0.02em" } satisfies CSSProperties,
+  subtitle: { fontSize: 13, color: "var(--text-secondary)" } satisfies CSSProperties,
+  switch: {
+    display: "inline-flex",
+    gap: 2,
+    padding: 2,
+    borderRadius: 7,
+    background: "var(--bg-elevated)",
+    borderTop: "1px solid var(--border)",
+    borderRight: "1px solid var(--border)",
+    borderBottom: "1px solid var(--border)",
+    borderLeft: "1px solid var(--border)",
+  } satisfies CSSProperties,
+  switchOn: {
+    border: "none",
+    borderRadius: 5,
+    padding: "4px 12px",
+    fontSize: 12.5,
+    fontWeight: 600,
+    textTransform: "capitalize",
+    cursor: "pointer",
+    background: "var(--bg-hover)",
+    color: "var(--text-primary)",
+  } satisfies CSSProperties,
+  switchOff: {
+    border: "none",
+    borderRadius: 5,
+    padding: "4px 12px",
+    fontSize: 12.5,
+    fontWeight: 500,
+    textTransform: "capitalize",
+    cursor: "pointer",
+    background: "transparent",
+    color: "var(--text-muted)",
+  } satisfies CSSProperties,
+  pr: { display: "flex", alignItems: "baseline", gap: 10, flex: 1, minWidth: 0, fontSize: 13.5 } satisfies CSSProperties,
+  prNum: { color: "var(--text-muted)", fontFamily: "var(--font-mono, monospace)" } satisfies CSSProperties,
+  prTitle: { fontWeight: 600, overflowWrap: "anywhere" } satisfies CSSProperties,
+  meta: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    fontSize: 12.5,
+    color: "var(--text-secondary)",
+  } satisfies CSSProperties,
+};

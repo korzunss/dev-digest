@@ -1,4 +1,4 @@
-/** Constants for RunReviewDropdown. */
+/** Constants for RunReviewDropdown's popover (rendered by AgentPickerPanel). */
 
-/** Dropdown menu width (px). */
-export const DROPDOWN_WIDTH = 250;
+/** Gap between the trigger and the popover, and the viewport margin (px). */
+export const PANEL_GAP = 6;

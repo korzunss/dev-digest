@@ -1,0 +1,56 @@
+# agent-runner suite — the bundled CI runner (@devdigest/agent-runner).
+# Tests are hermetic units (model and fetch stubbed). Uses npm (package-lock.json).
+#
+# The runner bundles reviewer-core and the shared contracts, so their paths are
+# in the filter. dist/index.js is committed: the last step fails when a fresh
+# build differs from it.
+name: agent-runner
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'agent-runner/**'
+      - 'reviewer-core/**'
+      - 'server/src/vendor/shared/**'
+      - '.github/workflows/agent-runner.yml'
+  pull_request:
+    paths:
+      - 'agent-runner/**'
+      - 'reviewer-core/**'
+      - 'server/src/vendor/shared/**'
+      - '.github/workflows/agent-runner.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agent-runner-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agent-runner
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: agent-runner/package-lock.json
+
+      - run: npm ci
+
+      - run: npm run typecheck
+
+      - run: npm test
+
+      - run: npm run build
+
+      - name: dist/index.js is up to date
+        run: git diff --exit-code -- dist/index.js

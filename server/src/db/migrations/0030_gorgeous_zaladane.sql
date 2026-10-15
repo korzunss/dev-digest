@@ -1,0 +1,1 @@
+CREATE INDEX "agent_runs_done_agent_ran_idx" ON "agent_runs" USING btree ("agent_id","ran_at" DESC NULLS LAST) WHERE "agent_runs"."status" = 'done';

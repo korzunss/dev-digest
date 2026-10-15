@@ -1,0 +1,23 @@
+{
+  "name": "@devdigest/agent-runner",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Bundled DevDigest review runner for GitHub Actions — reviewer-core + I/O, built to a single dist/index.js",
+  "dependencies": {
+    "openai": "^4.104.0",
+    "yaml": "^2.9.1",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "esbuild": "^0.28.2",
+    "typescript": "^5.9.3",
+    "vitest": "^2.1.9"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "build": "node scripts/build.mjs"
+  }
+}

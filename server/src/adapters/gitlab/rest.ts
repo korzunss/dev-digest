@@ -12,7 +12,12 @@ import type {
   CommitFilesPayload,
   IssueMeta,
   MergedPrLookup,
+  BranchState,
+  CommitAhead,
+  WorkflowRunMeta,
+  RunArtifactMeta,
 } from '@devdigest/shared';
+import { AppError } from '../../platform/errors.js';
 import { withRetry, withTimeout } from '../../platform/resilience.js';
 import { DEFAULT_API_BASE, gitlabApiRoot } from '../../platform/forge-resolve.js';
 import {
@@ -402,8 +407,11 @@ export class GitLabRestClient implements ForgeClient {
     return { id: String(note.id) };
   }
 
-  async openPullRequest(repo: RepoRef, payload: OpenPrPayload): Promise<{ url: string }> {
-    const mr = await this.call<{ web_url?: string }>(
+  async openPullRequest(
+    repo: RepoRef,
+    payload: OpenPrPayload,
+  ): Promise<{ url: string; number: number }> {
+    const mr = await this.call<{ web_url?: string; iid?: number }>(
       `/projects/${this.projectId(repo)}/merge_requests`,
       {
         method: 'POST',
@@ -415,16 +423,79 @@ export class GitLabRestClient implements ForgeClient {
         },
       },
     );
-    return { url: mr.web_url ?? `${this.webBase}/${projectPath(repo)}/-/merge_requests` };
+    return {
+      url: mr.web_url ?? `${this.webBase}/${projectPath(repo)}/-/merge_requests`,
+      number: mr.iid ?? 0,
+    };
   }
 
-  async findOpenPr(repo: RepoRef, branch: string): Promise<{ url: string } | null> {
-    const mrs = await this.call<{ web_url?: string }[]>(
+  async findOpenPr(
+    repo: RepoRef,
+    branch: string,
+  ): Promise<{ url: string; number: number } | null> {
+    const mrs = await this.call<{ web_url?: string; iid?: number }[]>(
       `/projects/${this.projectId(repo)}/merge_requests`,
       { query: { state: 'opened', source_branch: branch, per_page: 1 } },
     );
     const mr = mrs[0];
-    return mr?.web_url ? { url: mr.web_url } : null;
+    return mr?.web_url ? { url: mr.web_url, number: mr.iid ?? 0 } : null;
+  }
+
+  // ---- CI export (GitHub only) ----------------------------------------------
+  private ciUnsupported(): never {
+    throw new AppError('repo_not_github', 'CI export supports GitHub repositories only', 422);
+  }
+
+  async getDefaultBranch(_repo: RepoRef): Promise<string> {
+    return this.ciUnsupported();
+  }
+
+  async getBranch(_repo: RepoRef, _name: string): Promise<BranchState | null> {
+    return this.ciUnsupported();
+  }
+
+  async listCommitsAhead(
+    _repo: RepoRef,
+    _base: string,
+    _head: string,
+  ): Promise<CommitAhead[]> {
+    return this.ciUnsupported();
+  }
+
+  async deleteBranch(_repo: RepoRef, _name: string): Promise<void> {
+    return this.ciUnsupported();
+  }
+
+  async tokenScopes(): Promise<string[] | null> {
+    return this.ciUnsupported();
+  }
+
+  async getPullState(_repo: RepoRef, _n: number): Promise<'open' | 'merged' | 'closed'> {
+    return this.ciUnsupported();
+  }
+
+  async listWorkflowRuns(
+    _repo: RepoRef,
+    _workflowFile: string,
+    _opts: { perPage: number; page?: number; createdSince?: string },
+  ): Promise<WorkflowRunMeta[]> {
+    return this.ciUnsupported();
+  }
+
+  async listRunArtifacts(_repo: RepoRef, _runId: number): Promise<RunArtifactMeta[]> {
+    return this.ciUnsupported();
+  }
+
+  async firstJobUrl(_repo: RepoRef, _runId: number, _attempt: number): Promise<string | null> {
+    return this.ciUnsupported();
+  }
+
+  async downloadArtifact(
+    _repo: RepoRef,
+    _artifactId: number,
+    _maxBytes: number,
+  ): Promise<Uint8Array> {
+    return this.ciUnsupported();
   }
 
   /**
@@ -435,6 +506,8 @@ export class GitLabRestClient implements ForgeClient {
    * doesn't, so each action is chosen by probing the target ref. The probe is
    * per-file but cheap (a HEAD-shaped GET) and it is the only way to stay
    * idempotent across re-publishes.
+   *
+   * `payload.prune` is not applied: the Export-to-CI flow is GitHub-only.
    */
   async commitFiles(repo: RepoRef, payload: CommitFilesPayload): Promise<{ branch: string }> {
     const id = this.projectId(repo);

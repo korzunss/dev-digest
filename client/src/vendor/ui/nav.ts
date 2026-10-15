@@ -48,6 +48,17 @@ export const NAV: NavGroup[] = [
       { key: "eval", label: "Eval Dashboard", icon: "Gauge", href: "/eval" },
     ],
   },
+  {
+    section: "GLOBAL",
+    items: [
+      // Signed-off exception (spec 013): same seam as above. A vendor refresh drops this
+      // line — see client/INSIGHTS.md.
+      { key: "multi-agent", label: "Multi-Agent Review", icon: "Users", href: "/repos/:repoId/multi-agent" },
+      // Signed-off exception (spec 014, AC-2): the CI Runs page has no other seam into the
+      // sidebar. A vendor refresh drops this line — see client/INSIGHTS.md.
+      { key: "ci-runs", label: "CI Runs", icon: "Workflow", href: "/ci-runs" },
+    ],
+  },
 ];
 
 export const SETTINGS_ITEM: NavItemDef = {

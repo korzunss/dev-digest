@@ -36,6 +36,8 @@ export const reviews = pgTable('reviews', {
   // Same reason as agent_runs_pr_idx: the PR list and the PR detail both read
   // reviews by pr_id, and a FK column carries no index of its own.
   prIdx: index('reviews_pr_idx').on(t.prId),
+  // The multi-agent view reads the reviews of a set of runs by run_id.
+  runIdx: index('reviews_run_idx').on(t.runId),
 }));
 
 export const findings = pgTable('findings', {

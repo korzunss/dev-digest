@@ -81,6 +81,24 @@ write-up here. That keeps `AGENTS.md` short without losing the reasoning.
 
 ## What Doesn't Work
 
+### 2026-10-15 — parallel worktrees share one dev Postgres, so their migrations collide in number and both land in the DB
+**Symptom:** `__drizzle_migrations` held 29 rows while this branch had only 0000–0027; the extra one was `0028_tearful_lyja` from the parallel `l07-multi-agents-review` worktree. This branch then generated its own `0028_romantic_vargas` and applied it on top. Also: a second API from another worktree on the same DB reaps the first one's `running` runs (server gotcha), and ports 3000/3001 and 3100/3101 were already taken by other worktrees.
+**Cause:** every worktree's `server` defaults to `postgres://…@localhost:5432/devdigest` (the one `devdigest-postgres` container), and `db:generate` numbers from the branch's own journal.
+**Rule:** before `db:migrate`, compare `select id, created_at from drizzle.__drizzle_migrations order by id desc` with your `meta/_journal.json` to spot another worktree's migrations; keep migrations additive while sharing the DB; whichever branch merges second must regenerate its migration against main (two `NNNN_*` with the same number). Start a worktree's dev servers on free ports (`API_PORT`/`WEB_PORT`, `NEXT_PUBLIC_API_BASE`) after checking `lsof -iTCP:<port> -sTCP:LISTEN` and that no run is `running`.
+**Evidence:** plan 41 "Handoffs → G2" (migration clash) · `server/src/db/migrations/0028_romantic_vargas.sql` vs the other worktree's `0028_tearful_lyja.sql` · `lsof` output in the session
+
+### 2026-10-15 — a plan step that paraphrases a spec field loses its definition, and implementer + tests agree on the wrong one
+**Symptom:** plan 40's UF wave shipped "Recent runs" rows showing the run's age ("3h") where AC-15c asks for the wall-clock time defined in AC-31; the implementer's own test asserted "3h", the test-writer's gap pass kept it, and only the plan-verifier (reading the spec) caught it.
+**Cause:** step S25 said just "time"; implementer and tests both read the step, not the spec AC, so they were consistent with each other and wrong.
+**Rule:** when a plan step names a field the spec defines, copy the spec's definition (or its AC id + "as defined in AC-n") into the step text and the Done-when assertion.
+**Evidence:** plan 40 *Verification log* (gap AC15C) · `client/src/app/repos/[repoId]/multi-agent/_components/RecentRuns/RecentRuns.test.tsx:51-52`
+
+### 2026-10-15 — an implementer told to "follow the mockups" never sees images the user pasted into the main session
+**Symptom:** plan 40's G5/G6 shipped a Configure run screen far from the user's mockups (card boxes, one-line agent rows, wrong crumb and nav group); the implementer's report said "I had no pixel mockup". A whole design fix round (DG1–DG8) followed.
+**Cause:** pasted images live only in the main session's context; a subagent gets the prompt text, and the spec describes a design only in words.
+**Rule:** when a feature has mockups, pass their file paths (the `[Image: source: …]` paths) to spec-creator, every UI implementer group and any design fix, and tell it to Read them first; after the last UI group, compare screenshots of the running build against them before the verifier.
+**Evidence:** plan 40 *Handoffs → G6* ("did not see the pixel mockups") and *Design review (main session)* DG1–DG8
+
 ### 2026-10-14 — splitting one broad CI `paths:` filter into per-tier filters leaves the router script reacting to paths no workflow triggers on
 **Symptom:** plan 39 split `harness-evals.yml` (one `paths:` incl. `evals/**`) into four per-tier workflows. `ci-detect.mjs` still set `run_workflow=true` for an `evals/skills/<n>/**` change of a skill named in the workflow cases, but `harness-evals-workflow.yml`'s `paths:` had no `evals/skills/**` — that rule was dead in CI, yet live under `CI_DETECT_ALL` and locally (architecture-reviewer F1).
 **Cause:** the script decides on paths that the workflow filter has already narrowed; with one broad filter the two never disagreed, with several narrow ones every rule the script has but the filter lacks silently stops firing.
@@ -127,6 +145,7 @@ write-up here. That keeps `AGENTS.md` short without losing the reasoning.
 **Evidence:** `docs/plans/07-review-diff-base-sha.md`, `08-llm-call-reliability.md`, `09-review-eval-fixture.md` → *Verification log* (R3 rows)
 **Extended 2026-10-04 (plans 20, 21):** staging alone is not enough. The main session re-stages the plan after every appended handoff and log line, and each `git add` replaces the index blob, so by verification time the approved text is gone and R3 is again not-verifiable. Keep R3 provable by committing the plan right after approval (a `docs(plans): approve plan NN` commit on the branch), or by not re-staging it until the verifier has run.
 **Guard:** `sdd.sh checkpoint <NN> plan-approved` at approval + `sdd.sh brief-diff <plan> <tree>` for R3 — `.claude/skills/sdd/scripts/sdd.sh` (plans 22, 23).
+**Extended 2026-10-15 (plan 40):** when the checkpoint was missed (the pipeline was run by hand, not via `/sdd`), R3 can still be proved: replay the implementation-planner's own `Write`/`Edit` tool_use inputs on the plan path from its subagent transcript (`~/.claude/projects/<proj>/<session>/subagents/agent-*.jsonl`; `agent-*.meta.json` names the agent type) — last Write, then each later Edit — and diff that baseline against the current file above `<!-- implementer-brief:end -->`. The plan-verifier rebuilt it independently and matched. Evidence: `docs/plans/assets/40-multi-agent-review/plan-baseline-pass2.md`.
 
 ### 2026-09-29 — a skill listed on a step where it has nothing to do can only be closed by a plan change
 **Symptom:** plan 07's plan-verifier kept SK2–SK4 `missing` across two runs although the implementer re-read `zod` in full and recorded S2–S4 under *Not used — reason* ("no Zod schema in this step").
@@ -281,6 +300,12 @@ that path; it's runtime data, and the next resync overwrites it.
 **Evidence:** `CLAUDE.md` → "Do not touch"; `.gitignore` → `clones/`
 
 ## Tool & Library Notes
+
+### 2026-10-15 — `agent-runner/dist/index.js` inlines `@devdigest/shared` and reviewer-core: any shared edit makes the committed bundle stale
+**Symptom:** after a contract-only change (`CiRunsQuery.since` gained `.max(40)`), `npm run build` in `agent-runner/` changed `dist/index.js` (body + `sha256:` header) although no runner file was touched; the `agent-runner.yml` freshness check (`git diff --exit-code dist/index.js`) would fail.
+**Cause:** esbuild bundles everything the runner imports, including `server/src/vendor/shared` and `reviewer-core` via path aliases.
+**Rule:** after editing `server/src/vendor/shared/**` or `reviewer-core/src/**`, run `cd agent-runner && npm run build` and commit `dist/`. Keep `zod`/`openai` aliased to `agent-runner/node_modules` in **all three** of tsconfig `paths`, the vitest alias and the esbuild `alias`, or the manifest schema and the engine run on different zod copies; the ESM bundle needs the `createRequire` banner for CJS `openai`. Related: once a server file re-exports from `@devdigest/reviewer-core`, `reviewer-core/vitest.config.ts` needs a self-alias, because reviewer-core tests import `server/src/adapters/mocks.ts`.
+**Evidence:** `agent-runner/scripts/build.mjs` · `.github/workflows/agent-runner.yml` · `reviewer-core/vitest.config.ts` · `server/src/adapters/git/diff-parser.ts` · plan 40 G1-F1 and "bundle freshness" log lines
 
 ### 2026-10-11 — a Claude Code background command dies at 2 h, and `eval:benchmark -n 5` can take longer
 **Symptom:** `pnpm eval:benchmark skills/onion-architecture -n 5` (80 Haiku sessions plus a Sonnet judge, subscription) was started as a background command. It was killed with exit 143 during baseline run 5/5, when only 4 of its 8 records had been written, and no `benchmark.md` was produced. Single runs took 10–17 minutes each.
@@ -466,6 +491,12 @@ tree looks right in exactly the case the index is wrong.
 
 ## Recurring Errors & Fixes
 
+### 2026-10-15 — a `\u202A`-style escape written through Edit/heredoc landed as raw invisible bidi characters
+**Symptom:** a regex meant to strip bidi controls, `/[\u202A-\u202E\u2066-\u2069]/g`, was saved into `server/src/modules/ci/service.ts` with the **raw** code points (bytes `e2 80 aa …`) — invisible in review, the Trojan-Source pattern GitHub flags as hidden Unicode. A Python `r'''…'''` heredoc rewrite produced the same raw bytes.
+**Cause:** the `\uXXXX` text was turned into the characters on the way into the file, not by TypeScript.
+**Rule:** when a source file needs `\u` escapes for invisible/bidi code points, build the backslash explicitly (e.g. Python `chr(92) + 'u202A'`), then check the bytes; before a PR scan the diff: `grep -lP '[\x{200E}\x{200F}\x{061C}\x{202A}-\x{202E}\x{2066}-\x{2069}]' <changed files>` must print nothing.
+**Evidence:** `od -c` of the `BIDI_CONTROLS` line before/after · `docs/plans/41-export-to-ci.md` "/pr-self-review re-run 2" (SR3)
+
 ### 2026-10-11 — a green `harness-evals` run can mean nothing ran, or every eval failed
 **Symptom:** on PR #21:
 - Run 1 skipped every model job. A local `git diff main...HEAD` showed 144 changed files, so the detector should have selected suites, and the first guess was a missing secret.
@@ -516,6 +547,24 @@ Harness evals now run on every PR that touches the harness (`.github/workflows/h
 Before making the evals blocking again, raise the CI test timeout and measure with `eval:repeat`.
 
 ## Open Questions
+
+### 2026-10-15 — a mid-body `ECONNRESET` from OpenRouter fails a whole review with no retry and records 0 tokens (fix deferred)
+**Symptom:** multi-agent run `27a5737b-4f0b-44ad-a147-468c372c9fd0` on PR #34 (map over many files, `openrouter` / `deepseek-v4-flash`): General, Test Quality and Security reviewers all failed at the same instant (2026-10-15T14:06:00Z) after ~642 s each with `Invalid response body while trying to fetch https://openrouter.ai/api/v1/chat/completions: read ECONNRESET`. No "retrying once" line in the run log; every `agent_runs` row stores `tokens_in = tokens_out = 0` and cost null although dozens of map calls had succeeded. The same instant across three sockets points to a shared network event (see "a local review run that dies with `Socket timeout` may just be the Mac falling asleep", 2026-10-01); parallel fan-out makes one blip fail every agent at once.
+**Cause (confirmed in `reviewer-core/node_modules`):**
+- No retry: `openai` 4.104.0 reads the response body unwrapped (`openai/core.js:49`), so node-fetch throws `FetchError` (`name 'FetchError'`, `type 'system'`, `code 'ECONNRESET'`; `node-fetch/lib/index.js:159,400`) — not an `APIConnectionError`. `reviewer-core/src/llm/openrouter.ts:110-119` passes it through unmapped and `isTransientLlmError` (`reviewer-core/src/llm/errors.ts:53-65`) returns false, so `callWithDeadline` (`reviewer-core/src/review/llm-call.ts:194`) never retries. The server's `adapters/llm/openai.ts` and `anthropic.ts` map no connection errors at all.
+- 0 tokens: a throw out of `reviewPullRequest` discards its running usage totals (`reviewer-core/src/review/run.ts:386`); the executor's catch hard-codes 0 tokens / null cost (`server/src/modules/reviews/run-executor.ts:450-470`, `traceFromBuffer` `:690+`). Plan 13 recorded "failed runs store 0" on purpose (`docs/plans/13-count-failed-llm-attempt-usage.md:106`, Q2 = no).
+**Options (analysed in a plan-42 pass-1 draft, discarded unimplemented on the user's request):**
+- (a) Retry only — treat node-fetch `FetchError` with `type === 'system'` as transient (keep `invalid-json`, `max-size`, `AbortError` non-transient): map it to `LlmConnectionError` in `openrouter.ts` (keeps the "adapter normalises errors, classify by `instanceof`" gotcha) **and** duck-type it in `isTransientLlmError` (covers the server adapters). Test with a loopback `node:http` server that sends headers and destroys the socket mid-body, driving the real `OpenRouterProvider` + SDK. Risk: an undici-based SDK throws `TypeError: terminated` with `cause.code` instead — the loopback test catches that.
+- (b) (a) + record usage-so-far on a failed or cancelled run: carry totals out of `reviewPullRequest` via a cumulative `ReviewInput.onUsageTotals` callback, not a wrapper error (a wrapper breaks `err instanceof RunCancelledError` at `run-executor.ts:453` and `ReviewChunksSkippedError` checks). Reverses plan 13's Q2 decision and is user-visible: the PR list COST column (`server/src/modules/pulls/routes.ts:126-133`) and the multi-agent header total (`multi-agent.helpers.ts:217-221`) sum runs of every status; multi-agent estimates use done runs only and are unaffected. The round whose body failed reports no usage, so the total stays an undercount unless estimated like the deadline path (`llm-call.ts:173-187`). Recommended option when picked up.
+- (c) (b) + partial review: when one map chunk fails after its retry, keep the other files' findings and end the run as partial with the unreviewed files listed — a behaviour change that needs a spec.
+**Rule (until fixed):** on a large PR, a run that fails with `Invalid response body … ECONNRESET` / `Socket timeout` lost to the network, not to the model — re-run it, keep the Mac awake, and do not read its 0-token cost as real.
+**Evidence:** dev DB `agent_runs where multi_agent_run_id = '27a5737b-…'`; the cited `node_modules` and source lines above.
+
+### 2026-10-14 — vitest 2.1.9 carries 6 audit advisories in every package, and only vitest 5 fixes them (deferred)
+**Symptom:** `npm audit` in `agent-runner/` reports 6 vulnerabilities (3 moderate, 1 high, 2 critical) — `tinypool` prototype-pollution → RCE (GHSA-5gmw-xhrv-c9v3, GHSA-85c8-ppgw-ccpr), `esbuild` dev-server read (GHSA-67mh-4wv8-2f99) via `vite`/`vite-node`, `@vitest/mocker` path traversal (GHSA-82fw-gwwq-j7x9). The only offered fix is `npm audit fix --force` → `vitest@5.0.4`, a breaking change.
+**Cause:** it is not an `agent-runner` problem: `server`, `client`, `reviewer-core`, `mcp-server`, `evals` and `agent-runner` all resolve `vitest` 2.1.9, the last 2.x release, so no in-range bump exists. `e2e` has no vitest. All of it is dev tooling: `ncc` does not bundle vitest into `agent-runner/dist/index.js`, so nothing reaches a target repo's CI.
+**Rule:** planned fix (user, 2026-10-14: "later", no plan yet): upgrade vitest to 5.x in all six packages in one plan via `implementation-planner`, each with its own package manager. Never bump one package alone (e.g. `npm audit fix --force` in `agent-runner/`) — that creates version drift, and npm there would also write a second lock file next to `pnpm-lock.yaml`. Expect config changes: every `vitest.config.ts`, plus `server/vitest.mutation.config.ts` and the `@stryker-mutator/vitest-runner` plugin (`server/stryker.config.json`), which must support vitest 5.
+**Evidence:** `cd agent-runner && npm audit` · `for p in server client reviewer-core mcp-server evals agent-runner; do node -p "require('./$p/node_modules/vitest/package.json').version"; done` → 2.1.9 ×6
 
 ### 2026-10-08 — the `dependency-checker` eval asks for "three zod versions" while its data has two
 **Symptom:** the practice "the three different zod versions across server, client, and reviewer-core are called out explicitly as version drift" fails for answers that call out the drift correctly. The judge's evidence quotes a correct finding (`zod 3.23.8 vs 3.22.4`).

@@ -20,6 +20,11 @@ import common from "../../../../../../../../messages/en/common.json";
 // imports a sibling hook (client/INSIGHTS.md).
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+  useParams: () => ({ repoId: "repo1", number: "7" }),
+}));
+vi.mock("@/lib/hooks/multi-agent", () => ({
+  useAgentEstimates: () => ({ data: [] }),
+  useStartMultiAgentRun: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 vi.mock("../../../../../../../lib/hooks/agents", async (importActual) => ({
   ...(await importActual<Record<string, unknown>>()),
