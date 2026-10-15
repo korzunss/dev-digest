@@ -31,6 +31,7 @@ If a test wouldn't catch a class of regression we care about, we don't write it.
 | server-integration | `server/` | integration (real Postgres) | vitest | `server-integration.yml` | **yes** |
 | reviewer-core | `reviewer-core/` | unit (engine) | vitest | `reviewer-core.yml` | no |
 | mcp-server | `mcp-server/` | unit (tools over fakes) | vitest | `mcp-server.yml` | no |
+| agent-runner | `agent-runner/` | unit (runner over stubs + temp git repo) | vitest | `agent-runner.yml` | no |
 | e2e web | `e2e/` | browser e2e (deterministic) | agent-browser + `run.ts` | `e2e-web.yml` | yes (stack) |
 
 ## What each suite covers
@@ -57,6 +58,11 @@ and a `run` with a stubbed model → grounded findings. No DB / GitHub / FS.
 fakes and an in-memory MCP client, plus a GET-only pin for the read tools and a
 clean-stdout check. No API, DB, or network.
 
+**agent-runner** — the CI runner: event/manifest/gate logic (`core`) and the whole
+flow (`main`) with a stubbed model and `fetch` over a temp git repo, including the
+no-secret-in-output check. The CI also rebuilds `dist/index.js` and fails if it
+differs from the committed file.
+
 **e2e web** — see `e2e/README.md`. Deterministic agent-browser flows over the
 main journeys (boot → PR list → PR detail; agents) against a real seeded stack.
 No `chat`, no model key.
@@ -67,6 +73,7 @@ No `chat`, no model key.
 # per package
 cd client        && pnpm test           # + pnpm typecheck
 cd reviewer-core && npm test
+cd agent-runner  && npm test           # + npm run typecheck
 cd mcp-server    && pnpm test           # + pnpm typecheck
 
 # server — the unit/integration split (see note below)

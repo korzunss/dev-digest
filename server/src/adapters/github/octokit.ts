@@ -11,13 +11,47 @@ import type {
   PrReviewComment,
   OpenPrPayload,
   CommitFilesPayload,
+  CommitPruneRule,
   IssueMeta,
   MergedPrLookup,
+  BranchState,
+  CommitAhead,
+  WorkflowRunMeta,
+  RunArtifactMeta,
 } from '@devdigest/shared';
+import { AppError } from '../../platform/errors.js';
 import { withRetry, withTimeout } from '../../platform/resilience.js';
 import { collectMergedPrs } from './merged-prs.js';
 
 const TIMEOUT = 30_000;
+/** Artifact downloads move up to a few MiB through a second host. */
+const DOWNLOAD_TIMEOUT = 60_000;
+
+function statusOf(err: unknown): number | undefined {
+  const s = (err as { status?: unknown } | null)?.status;
+  return typeof s === 'number' ? s : undefined;
+}
+
+/**
+ * 403/404 on a write that needs the `workflow` scope (classic) or the
+ * Workflows permission (fine-grained) → a typed, actionable error. Anything
+ * else is rethrown untouched.
+ */
+function mapWritePermission(err: unknown): never {
+  const s = statusOf(err);
+  if (s === 403 || s === 404) {
+    const headers = (err as { response?: { headers?: Record<string, string | undefined> } })
+      .response?.headers;
+    const accepted = headers?.['x-accepted-github-permissions'];
+    throw new AppError(
+      'missing_workflow_permission',
+      'The GitHub token cannot write workflow files (needs the "workflow" scope, or the Workflows permission on a fine-grained token).',
+      403,
+      accepted ? { accepted_permissions: accepted } : undefined,
+    );
+  }
+  throw err;
+}
 
 function mapStatus(state: string, merged: boolean | undefined): PrStatus {
   if (merged) return 'merged';
@@ -257,7 +291,10 @@ export class OctokitGitHubClient implements ForgeClient {
     );
   }
 
-  async openPullRequest(repo: RepoRef, payload: OpenPrPayload): Promise<{ url: string }> {
+  async openPullRequest(
+    repo: RepoRef,
+    payload: OpenPrPayload,
+  ): Promise<{ url: string; number: number }> {
     return withRetry(() =>
       withTimeout(
         (async () => {
@@ -269,7 +306,7 @@ export class OctokitGitHubClient implements ForgeClient {
             base: payload.base,
             body: payload.body,
           });
-          return { url: res.data.html_url };
+          return { url: res.data.html_url, number: res.data.number };
         })(),
         TIMEOUT,
       ),
@@ -288,30 +325,59 @@ export class OctokitGitHubClient implements ForgeClient {
           const g = this.octokit.rest.git;
 
           // Parent commit: the target branch if it already exists, else the base.
+          // ONLY a 404 means "absent"; any other failure must not fall through to
+          // a commit on the base branch.
           let parentSha: string;
           let branchExists = false;
           try {
             const ref = await g.getRef({ owner, repo: name, ref: `heads/${payload.branch}` });
             parentSha = ref.data.object.sha;
             branchExists = true;
-          } catch {
+          } catch (err) {
+            if (statusOf(err) !== 404) throw err;
             const baseRef = await g.getRef({ owner, repo: name, ref: `heads/${payload.base}` });
             parentSha = baseRef.data.object.sha;
+          }
+          if (payload.expectedHeadSha !== null && (!branchExists || parentSha !== payload.expectedHeadSha)) {
+            throw new AppError(
+              'branch_moved',
+              `Branch ${payload.branch} changed since it was inspected; retry the export.`,
+              409,
+            );
           }
 
           // New tree layered on the parent's tree (so unrelated files are kept).
           const parentCommit = await g.getCommit({ owner, repo: name, commit_sha: parentSha });
-          const tree = await g.createTree({
+          // Files the export used to ship and no longer does (a renamed agent, a
+          // dropped skill) go away in the same commit: `sha: null` deletes an entry.
+          const stale = await this.staleBlobs(
             owner,
-            repo: name,
-            base_tree: parentCommit.data.tree.sha,
-            tree: payload.files.map((f) => ({
-              path: f.path,
-              mode: '100644',
-              type: 'blob',
-              content: f.contents,
-            })),
-          });
+            name,
+            parentCommit.data.tree.sha,
+            payload.prune ?? [],
+            new Set(payload.files.map((f) => f.path)),
+          );
+          const tree = await g
+            .createTree({
+              owner,
+              repo: name,
+              base_tree: parentCommit.data.tree.sha,
+              tree: [
+                ...payload.files.map((f) => ({
+                  path: f.path,
+                  mode: '100644' as const,
+                  type: 'blob' as const,
+                  content: f.contents,
+                })),
+                ...stale.map((path) => ({
+                  path,
+                  mode: '100644' as const,
+                  type: 'blob' as const,
+                  sha: null,
+                })),
+              ],
+            })
+            .catch(mapWritePermission);
 
           const commit = await g.createCommit({
             owner,
@@ -322,20 +388,25 @@ export class OctokitGitHubClient implements ForgeClient {
           });
 
           if (branchExists) {
-            await g.updateRef({
-              owner,
-              repo: name,
-              ref: `heads/${payload.branch}`,
-              sha: commit.data.sha,
-              force: true,
-            });
+            // Never forced: a concurrent push makes this a non-fast-forward 422.
+            await g
+              .updateRef({
+                owner,
+                repo: name,
+                ref: `heads/${payload.branch}`,
+                sha: commit.data.sha,
+                force: false,
+              })
+              .catch(mapWritePermission);
           } else {
-            await g.createRef({
-              owner,
-              repo: name,
-              ref: `refs/heads/${payload.branch}`,
-              sha: commit.data.sha,
-            });
+            await g
+              .createRef({
+                owner,
+                repo: name,
+                ref: `refs/heads/${payload.branch}`,
+                sha: commit.data.sha,
+              })
+              .catch(mapWritePermission);
           }
           return { branch: payload.branch };
         })(),
@@ -344,7 +415,43 @@ export class OctokitGitHubClient implements ForgeClient {
     );
   }
 
-  async findOpenPr(repo: RepoRef, branch: string): Promise<{ url: string } | null> {
+  /**
+   * Blobs directly under each rule's directory that match its suffix and are not
+   * in `keep`. Walks the tree one directory at a time (a missing directory is
+   * simply empty), so a huge repo never hits the recursive listing's truncation.
+   */
+  private async staleBlobs(
+    owner: string,
+    repo: string,
+    rootTreeSha: string,
+    rules: readonly CommitPruneRule[],
+    keep: ReadonlySet<string>,
+  ): Promise<string[]> {
+    type Entry = { path?: string; type?: string; sha?: string };
+    const entries = async (treeSha: string): Promise<Entry[]> =>
+      (await this.octokit.rest.git.getTree({ owner, repo, tree_sha: treeSha })).data.tree;
+    const out: string[] = [];
+    for (const rule of rules) {
+      const dirs = rule.prefix.split('/').filter(Boolean);
+      let sha: string | undefined = rootTreeSha;
+      for (const dir of dirs) {
+        sha = (await entries(sha)).find((e) => e.path === dir && e.type === 'tree')?.sha;
+        if (!sha) break;
+      }
+      if (!sha) continue;
+      for (const e of await entries(sha)) {
+        if (e.type !== 'blob' || !e.path?.endsWith(rule.suffix)) continue;
+        const path = `${rule.prefix}${e.path}`;
+        if (!keep.has(path)) out.push(path);
+      }
+    }
+    return out;
+  }
+
+  async findOpenPr(
+    repo: RepoRef,
+    branch: string,
+  ): Promise<{ url: string; number: number } | null> {
     return withRetry(() =>
       withTimeout(
         (async () => {
@@ -356,11 +463,271 @@ export class OctokitGitHubClient implements ForgeClient {
             per_page: 1,
           });
           const pr = res.data[0];
-          return pr ? { url: pr.html_url } : null;
+          return pr ? { url: pr.html_url, number: pr.number } : null;
         })(),
         TIMEOUT,
       ),
     );
+  }
+
+  async getDefaultBranch(repo: RepoRef): Promise<string> {
+    const res = await withRetry(() =>
+      withTimeout(this.octokit.rest.repos.get({ owner: repo.owner, repo: repo.name }), TIMEOUT),
+    );
+    return res.data.default_branch;
+  }
+
+  async getBranch(repo: RepoRef, name: string): Promise<BranchState | null> {
+    return withRetry(() =>
+      withTimeout(
+        (async () => {
+          try {
+            const res = await this.octokit.rest.repos.getBranch({
+              owner: repo.owner,
+              repo: repo.name,
+              branch: name,
+            });
+            return { sha: res.data.commit.sha, protected: res.data.protected };
+          } catch (err) {
+            if (statusOf(err) === 404) return null;
+            throw err;
+          }
+        })(),
+        TIMEOUT,
+      ),
+    );
+  }
+
+  async listCommitsAhead(
+    repo: RepoRef,
+    base: string,
+    head: string,
+  ): Promise<CommitAhead[]> {
+    const res = await withRetry(() =>
+      withTimeout(
+        this.octokit.rest.repos.compareCommitsWithBasehead({
+          owner: repo.owner,
+          repo: repo.name,
+          basehead: `${base}...${head}`,
+          per_page: 100,
+        }),
+        TIMEOUT,
+      ),
+    );
+    const commits: CommitAhead[] = res.data.commits.map((c) => ({
+      sha: c.sha,
+      message: c.commit.message,
+      author: c.author?.login ?? c.commit.author?.name ?? null,
+      date: c.commit.author?.date ?? null,
+    }));
+    // More commits than one page: the rest are unseen, so append a commit that
+    // carries no export trailer — the caller then refuses (`foreign_commits`).
+    if (res.data.ahead_by > commits.length) commits.push({ sha: '', message: '(truncated)' });
+    return commits;
+  }
+
+  async deleteBranch(repo: RepoRef, name: string): Promise<void> {
+    await withRetry(() =>
+      withTimeout(
+        this.octokit.rest.git.deleteRef({
+          owner: repo.owner,
+          repo: repo.name,
+          ref: `heads/${name}`,
+        }),
+        TIMEOUT,
+      ),
+    );
+  }
+
+  async tokenScopes(): Promise<string[] | null> {
+    const res = await withRetry(() =>
+      withTimeout(this.octokit.request('GET /user'), TIMEOUT),
+    );
+    const header = res.headers['x-oauth-scopes'];
+    if (typeof header !== 'string') return null;
+    return header
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+
+  async getPullState(repo: RepoRef, n: number): Promise<'open' | 'merged' | 'closed'> {
+    const res = await withRetry(() =>
+      withTimeout(
+        this.octokit.rest.pulls.get({ owner: repo.owner, repo: repo.name, pull_number: n }),
+        TIMEOUT,
+      ),
+    );
+    return mapStatus(res.data.state, Boolean(res.data.merged_at)) as 'open' | 'merged' | 'closed';
+  }
+
+  async listWorkflowRuns(
+    repo: RepoRef,
+    workflowFile: string,
+    opts: { perPage: number; page?: number; createdSince?: string },
+  ): Promise<WorkflowRunMeta[]> {
+    const res = await withRetry(() =>
+      withTimeout(
+        this.octokit.rest.actions.listWorkflowRuns({
+          owner: repo.owner,
+          repo: repo.name,
+          workflow_id: workflowFile,
+          per_page: opts.perPage,
+          ...(opts.page ? { page: opts.page } : {}),
+          // GitHub's date qualifier documents second precision only — drop milliseconds.
+          ...(opts.createdSince
+            ? { created: `>=${opts.createdSince.replace(/\.\d+Z$/, 'Z')}` }
+            : {}),
+        }),
+        TIMEOUT,
+      ),
+    );
+    return res.data.workflow_runs.map((r) => ({
+      id: r.id,
+      run_attempt: r.run_attempt ?? 1,
+      head_sha: r.head_sha,
+      status: r.status ?? 'unknown',
+      conclusion: r.conclusion ?? null,
+      created_at: r.created_at,
+      updated_at: r.updated_at,
+      html_url: r.html_url,
+      pr_numbers: (r.pull_requests ?? []).map((p) => p.number),
+    }));
+  }
+
+  async listRunArtifacts(repo: RepoRef, runId: number): Promise<RunArtifactMeta[]> {
+    const res = await withRetry(() =>
+      withTimeout(
+        this.octokit.rest.actions.listWorkflowRunArtifacts({
+          owner: repo.owner,
+          repo: repo.name,
+          run_id: runId,
+          per_page: 100,
+        }),
+        TIMEOUT,
+      ),
+    );
+    return res.data.artifacts.map((a) => ({
+      id: a.id,
+      name: a.name,
+      size_in_bytes: a.size_in_bytes,
+      expired: a.expired,
+    }));
+  }
+
+  async firstJobUrl(repo: RepoRef, runId: number, attempt: number): Promise<string | null> {
+    try {
+      const res = await withRetry(() =>
+        withTimeout(
+          this.octokit.rest.actions.listJobsForWorkflowRunAttempt({
+            owner: repo.owner,
+            repo: repo.name,
+            run_id: runId,
+            attempt_number: attempt,
+            per_page: 1,
+          }),
+          TIMEOUT,
+        ),
+      );
+      return res.data.jobs[0]?.html_url ?? null;
+    } catch (err) {
+      if (statusOf(err) === 404) return null;
+      throw err;
+    }
+  }
+
+  async downloadArtifact(
+    repo: RepoRef,
+    artifactId: number,
+    maxBytes: number,
+  ): Promise<Uint8Array> {
+    // Step 1 (authenticated, no redirect-follow): the API answers 302 + Location,
+    // a short-lived signed URL on another host. The token must never reach it.
+    const location = await withRetry(() =>
+      withTimeout(this.artifactLocation(repo, artifactId), TIMEOUT),
+    );
+    let url: URL;
+    try {
+      url = new URL(location);
+    } catch {
+      throw Object.assign(new Error('artifact redirect is not a URL'), { status: 502 });
+    }
+    if (url.protocol !== 'https:') {
+      throw Object.assign(new Error('artifact redirect is not https'), { status: 502 });
+    }
+
+    // Step 2 (plain fetch, no auth header), capped by bytes.
+    return withRetry(() =>
+      withTimeout(
+        (async () => {
+          // The signal cancels the request itself; `withTimeout` only stops waiting for it.
+          const res = await fetch(url, { redirect: 'error', signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT) });
+          if (!res.ok) {
+            throw Object.assign(new Error(`artifact download failed: ${res.status}`), {
+              status: res.status,
+            });
+          }
+          const declared = Number(res.headers.get('content-length'));
+          if (Number.isFinite(declared) && declared > maxBytes) {
+            await res.body?.cancel();
+            throw new AppError('artifact_too_large', 'Artifact exceeds the size cap', 413);
+          }
+          const reader = res.body?.getReader();
+          if (!reader) return new Uint8Array(0);
+          const chunks: Uint8Array[] = [];
+          let total = 0;
+          for (;;) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            total += value.byteLength;
+            if (total > maxBytes) {
+              await reader.cancel();
+              throw new AppError('artifact_too_large', 'Artifact exceeds the size cap', 413);
+            }
+            chunks.push(value);
+          }
+          const out = new Uint8Array(total);
+          let off = 0;
+          for (const c of chunks) {
+            out.set(c, off);
+            off += c.byteLength;
+          }
+          return out;
+        })(),
+        DOWNLOAD_TIMEOUT,
+      ),
+    );
+  }
+
+  /** Resolve the signed download URL without following the redirect. */
+  private async artifactLocation(repo: RepoRef, artifactId: number): Promise<string> {
+    const fromHeaders = (headers: Record<string, unknown> | undefined): string | null => {
+      const l = headers?.location;
+      return typeof l === 'string' && l ? l : null;
+    };
+    try {
+      const res = await this.octokit.request(
+        'GET /repos/{owner}/{repo}/actions/artifacts/{artifact_id}/{archive_format}',
+        {
+          owner: repo.owner,
+          repo: repo.name,
+          artifact_id: artifactId,
+          archive_format: 'zip',
+          request: { redirect: 'manual' },
+        },
+      );
+      const loc = fromHeaders(res.headers as Record<string, unknown>);
+      if (loc) return loc;
+    } catch (err) {
+      // Some octokit versions surface the 302 as a RequestError.
+      const e = err as { status?: number; response?: { headers?: Record<string, unknown> } };
+      if (e.status === 302) {
+        const loc = fromHeaders(e.response?.headers);
+        if (loc) return loc;
+      }
+      throw err;
+    }
+    throw Object.assign(new Error('artifact has no download location'), { status: 410 });
   }
 
   async getIssue(repo: RepoRef, n: number): Promise<IssueMeta> {

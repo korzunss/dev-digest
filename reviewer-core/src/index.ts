@@ -124,3 +124,6 @@ export {
   SMART_DIFF_RULES,
   type SmartDiffRule,
 } from './smart-diff/constants.js';
+
+// Unified-diff parser (pure) — shared by the studio's git adapter and the CI runner.
+export { parseUnifiedDiff } from './diff/parse.js';

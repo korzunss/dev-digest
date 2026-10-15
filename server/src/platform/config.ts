@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { z } from 'zod';
 import { homedir } from 'node:os';
 import { join, isAbsolute, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 /**
  * Central, zod-validated environment config. Loaded once at startup.
@@ -31,6 +32,8 @@ const EnvSchema = z.object({
   // (`https://acme.com/gitlab`) for a relative-URL install. The prefix form is
   // what disambiguates such an install from a top-level group of that name.
   GITLAB_HOST: z.string().optional(),
+  // Committed agent-runner bundle the CI export ships (default: ../agent-runner/dist/index.js).
+  AGENT_RUNNER_BUNDLE: z.string().optional(),
   API_PORT: z.coerce.number().int().default(3001),
   WEB_PORT: z.coerce.number().int().default(3000),
   DEVDIGEST_CLONE_DIR: z.string().optional(),
@@ -66,6 +69,8 @@ export type AppConfig = {
   repoIntelEnabled: boolean;
   /** Normalised self-managed GitLab bases (origin + optional path prefix). */
   gitlabBases: string[];
+  /** Absolute path to the committed agent-runner bundle (CI export). */
+  agentRunnerBundle: string;
 };
 
 /** `git.acme.com, https://acme.com/gitlab` → normalised, https-prefixed bases. */
@@ -96,5 +101,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     embeddingsEnabled: parsed.EMBEDDINGS_ENABLED === 'true',
     repoIntelEnabled: parsed.REPO_INTEL_ENABLED !== 'false',
     gitlabBases: parseForgeBases(parsed.GITLAB_HOST),
+    // Default: the committed bundle next to this checkout, found from this module
+    // (not the cwd, which is wherever the API was started). The env value, when set,
+    // is a path relative to the cwd, as every other path option here.
+    agentRunnerBundle: parsed.AGENT_RUNNER_BUNDLE
+      ? resolve(process.cwd(), parsed.AGENT_RUNNER_BUNDLE)
+      : fileURLToPath(new URL('../../../agent-runner/dist/index.js', import.meta.url)),
   };
 }

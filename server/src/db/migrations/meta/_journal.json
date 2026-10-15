@@ -197,6 +197,20 @@
       "when": 1791833173222,
       "tag": "0027_giant_northstar",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1792046208723,
+      "tag": "0028_romantic_vargas",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1792060342405,
+      "tag": "0029_kind_phalanx",
+      "breakpoints": true
     }
   ]
 }

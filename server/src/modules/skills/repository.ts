@@ -319,6 +319,8 @@ export class SkillsRepository {
     return and(
       eq(t.agentRuns.workspaceId, workspaceId),
       eq(t.agentRuns.status, 'done'),
+      // CI runs (source 'ci') carry no run_skills and stay out of skill stats.
+      eq(t.agentRuns.source, 'local'),
       gte(t.agentRuns.ranAt, since),
     );
   }

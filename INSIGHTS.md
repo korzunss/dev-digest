@@ -81,6 +81,12 @@ write-up here. That keeps `AGENTS.md` short without losing the reasoning.
 
 ## What Doesn't Work
 
+### 2026-10-15 — parallel worktrees share one dev Postgres, so their migrations collide in number and both land in the DB
+**Symptom:** `__drizzle_migrations` held 29 rows while this branch had only 0000–0027; the extra one was `0028_tearful_lyja` from the parallel `l07-multi-agents-review` worktree. This branch then generated its own `0028_romantic_vargas` and applied it on top. Also: a second API from another worktree on the same DB reaps the first one's `running` runs (server gotcha), and ports 3000/3001 and 3100/3101 were already taken by other worktrees.
+**Cause:** every worktree's `server` defaults to `postgres://…@localhost:5432/devdigest` (the one `devdigest-postgres` container), and `db:generate` numbers from the branch's own journal.
+**Rule:** before `db:migrate`, compare `select id, created_at from drizzle.__drizzle_migrations order by id desc` with your `meta/_journal.json` to spot another worktree's migrations; keep migrations additive while sharing the DB; whichever branch merges second must regenerate its migration against main (two `NNNN_*` with the same number). Start a worktree's dev servers on free ports (`API_PORT`/`WEB_PORT`, `NEXT_PUBLIC_API_BASE`) after checking `lsof -iTCP:<port> -sTCP:LISTEN` and that no run is `running`.
+**Evidence:** plan 40 "Handoffs → G2" (migration clash) · `server/src/db/migrations/0028_romantic_vargas.sql` vs the other worktree's `0028_tearful_lyja.sql` · `lsof` output in the session
+
 ### 2026-10-14 — splitting one broad CI `paths:` filter into per-tier filters leaves the router script reacting to paths no workflow triggers on
 **Symptom:** plan 39 split `harness-evals.yml` (one `paths:` incl. `evals/**`) into four per-tier workflows. `ci-detect.mjs` still set `run_workflow=true` for an `evals/skills/<n>/**` change of a skill named in the workflow cases, but `harness-evals-workflow.yml`'s `paths:` had no `evals/skills/**` — that rule was dead in CI, yet live under `CI_DETECT_ALL` and locally (architecture-reviewer F1).
 **Cause:** the script decides on paths that the workflow filter has already narrowed; with one broad filter the two never disagreed, with several narrow ones every rule the script has but the filter lacks silently stops firing.
@@ -282,6 +288,12 @@ that path; it's runtime data, and the next resync overwrites it.
 
 ## Tool & Library Notes
 
+### 2026-10-15 — `agent-runner/dist/index.js` inlines `@devdigest/shared` and reviewer-core: any shared edit makes the committed bundle stale
+**Symptom:** after a contract-only change (`CiRunsQuery.since` gained `.max(40)`), `npm run build` in `agent-runner/` changed `dist/index.js` (body + `sha256:` header) although no runner file was touched; the `agent-runner.yml` freshness check (`git diff --exit-code dist/index.js`) would fail.
+**Cause:** esbuild bundles everything the runner imports, including `server/src/vendor/shared` and `reviewer-core` via path aliases.
+**Rule:** after editing `server/src/vendor/shared/**` or `reviewer-core/src/**`, run `cd agent-runner && npm run build` and commit `dist/`. Keep `zod`/`openai` aliased to `agent-runner/node_modules` in **all three** of tsconfig `paths`, the vitest alias and the esbuild `alias`, or the manifest schema and the engine run on different zod copies; the ESM bundle needs the `createRequire` banner for CJS `openai`. Related: once a server file re-exports from `@devdigest/reviewer-core`, `reviewer-core/vitest.config.ts` needs a self-alias, because reviewer-core tests import `server/src/adapters/mocks.ts`.
+**Evidence:** `agent-runner/scripts/build.mjs` · `.github/workflows/agent-runner.yml` · `reviewer-core/vitest.config.ts` · `server/src/adapters/git/diff-parser.ts` · plan 40 G1-F1 and "bundle freshness" log lines
+
 ### 2026-10-11 — a Claude Code background command dies at 2 h, and `eval:benchmark -n 5` can take longer
 **Symptom:** `pnpm eval:benchmark skills/onion-architecture -n 5` (80 Haiku sessions plus a Sonnet judge, subscription) was started as a background command. It was killed with exit 143 during baseline run 5/5, when only 4 of its 8 records had been written, and no `benchmark.md` was produced. Single runs took 10–17 minutes each.
 **Cause:** a background Bash command has a hard limit of 7 200 000 ms. `benchmark.ts` writes its report only after all 2×N runs, although each run appends its records to `records.jsonl` as it goes.
@@ -465,6 +477,12 @@ tree looks right in exactly the case the index is wrong.
 · the five committed links in `019925b`
 
 ## Recurring Errors & Fixes
+
+### 2026-10-15 — a `\u202A`-style escape written through Edit/heredoc landed as raw invisible bidi characters
+**Symptom:** a regex meant to strip bidi controls, `/[\u202A-\u202E\u2066-\u2069]/g`, was saved into `server/src/modules/ci/service.ts` with the **raw** code points (bytes `e2 80 aa …`) — invisible in review, the Trojan-Source pattern GitHub flags as hidden Unicode. A Python `r'''…'''` heredoc rewrite produced the same raw bytes.
+**Cause:** the `\uXXXX` text was turned into the characters on the way into the file, not by TypeScript.
+**Rule:** when a source file needs `\u` escapes for invisible/bidi code points, build the backslash explicitly (e.g. Python `chr(92) + 'u202A'`), then check the bytes; before a PR scan the diff: `grep -lP '[\x{200E}\x{200F}\x{061C}\x{202A}-\x{202E}\x{2066}-\x{2069}]' <changed files>` must print nothing.
+**Evidence:** `od -c` of the `BIDI_CONTROLS` line before/after · `docs/plans/40-export-to-ci.md` "/pr-self-review re-run 2" (SR3)
 
 ### 2026-10-11 — a green `harness-evals` run can mean nothing ran, or every eval failed
 **Symptom:** on PR #21:

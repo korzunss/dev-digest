@@ -48,6 +48,12 @@ export const NAV: NavGroup[] = [
       { key: "eval", label: "Eval Dashboard", icon: "Gauge", href: "/eval" },
     ],
   },
+  {
+    // Signed-off exception (spec 013, AC-2): the CI Runs page has no other seam into the sidebar.
+    // A vendor refresh drops this section — see client/INSIGHTS.md.
+    section: "GLOBAL",
+    items: [{ key: "ci-runs", label: "CI Runs", icon: "Workflow", href: "/ci-runs" }],
+  },
 ];
 
 export const SETTINGS_ITEM: NavItemDef = {

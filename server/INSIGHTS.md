@@ -25,6 +25,12 @@ the section guide and the promotion rule (a standing rule becomes one line under
 
 ## What Doesn't Work
 
+### 2026-10-15 — validating a parsed copy of user-edited YAML, then committing the raw text, kept failing review
+**Symptom:** plan 40's export validator for a user-edited GitHub Actions workflow (`server/src/modules/ci/workflow.ts`) was bypassed in three successive security rounds: first a case-sensitive `${{ github.event … }}` denylist (`GitHub.Event…`, `github['event']`); then a "pin the secret-holding runner step" rule (job/workflow `env: NODE_OPTIONS: --import=data:…`, a plain `run:` step before the runner overwriting `base/.devdigest/runner/index.js`, a second checkout into `path: base`, a job `container:`); then a parser difference — in the `yaml` lib an **alias used as a mapping key** (`*a: …`) escapes the duplicate-key check (it only compares scalars) and `toJS()` is last-wins, so the validator saw one value while the raw text GitHub parses carried another.
+**Cause:** every piecewise rule validated *some* fields of a parsed copy while the bytes that reached the repo (with the user's PAT, from a LAN-reachable route) were the user's own text, and everything the secret-bearing step *inherits* also decides what runs with the secret.
+**Rule:** for "user may edit generated config X": parse, check the few editable fields against allowlists, deep-compare everything else with the regenerated document, refuse Alias nodes / non-plain keys — and **ship text regenerated from the validated values, never the submitted bytes** (`shipWorkflow`). Then any validator-vs-consumer parse difference is harmless.
+**Evidence:** `server/src/modules/ci/workflow.ts` `validateWorkflow` / `shipWorkflow` · `server/src/modules/ci/service.ts` `build()` · `server/test/ci-workflow.test.ts` (SF1/SF2/SF3 vectors, H1 alias cases) · `docs/plans/40-export-to-ci.md` security delta 1–3
+
 ### 2026-10-12 — an id-less, bodyless POST that spends money is reachable from any web page, despite CORS
 **Symptom:** plan 34 review (SF1): `POST /eval/run-all` took no path id and no body; `fetch('http://localhost:3001/eval/run-all',{method:'POST',mode:'no-cors'})` from any visited page is a "simple" request, gets no preflight, and starts a paid suite run for every enabled agent. CORS (`app.ts`, `origin: config.webOrigin`) only stops the page from *reading* the response.
 **Cause:** the other paid POSTs (`/eval-cases/:id/runs`, `/agents/:id/eval-runs`, `/eval-runs/:id/promote`) are safe only because their path needs a server-issued UUID a cross-origin page cannot read; a route with neither an id nor an object body has no barrier at all.
@@ -214,6 +220,18 @@ foreign key POINTS AT"
 
 ## Tool & Library Notes
 
+### 2026-10-15 — a GitHub Actions re-run keeps the run's `created_at`, so a `created_at` scan cursor never ingests it
+**Symptom:** the CI ingest cursor (newest scanned `created_at`) re-listed the newest no-artifact run on every refresh with `>=`, and with `> cursor` it could never see a re-run (attempt 2+) of an already-scanned run.
+**Cause:** a re-run is the same workflow run id with a new `run_attempt`; GitHub keeps `created_at` and bumps only `updated_at`. The list endpoint filters by `created` only.
+**Rule:** list within a `created` window, but decide what to process by `status === 'completed'` **and** `updated_at` > the stored cursor (cursor = max processed `updated_at`, never moving backwards); dedupe records by `(workspace, repo, run_id, run_attempt)`. "Newer *or* unrecorded" re-fetches no-artifact runs forever. Send the `created>=` qualifier with second precision (no milliseconds — GitHub documents seconds only).
+**Evidence:** `server/src/modules/ci/artifact.ts` `nextCursor` · `server/src/modules/ci/service.ts` ingest · `server/src/adapters/github/octokit.ts` `listWorkflowRuns` · `server/test/ci-ingest.it.test.ts` re-run + `listRunArtifacts` spy cases
+
+### 2026-10-15 — postgres-js + drizzle raw `sql` cannot bind a JS `Date`
+**Symptom:** keyset paging on `/ci/runs` returned 500 on page 2: `The "string" argument must be of type string … Received an instance of Date`.
+**Cause:** in a raw `sql\`…\`` template the value goes to postgres-js untyped; the query-builder helpers (`gte`, `lt`) serialise `Date` themselves, raw parameters do not.
+**Rule:** in raw `sql`, bind `date.toISOString()` with an explicit `::timestamptz` (and `::uuid` for ids in a row comparison).
+**Evidence:** `server/src/modules/ci/repository.ts` `listRuns` cursor clause · `server/test/ci-ingest.it.test.ts` paging case
+
 ### 2026-10-12 — an optional POST body declared `.optional()` rejects the bodyless request with 422
 **Symptom:** plan 35 G3: `POST /eval-cases/:id/runs` got `body: EvalCaseRunBody.optional()` so the existing bodyless agent single run kept working; the bodyless call returned 422 `Expected object, received null`. Caught by `eval-pipeline-skill-runs.it.test.ts`.
 **Cause:** with `fastify-type-provider-zod` an absent request body reaches the body schema as `null`, not `undefined`, and `.optional()` accepts only `undefined`.
@@ -363,6 +381,12 @@ list-endpoint test that several PRs were exercised — one was.
 rollup test inserts PR #999 for exactly this reason
 
 ## Recurring Errors & Fixes
+
+### 2026-10-15 — `pnpm test` fails on `context-helpers.test.ts` "… < 50 ms" about every other run, on main too
+**Symptom:** `FAIL test/context-helpers.test.ts > validateRootGlob — SEC2b … every accepted glob matches a 2,046-segment path in < 50 ms` (`expected 106.03 to be less than 50`) — the only failure out of ~1400, in a branch that never touched `context/`.
+**Cause:** a wall-clock budget; `pnpm test` runs unit and `.it` files together, and the testcontainers/Postgres load slows the match. Alone it passes 3/3; on base `8d8c6a1` the same command failed 1 of 2 runs.
+**Rule:** when a gate fails only on this test, check the file name first — it is pre-existing load flakiness, not your delta: re-run, or run `pnpm exec vitest run test/context-helpers.test.ts` alone. Fixing it (a larger budget, or per-segment cost) is an open follow-up.
+**Evidence:** `server/test/context-helpers.test.ts` SEC2b · `docs/plans/40-export-to-ci.md` `/pr-self-review` sections
 
 ### 2026-09-26 — `.it` tests read the developer's real secrets and make live LLM calls
 **Symptom:** after spec 006 added intent classification to review pre-work,
