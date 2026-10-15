@@ -48,6 +48,14 @@ export const NAV: NavGroup[] = [
       { key: "eval", label: "Eval Dashboard", icon: "Gauge", href: "/eval" },
     ],
   },
+  {
+    section: "GLOBAL",
+    items: [
+      // Signed-off exception (spec 013): same seam as above. A vendor refresh drops this
+      // line — see client/INSIGHTS.md.
+      { key: "multi-agent", label: "Multi-Agent Review", icon: "Users", href: "/repos/:repoId/multi-agent" },
+    ],
+  },
 ];
 
 export const SETTINGS_ITEM: NavItemDef = {

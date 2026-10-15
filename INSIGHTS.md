@@ -81,6 +81,18 @@ write-up here. That keeps `AGENTS.md` short without losing the reasoning.
 
 ## What Doesn't Work
 
+### 2026-10-15 — a plan step that paraphrases a spec field loses its definition, and implementer + tests agree on the wrong one
+**Symptom:** plan 40's UF wave shipped "Recent runs" rows showing the run's age ("3h") where AC-15c asks for the wall-clock time defined in AC-31; the implementer's own test asserted "3h", the test-writer's gap pass kept it, and only the plan-verifier (reading the spec) caught it.
+**Cause:** step S25 said just "time"; implementer and tests both read the step, not the spec AC, so they were consistent with each other and wrong.
+**Rule:** when a plan step names a field the spec defines, copy the spec's definition (or its AC id + "as defined in AC-n") into the step text and the Done-when assertion.
+**Evidence:** plan 40 *Verification log* (gap AC15C) · `client/src/app/repos/[repoId]/multi-agent/_components/RecentRuns/RecentRuns.test.tsx:51-52`
+
+### 2026-10-15 — an implementer told to "follow the mockups" never sees images the user pasted into the main session
+**Symptom:** plan 40's G5/G6 shipped a Configure run screen far from the user's mockups (card boxes, one-line agent rows, wrong crumb and nav group); the implementer's report said "I had no pixel mockup". A whole design fix round (DG1–DG8) followed.
+**Cause:** pasted images live only in the main session's context; a subagent gets the prompt text, and the spec describes a design only in words.
+**Rule:** when a feature has mockups, pass their file paths (the `[Image: source: …]` paths) to spec-creator, every UI implementer group and any design fix, and tell it to Read them first; after the last UI group, compare screenshots of the running build against them before the verifier.
+**Evidence:** plan 40 *Handoffs → G6* ("did not see the pixel mockups") and *Design review (main session)* DG1–DG8
+
 ### 2026-10-14 — splitting one broad CI `paths:` filter into per-tier filters leaves the router script reacting to paths no workflow triggers on
 **Symptom:** plan 39 split `harness-evals.yml` (one `paths:` incl. `evals/**`) into four per-tier workflows. `ci-detect.mjs` still set `run_workflow=true` for an `evals/skills/<n>/**` change of a skill named in the workflow cases, but `harness-evals-workflow.yml`'s `paths:` had no `evals/skills/**` — that rule was dead in CI, yet live under `CI_DETECT_ALL` and locally (architecture-reviewer F1).
 **Cause:** the script decides on paths that the workflow filter has already narrowed; with one broad filter the two never disagreed, with several narrow ones every rule the script has but the filter lacks silently stops firing.
@@ -127,6 +139,7 @@ write-up here. That keeps `AGENTS.md` short without losing the reasoning.
 **Evidence:** `docs/plans/07-review-diff-base-sha.md`, `08-llm-call-reliability.md`, `09-review-eval-fixture.md` → *Verification log* (R3 rows)
 **Extended 2026-10-04 (plans 20, 21):** staging alone is not enough. The main session re-stages the plan after every appended handoff and log line, and each `git add` replaces the index blob, so by verification time the approved text is gone and R3 is again not-verifiable. Keep R3 provable by committing the plan right after approval (a `docs(plans): approve plan NN` commit on the branch), or by not re-staging it until the verifier has run.
 **Guard:** `sdd.sh checkpoint <NN> plan-approved` at approval + `sdd.sh brief-diff <plan> <tree>` for R3 — `.claude/skills/sdd/scripts/sdd.sh` (plans 22, 23).
+**Extended 2026-10-15 (plan 40):** when the checkpoint was missed (the pipeline was run by hand, not via `/sdd`), R3 can still be proved: replay the implementation-planner's own `Write`/`Edit` tool_use inputs on the plan path from its subagent transcript (`~/.claude/projects/<proj>/<session>/subagents/agent-*.jsonl`; `agent-*.meta.json` names the agent type) — last Write, then each later Edit — and diff that baseline against the current file above `<!-- implementer-brief:end -->`. The plan-verifier rebuilt it independently and matched. Evidence: `docs/plans/assets/40-multi-agent-review/plan-baseline-pass2.md`.
 
 ### 2026-09-29 — a skill listed on a step where it has nothing to do can only be closed by a plan change
 **Symptom:** plan 07's plan-verifier kept SK2–SK4 `missing` across two runs although the implementer re-read `zod` in full and recorded S2–S4 under *Not used — reason* ("no Zod schema in this step").
@@ -516,6 +529,12 @@ Harness evals now run on every PR that touches the harness (`.github/workflows/h
 Before making the evals blocking again, raise the CI test timeout and measure with `eval:repeat`.
 
 ## Open Questions
+
+### 2026-10-14 — vitest 2.1.9 carries 6 audit advisories in every package, and only vitest 5 fixes them (deferred)
+**Symptom:** `npm audit` in `agent-runner/` reports 6 vulnerabilities (3 moderate, 1 high, 2 critical) — `tinypool` prototype-pollution → RCE (GHSA-5gmw-xhrv-c9v3, GHSA-85c8-ppgw-ccpr), `esbuild` dev-server read (GHSA-67mh-4wv8-2f99) via `vite`/`vite-node`, `@vitest/mocker` path traversal (GHSA-82fw-gwwq-j7x9). The only offered fix is `npm audit fix --force` → `vitest@5.0.4`, a breaking change.
+**Cause:** it is not an `agent-runner` problem: `server`, `client`, `reviewer-core`, `mcp-server`, `evals` and `agent-runner` all resolve `vitest` 2.1.9, the last 2.x release, so no in-range bump exists. `e2e` has no vitest. All of it is dev tooling: `ncc` does not bundle vitest into `agent-runner/dist/index.js`, so nothing reaches a target repo's CI.
+**Rule:** planned fix (user, 2026-10-14: "later", no plan yet): upgrade vitest to 5.x in all six packages in one plan via `implementation-planner`, each with its own package manager. Never bump one package alone (e.g. `npm audit fix --force` in `agent-runner/`) — that creates version drift, and npm there would also write a second lock file next to `pnpm-lock.yaml`. Expect config changes: every `vitest.config.ts`, plus `server/vitest.mutation.config.ts` and the `@stryker-mutator/vitest-runner` plugin (`server/stryker.config.json`), which must support vitest 5.
+**Evidence:** `cd agent-runner && npm audit` · `for p in server client reviewer-core mcp-server evals agent-runner; do node -p "require('./$p/node_modules/vitest/package.json').version"; done` → 2.1.9 ×6
 
 ### 2026-10-08 — the `dependency-checker` eval asks for "three zod versions" while its data has two
 **Symptom:** the practice "the three different zod versions across server, client, and reviewer-core are called out explicitly as version drift" fails for answers that call out the drift correctly. The judge's evidence quotes a correct finding (`zod 3.23.8 vs 3.22.4`).
