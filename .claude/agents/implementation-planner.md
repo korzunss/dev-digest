@@ -391,7 +391,7 @@ was not used in any step>
 - [ ] Pass 1: only the pass-1 sections, ≤ ~6,000 characters, ends with "Steps: pending decisions"
 - [ ] Execution mode recommended per the D4 rule (or single pass: single-agent)
 - [ ] Every step's *Skills to apply* is complete (the implementer reads only those)
-- [ ] `bash .claude/skills/sdd/scripts/sdd.sh plan-lint <plan>` prints `plan-lint: ok`
+- [ ] `bash .claude/skills/sdd-engineering/scripts/sdd.sh plan-lint <plan>` prints `plan-lint: ok`
 ```
 
 ---

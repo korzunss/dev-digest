@@ -1,6 +1,6 @@
-# /sdd — review and fix loop
+# /sdd-engineering — review and fix loop
 
-Stages `review` and `fix-loop` of [SKILL.md](SKILL.md). `S` stands for `bash .claude/skills/sdd/scripts/sdd.sh`; `NN` is the plan number.
+Stages `review` and `fix-loop` of [SKILL.md](SKILL.md). `S` stands for `bash .claude/skills/sdd-engineering/scripts/sdd.sh`; `NN` is the plan number.
 
 ## The wave
 Reviewers: `plan-verifier` ∥ `architecture-reviewer` ∥ `security-reviewer` (the last only when a trust boundary is touched), in parallel, each in working-tree mode (nothing is committed, so a `<base>...HEAD` diff would be empty).

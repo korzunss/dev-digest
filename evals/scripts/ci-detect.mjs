@@ -105,7 +105,7 @@ function workflowCasesText() {
 
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const casesText = workflowCasesText();
-/** Token match: `security` does not match `security-reviewer`; `/sdd` matches `sdd`. */
+/** Token match: `security` does not match `security-reviewer`; `/sdd-engineering` matches `sdd-engineering`. */
 const mentioned = (name) =>
   new RegExp(`(^|[^A-Za-z0-9_-])${escapeRe(name)}($|[^A-Za-z0-9_-])`).test(casesText);
 

@@ -83,7 +83,7 @@ and the full table → `evals/README.md` (*Which change → which run*).
 
 ## Plan → implement → verify
 
-- Feature work runs through `/sdd` (`.claude/skills/sdd/SKILL.md`), which follows the rules below.
+- Feature work runs through `/sdd-engineering` (`.claude/skills/sdd-engineering/SKILL.md`), which follows the rules below.
 - **Optional brainstorm stage** for a goal with no chosen approach: the
   read-only `brainstormer` returns an idea brief, never a plan. The main
   session saves **every** brief, `kill` included, verbatim to

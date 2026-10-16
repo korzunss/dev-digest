@@ -106,7 +106,7 @@ export const cases: WorkflowCase[] = [
     maxTurns: 10,
   },
 
-  // --- trace (1 session): /sdd — a feature starts at the spec stage -----------------------------
+  // --- trace (1 session): /sdd-engineering — a feature starts at the spec stage -----------------------------
   {
     kind: "trace",
     // CLAUDE.md allows an optional brainstormer stage before the spec for a goal with no chosen
@@ -119,11 +119,11 @@ export const cases: WorkflowCase[] = [
       "Почни роботу над нею так, як це прописано в процесі цього репо.",
     expectAnySubagent: ["brainstormer", "spec-creator"],
     expectNotSubagents: ["implementer", "implementation-planner"],
-    // /sdd may run the optional brainstormer first, so spec-creator can come a dozen turns in.
+    // /sdd-engineering may run the optional brainstormer first, so spec-creator can come a dozen turns in.
     maxTurns: 30,
   },
 
-  // --- trace (1 session): /sdd negative — a bug fix skips the spec stage -----------------------
+  // --- trace (1 session): /sdd-engineering negative — a bug fix skips the spec stage -----------------------
   {
     kind: "trace",
     // Negatives only, so the case runs to its natural end (no early stop) — keep maxTurns roomy:
