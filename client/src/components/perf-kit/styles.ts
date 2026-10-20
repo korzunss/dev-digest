@@ -40,8 +40,10 @@ export const s = {
     color: "var(--text-muted)",
   } satisfies CSSProperties,
   sparkSlot: {
-    display: "inline-flex",
+    display: "flex",
     alignItems: "center",
+    width: "100%",
+    minWidth: 0,
     minHeight: 24,
   } satisfies CSSProperties,
   rate: {
