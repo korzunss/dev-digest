@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { PerfRow } from '@devdigest/shared/contracts/agent-performance.js';
 import {
   acceptRate,
+  breakdownBucketKind,
   decodeCursor,
   encodeCursor,
   pickMostActive,
@@ -9,6 +10,7 @@ import {
   resolveWindow,
   sumAggregates,
   sumDecisions,
+  toBreakdown,
   toFigures,
   toPrevious,
 } from '../src/modules/agent-performance/helpers.js';
@@ -251,5 +253,104 @@ describe('history cursor', () => {
     ]) {
       expect(() => decodeCursor(bad)).toThrow(ValidationError);
     }
+  });
+});
+
+describe('breakdownBucketKind (AC-27, AC-28, AC-29)', () => {
+  const d = (s: string) => new Date(s);
+
+  it('uses 4h for 1d and 7d for 30d whatever the zone', () => {
+    expect(breakdownBucketKind('1d', d('2026-03-07T15:00:00Z'), d('2026-03-08T15:00:00Z'), 'America/New_York')).toBe('4h');
+    expect(breakdownBucketKind('30d', d('2026-09-19T12:00:00Z'), d('2026-10-19T12:00:00Z'), 'Asia/Kolkata')).toBe('7d');
+  });
+
+  it('counts a custom range in inclusive local calendar days: 90 -> 7d, 91 -> month', () => {
+    // 2026-01-01 00:00 UTC .. 2026-04-01 00:00 UTC (exclusive end) = 90 days in UTC.
+    expect(breakdownBucketKind('custom', d('2026-01-01T00:00:00Z'), d('2026-04-01T00:00:00Z'), 'UTC')).toBe('7d');
+    expect(breakdownBucketKind('custom', d('2026-01-01T00:00:00Z'), d('2026-04-02T00:00:00Z'), 'UTC')).toBe('month');
+  });
+
+  it('counts the end as to - 1 ms, so a range ending at midnight does not gain a day', () => {
+    expect(breakdownBucketKind('custom', d('2026-01-01T00:00:00Z'), d('2026-04-01T00:00:00Z'), 'UTC')).toBe('7d');
+    expect(breakdownBucketKind('custom', d('2026-01-01T00:00:00Z'), d('2026-04-01T00:00:00.001Z'), 'UTC')).toBe('month');
+  });
+
+  it('counts local days: the same instants are 90 days in New York across DST, 91 in Kolkata', () => {
+    // NY local 2026-01-01 00:00 = 05:00Z; end local 2026-04-01 00:00 (EDT) = 04:00Z.
+    expect(breakdownBucketKind('custom', d('2026-01-01T05:00:00Z'), d('2026-04-01T04:00:00Z'), 'America/New_York')).toBe('7d');
+    // Kolkata (+05:30): 2025-12-31T18:30Z is local Jan 1; 2026-04-01T18:30Z exclusive end -> 91 days.
+    expect(breakdownBucketKind('custom', d('2025-12-31T18:30:00Z'), d('2026-04-01T18:30:00Z'), 'Asia/Kolkata')).toBe('month');
+  });
+});
+
+describe('toBreakdown', () => {
+  const window = {
+    period: '30d' as const,
+    from: '2026-09-19T12:00:00.000Z',
+    to: '2026-10-19T12:00:00.000Z',
+    previous_from: '2026-08-20T12:00:00.000Z',
+    previous_to: '2026-09-19T12:00:00.000Z',
+  };
+  const base = {
+    window,
+    counts: { counted: 5, local: 3 },
+    bucketKind: '7d' as const,
+    skillsSince: null,
+    skills: { denominator: 9, rows: [{ skillId: 's1', name: 'A', runs: 2 }] },
+    memorySince: null,
+    memory: { denominator: 9, rows: [{ text: 't', pr: null, runs: 1 }] },
+    categories: [
+      { category: 'bug', count: 2 },
+      { category: 'weird', count: 1 },
+    ],
+    buckets: [
+      {
+        start: new Date('2026-09-19T12:00:00Z'),
+        end: new Date('2026-09-26T12:00:00Z'),
+        critical: 1,
+        warning: 1,
+        suggestion: 0,
+        other: 1,
+      },
+    ],
+  };
+
+  it('a null tracked-since gives denominator 0 and no rows, whatever the reads say', () => {
+    const b = toBreakdown(base);
+    expect(b.skills).toEqual({ tracked_since: null, denominator: 0, rows: [] });
+    expect(b.memory).toEqual({ tracked_since: null, denominator: 0, rows: [] });
+  });
+
+  it('keeps rows and denominators once tracked, with ISO dates and snake_case keys', () => {
+    const since = new Date('2026-09-25T00:00:00Z');
+    const b = toBreakdown({ ...base, skillsSince: since, memorySince: since });
+    expect(b.skills).toEqual({
+      tracked_since: since.toISOString(),
+      denominator: 9,
+      rows: [{ skill_id: 's1', name: 'A', runs: 2 }],
+    });
+    expect(b.memory.rows).toEqual([{ text: 't', pr: null, runs: 1 }]);
+  });
+
+  it('totals findings as the sum of the categories and passes counts and buckets through', () => {
+    const b = toBreakdown(base);
+    expect(b.counted_runs).toBe(5);
+    expect(b.local_runs).toBe(3);
+    expect(b.findings.total).toBe(3);
+    expect(b.findings.bucket_kind).toBe('7d');
+    expect(b.findings.buckets).toEqual([
+      {
+        start: '2026-09-19T12:00:00.000Z',
+        end: '2026-09-26T12:00:00.000Z',
+        critical: 1,
+        warning: 1,
+        suggestion: 0,
+        other: 1,
+      },
+    ]);
+    expect(b.findings.by_category).toEqual([
+      { category: 'bug', count: 2 },
+      { category: 'weird', count: 1 },
+    ]);
   });
 });

@@ -8,7 +8,7 @@ import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { Agent } from "@devdigest/shared";
-import type { AgentPerfDashboard, AgentPerfStats } from "@devdigest/shared/contracts/agent-performance.js";
+import type { AgentPerfDashboard, AgentPerfStats, AgentStatsBreakdown } from "@devdigest/shared/contracts/agent-performance.js";
 import messages from "../../../messages/en/agentPerformance.json";
 import { figures, row } from "./_components/AgentPerfTable/fixtures";
 import { AgentPerformanceView } from "./_components/AgentPerformanceView/AgentPerformanceView";
@@ -44,6 +44,13 @@ const dashboard: AgentPerfDashboard = {
   rows: [row("Security Reviewer", { runs: 142 })], most_active: null, cost_by_agent: [], cost_by_model: [],
 };
 const stats: AgentPerfStats = { window: window_, agent_id: AGENT_ID, agent_name: AGENT.name, figures: figures({ runs: 142 }), previous, buckets: [] };
+// 0 counted runs: the breakdown panels render nothing, so the only alert is the period control's.
+const breakdown: AgentStatsBreakdown = {
+  window: window_, counted_runs: 0, local_runs: 0,
+  skills: { tracked_since: null, denominator: 0, rows: [] },
+  memory: { tracked_since: null, denominator: 0, rows: [] },
+  findings: { total: 0, by_category: [], bucket_kind: "7d", buckets: [] },
+};
 
 beforeEach(() => {
   get.mockReset();
@@ -51,6 +58,7 @@ beforeEach(() => {
   params = "";
   get.mockImplementation(async (path: string) => {
     if (path.startsWith("/agents/performance")) return dashboard;
+    if (path.includes("/stats/breakdown")) return breakdown;
     if (path.includes("/stats/runs")) return { items: [], next_cursor: null };
     if (path.includes("/stats?")) return stats;
     throw new Error(`unexpected GET ${path}`);

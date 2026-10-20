@@ -13,7 +13,7 @@ open it. A doc nobody can find from here is a doc nobody reads.
 | [`plans/`](plans/README.md) | Saving, executing or verifying a Development Plan — naming, the `draft → approved → done` lifecycle, plan vs spec |
 | [`ideas/`](ideas/README.md) | Comparing approaches before a spec or plan exists — naming, the save rule, the `open → chosen/killed/dropped` lifecycle |
 | [`pr-brief.md`](pr-brief.md) | Changing PR Brief generation (facts, token budget, grounding, cache/stale), its `GET`/`POST /pulls/:id/brief` contract, what the brief card shows (cost lines, coverage block), setting up attached specs, or the Overview → Files changed navigation |
-| [`agent-performance.md`](agent-performance.md) | Changing what the Agent Performance page, the agent Stats tab or the agent-card line shows; the metric rules (M-1…M-15), cost provenance labels, the small-sample rule, or why the contract is imported by a deep path outside the barrel |
+| [`agent-performance.md`](agent-performance.md) | Changing what the Agent Performance page, the agent Stats tab (tiles and breakdown panels), the Skill Stats tab or the agent-card line shows; the metric rules (M-1…M-15), cost provenance labels, the small-sample rule, the skills/memory "tracked since" rule, or why the contracts are imported by a deep path outside the barrel |
 | [`reports/dependencies/`](reports/dependencies/) | Checking dependency weight, drift, unused/undeclared packages or the package graph — dated reports from the `dependency-checker` skill; regenerate instead of editing numbers |
 | [`precision/`](precision/README.md) | Working on reviewer precision (false findings, false CRITICALs): what was done, the latest live-run evidence, the measured backlog |
 

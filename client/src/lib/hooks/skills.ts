@@ -5,16 +5,17 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import { changedPaths, invalidateContextDocs } from "./context";
+import { browserTimeZone, periodKey, resolveWindow, type PeriodSel } from "../period";
 import type {
   AgentSkillLink,
   Skill,
   SkillContext,
   SkillImportPreview,
   SkillSource,
-  SkillStats,
   SkillType,
   SkillVersion,
 } from "@devdigest/shared";
+import type { SkillStatsPeriod } from "@devdigest/shared/contracts/skill-stats.js";
 
 export function useSkills() {
   return useQuery({
@@ -161,16 +162,22 @@ export function useSetAgentSkills() {
 // ---- Stats -----------------------------------------------------------------
 
 /**
- * Per-skill usage figures for the Stats tab.
+ * Per-skill usage figures for the Stats tab, over one period (spec 016, AC-42…49).
  *
  * Kept out of `useSkill`: the rollups need joins across runs and findings that
  * a plain skill read has no reason to pay for, and the tab that shows them is
- * one of six.
+ * one of six. The key carries the period key and the zone — never a timestamp;
+ * the window is resolved inside `queryFn`, so a refetch reads a fresh "now".
  */
-export function useSkillStats(id: string | null | undefined) {
+export function useSkillStats(id: string | null | undefined, sel: PeriodSel) {
+  const tz = browserTimeZone();
   return useQuery({
-    queryKey: ["skill-stats", id],
-    queryFn: () => api.get<SkillStats>(`/skills/${id}/stats`),
+    queryKey: ["skill-stats", id, periodKey(sel), tz],
+    queryFn: () => {
+      const q = resolveWindow(sel, new Date(), tz);
+      const params = new URLSearchParams({ period: q.period, from: q.from, to: q.to, tz: q.tz });
+      return api.get<SkillStatsPeriod>(`/skills/${id}/stats?${params.toString()}`);
+    },
     enabled: !!id,
   });
 }

@@ -1,3 +1,3 @@
 export { StatsTab, StatsTab as default } from "./StatsTab";
 export { donutSegments, formatSegmentValue, hasNothingToShow } from "./helpers";
-export { CATEGORY_COLOR, CATEGORY_FALLBACK_COLOR } from "./constants";
+export { CATEGORY_COLOR, CATEGORY_FALLBACK_COLOR } from "@/lib/finding-category";

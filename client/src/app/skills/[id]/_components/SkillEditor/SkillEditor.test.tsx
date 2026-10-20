@@ -13,6 +13,7 @@ import type { Skill } from "@devdigest/shared";
 import messages from "../../../../../../messages/en/skills.json";
 import evalMessages from "../../../../../../messages/en/eval.json";
 import common from "../../../../../../messages/en/common.json";
+import perfMessages from "../../../../../../messages/en/agentPerformance.json";
 import { ToastProvider } from "../../../../../lib/toast";
 
 // Every pane reads through this module, so the shell test has to stand in for
@@ -37,6 +38,7 @@ vi.mock("../../../../../lib/hooks/skills", () => ({
       accept_rate: null,
       findings_30d: 0,
       findings_by_category: {},
+      ever_used: false,
     },
     isLoading: false,
     isError: false,
@@ -61,6 +63,8 @@ vi.mock("@/lib/hooks/eval", async (importActual) => ({
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+  usePathname: () => "/skills/sk1",
+  useSearchParams: () => new URLSearchParams("tab=stats"),
 }));
 
 import { SkillEditor } from "./SkillEditor";
@@ -85,7 +89,7 @@ afterEach(cleanup);
 
 function renderEditor(tab: string, onTab = vi.fn(), skill: Skill = SKILL) {
   render(
-    <NextIntlClientProvider locale="en" messages={{ skills: messages, eval: evalMessages, common }}>
+    <NextIntlClientProvider locale="en" messages={{ skills: messages, eval: evalMessages, common, agentPerformance: perfMessages }}>
       <QueryClientProvider client={new QueryClient()}>
         <ToastProvider>
           <SkillEditor skill={skill} tab={tab} onTab={onTab} />
@@ -141,7 +145,7 @@ describe("SkillEditor", () => {
     evalSuite.cases = [kase];
     try {
       const { unmount } = render(
-        <NextIntlClientProvider locale="en" messages={{ skills: messages, eval: evalMessages, common }}>
+        <NextIntlClientProvider locale="en" messages={{ skills: messages, eval: evalMessages, common, agentPerformance: perfMessages }}>
           <QueryClientProvider client={new QueryClient()}>
             <ToastProvider>
               <SkillEditor skill={{ ...SKILL, enabled: false }} tab="evals" onTab={vi.fn()} />

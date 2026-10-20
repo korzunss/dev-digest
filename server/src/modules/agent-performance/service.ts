@@ -1,5 +1,6 @@
 import type {
   AgentPerfDashboard,
+  AgentStatsBreakdown,
   AgentPerfStats,
   PerfQuery,
   PerfRow,
@@ -13,6 +14,7 @@ import type {
 import { NotFoundError, ValidationError } from '../../platform/errors.js';
 import { HISTORY_PAGE } from './constants.js';
 import {
+  breakdownBucketKind,
   decodeCursor,
   encodeCursor,
   pickMostActive,
@@ -20,6 +22,7 @@ import {
   resolveWindow,
   sumAggregates,
   sumDecisions,
+  toBreakdown,
   toFigures,
   toPrevious,
 } from './helpers.js';
@@ -188,6 +191,45 @@ export class AgentPerformanceService {
       if (!agent) throw new NotFoundError('Agent not found');
     }
     return { runs: await this.deps.repo.countDone(workspaceId, { from: win.from, to: win.to }, q.agent_id) };
+  }
+
+  /**
+   * Spec 016: the Stats tab panels. The window rules and the tz check run first
+   * (AC-40), then the agent lookup (AC-39). Read-only, no LLM (AC-38).
+   */
+  async breakdown(workspaceId: string, agentId: string, q: PerfQuery): Promise<AgentStatsBreakdown> {
+    const win = await this.checked(q);
+    const agent = await this.deps.agents.getById(workspaceId, agentId);
+    if (!agent) throw new NotFoundError('Agent not found');
+    const cur = { from: win.from, to: win.to };
+    const bucketKind = breakdownBucketKind(q.period, win.from, win.to, q.tz);
+    const [skillsSince, memorySince] = await Promise.all([
+      this.deps.repo.skillsTrackedSince(workspaceId),
+      this.deps.repo.memoryTrackedSince(workspaceId),
+    ]);
+    const [counts, skills, memory, categories, buckets] = await Promise.all([
+      this.deps.repo.countedRuns(workspaceId, cur, agentId),
+      this.deps.repo.skillUsage(workspaceId, cur, agentId, skillsSince),
+      this.deps.repo.memoryUsage(workspaceId, cur, agentId, memorySince),
+      this.deps.repo.findingsByCategory(workspaceId, cur, agentId),
+      this.deps.repo.severityBuckets(workspaceId, cur, q.tz, bucketKind, agentId),
+    ]);
+    return toBreakdown({
+      window: windowOf(q, win),
+      counts,
+      bucketKind,
+      skillsSince,
+      skills,
+      memorySince,
+      memory,
+      categories,
+      buckets,
+    });
+  }
+
+  /** The tz check and window rules of Agent → Stats, for other modules (spec 016 D8). */
+  async checkWindow(q: PerfQuery): Promise<PerfWindowResolved> {
+    return this.checked(q);
   }
 
   /** AC-4 and AC-29: a time zone Postgres does not know, then the window rules. */

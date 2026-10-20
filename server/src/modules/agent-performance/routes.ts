@@ -3,6 +3,7 @@ import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import {
   AgentPerfDashboard,
   AgentPerfStats,
+  AgentStatsBreakdown,
   PerfQuery,
   PerfRunsCount,
   PerfRunsCountQuery,
@@ -45,6 +46,15 @@ export default async function agentPerformanceRoutes(appBase: FastifyInstance) {
     async (req) => {
       const { workspaceId } = await getContext(app.container, req);
       return app.container.agentPerformance.agentStats(workspaceId, req.params.id, req.query);
+    },
+  );
+
+  app.get(
+    '/agents/:id/stats/breakdown',
+    { schema: { params: IdParams, querystring: PerfQuery, response: { 200: AgentStatsBreakdown } } },
+    async (req) => {
+      const { workspaceId } = await getContext(app.container, req);
+      return app.container.agentPerformance.breakdown(workspaceId, req.params.id, req.query);
     },
   );
 

@@ -118,5 +118,37 @@
     "acceptSmall": "{percent} accept (n = {n}, small sample)",
     "noDecisions": "no decisions yet",
     "noRuns": "No runs in 30 days"
+  },
+  "panels": {
+    "skills": {
+      "title": "Most-used skills",
+      "caption": "Share of local runs whose prompt included the skill",
+      "basedOn": "based on {n, plural, one {# local run} other {# local runs}}",
+      "notRecorded": "Skill usage not recorded yet",
+      "noSkills": "No skills in this agent's prompts in this period",
+      "noDataBefore": "No data before {date}",
+      "ciOnly": "No local runs in this period; CI runs record no skills or memory"
+    },
+    "memory": {
+      "title": "Most-pulled memory",
+      "caption": "Share of runs where this entry was pulled into the prompt",
+      "basedOn": "based on {n, plural, one {# run} other {# runs}}",
+      "none": "No memory pulled in this period"
+    },
+    "severity": {
+      "title": "Findings by severity",
+      "total": "{n, plural, one {# finding} other {# findings}} in period",
+      "other": "Other",
+      "bucketDetail": "{label}: {range}"
+    },
+    "category": {
+      "title": "Findings by category",
+      "centreLabel": "findings"
+    },
+    "findings": {
+      "none": "No findings in this period",
+      "ciOnly": "CI runs record no findings"
+    },
+    "loadError": "Could not load this panel."
   }
 }

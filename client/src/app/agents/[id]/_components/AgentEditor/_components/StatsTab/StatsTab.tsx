@@ -1,7 +1,9 @@
-/* StatsTab — one agent's performance (spec 015, AC-20 to AC-22, AC-25, AC-26, AC-27, AC-29):
-   the period control (period in the URL beside ?tab=), four KPI tiles and the run history.
-   Each non-data state returns early, so no number is drawn without data. The tab mounts only
-   while it is open, so no other tab makes a stats request (AC-28). */
+/* StatsTab — one agent's performance (spec 015, AC-20 to AC-22, AC-25, AC-26, AC-27, AC-29;
+   spec 016, AC-3, AC-37): the period control (period in the URL beside ?tab=), then three
+   independent regions — four KPI tiles, the breakdown panels (their own request) and the run
+   history. A stats failure or an empty period replaces only the tiles; the panels follow their
+   own response, and a 404 hides them. The tab mounts only while it is open, so no other tab
+   makes a stats request (AC-28). */
 "use client";
 
 import React from "react";
@@ -24,6 +26,7 @@ import {
 import { ApiError } from "@/lib/api";
 import { THIRTY_DAYS, parsePeriod, type PeriodSel } from "@/lib/period";
 import { useAgentPerfStats, useRunsCount30d } from "@/lib/hooks/agent-performance";
+import { BreakdownPanels } from "./_components/BreakdownPanels";
 import { RunHistory } from "./_components/RunHistory";
 import { s } from "./styles";
 
@@ -35,7 +38,6 @@ function LoadingState() {
           <Skeleton key={i} height={120} />
         ))}
       </div>
-      <Skeleton height={160} />
     </div>
   );
 }
@@ -65,12 +67,15 @@ export function StatsTab({ agent }: { agent: Agent }) {
     router.replace(`${pathname}?${sp.toString()}`);
   };
 
+  const notFound = stats.error instanceof ApiError && stats.error.status === 404;
+  let history: React.ReactNode = null;
   let body: React.ReactNode;
   if (stats.isLoading) {
     body = <LoadingState />;
-  } else if (stats.error instanceof ApiError && stats.error.status === 404) {
+    history = <Skeleton height={160} />;
+  } else if (notFound) {
     // AC-29: the editor's own not-found state (same title/body as `/agents/[id]/page.tsx`).
-    body = <ErrorState title="Couldn’t load this agent" body={stats.error.message} onRetry={() => stats.refetch()} />;
+    body = <ErrorState title="Couldn’t load this agent" body={stats.error?.message} onRetry={() => stats.refetch()} />;
   } else if (stats.isError || !data) {
     body = <ErrorState body={t("statsLoadError")} onRetry={() => stats.refetch()} />;
   } else if (data.figures.runs === 0) {
@@ -133,9 +138,9 @@ export function StatsTab({ agent }: { agent: Agent }) {
             />
           </KpiTile>
         </div>
-        <RunHistory agentId={agent.id} agentName={agent.name} sel={sel} />
       </>
     );
+    history = <RunHistory agentId={agent.id} agentName={agent.name} sel={sel} />;
   }
 
   return (
@@ -144,6 +149,8 @@ export function StatsTab({ agent }: { agent: Agent }) {
         <PeriodControl value={sel} onChange={setPeriod} />
       </div>
       {body}
+      {!notFound && <BreakdownPanels agentId={agent.id} sel={sel} />}
+      {history}
     </div>
   );
 }

@@ -6,10 +6,11 @@ import type {
   SkillContext,
   SkillImportPreview,
   SkillSource,
-  SkillStats,
   SkillType,
   SkillVersion,
 } from '@devdigest/shared';
+import type { PerfQuery } from '@devdigest/shared/contracts/agent-performance.js';
+import type { SkillStatsPeriod } from '@devdigest/shared/contracts/skill-stats.js';
 import { SkillsRepository } from './repository.js';
 import { ValidationError } from '../../platform/errors.js';
 import {
@@ -84,12 +85,14 @@ export class SkillsService {
     if (rows.length === 0) return [];
 
     const ids = rows.map((r) => r.id);
-    const since = statsWindowStart();
+    const now = Date.now();
+    const since = new Date(now - STATS_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+    const until = new Date(now);
     const [agentCounts, runCounts, runsTotal, findings] = await Promise.all([
       this.repo.agentCountsBySkill(workspaceId, ids),
-      this.repo.runCountsBySkill(workspaceId, ids, since),
-      this.repo.completedRunCount(workspaceId, since),
-      this.repo.findingsBySkill(workspaceId, ids, since),
+      this.repo.runCountsBySkill(workspaceId, ids, since, until),
+      this.repo.completedRunCount(workspaceId, since, until),
+      this.repo.findingsBySkill(workspaceId, ids, since, until),
     ]);
     const findingsBySkill = new Map<string, typeof findings>();
     for (const f of findings) {
@@ -263,26 +266,35 @@ export class SkillsService {
     return this.contextLinks(workspaceId, id);
   }
 
-  /** Usage figures. See `stats.ts` for what is exact and what is transitive. */
-  async stats(workspaceId: string, id: string): Promise<SkillStats | undefined> {
+  /**
+   * Usage figures over the requested window. See `stats.ts` for what is exact
+   * and what is transitive. The window and time zone are re-checked with the
+   * Agent → Stats rules first (spec 016 AC-49), so a bad query is a 422 even for
+   * an unknown skill. `agents` and `ever_used` are not windowed (AC-44, AC-47).
+   */
+  async stats(workspaceId: string, id: string, q: PerfQuery): Promise<SkillStatsPeriod | undefined> {
+    const win = await this.container.agentPerformance.checkWindow(q);
     const skill = await this.repo.getById(workspaceId, id);
     if (!skill) return undefined;
 
-    const since = statsWindowStart();
-    const [agents, runCounts, runsTotal, findings] = await Promise.all([
+    const [agents, runCounts, runsTotal, findings, everUsed] = await Promise.all([
       this.repo.agentsUsingSkill(workspaceId, id),
-      this.repo.runCountsBySkill(workspaceId, [id], since),
-      this.repo.completedRunCount(workspaceId, since),
-      this.repo.findingsBySkill(workspaceId, [id], since),
+      this.repo.runCountsBySkill(workspaceId, [id], win.from, win.to),
+      this.repo.completedRunCount(workspaceId, win.from, win.to),
+      this.repo.findingsBySkill(workspaceId, [id], win.from, win.to),
+      this.repo.everUsed(workspaceId, id),
     ]);
 
-    return buildSkillStats({
-      skillId: id,
-      agents,
-      runsWithSkill: runCounts.get(id) ?? 0,
-      runsTotal,
-      findings,
-    });
+    return {
+      ...buildSkillStats({
+        skillId: id,
+        agents,
+        runsWithSkill: runCounts.get(id) ?? 0,
+        runsTotal,
+        findings,
+      }),
+      ever_used: everUsed,
+    };
   }
 
   /**
@@ -356,11 +368,6 @@ export class SkillsService {
 
     throw new ValidationError('That URL redirected too many times.');
   }
-}
-
-/** Start of the stats window. */
-function statsWindowStart(): Date {
-  return new Date(Date.now() - STATS_WINDOW_DAYS * 24 * 60 * 60 * 1000);
 }
 
 /** Decode a base64 upload, rejecting anything that isn't base64 at all. */

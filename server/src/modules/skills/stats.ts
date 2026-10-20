@@ -50,6 +50,7 @@ export function buildSkillStats(input: BuildSkillStatsInput): SkillStats {
     runs_total: input.runsTotal,
     pull_rate: ratio(input.runsWithSkill, input.runsTotal),
     accept_rate: acceptRate(input.findings),
+    // Findings in the requested window (spec 016); the name predates the period control.
     findings_30d: input.findings.length,
     findings_by_category: countByCategory(input.findings),
   };

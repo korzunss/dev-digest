@@ -3,8 +3,13 @@ import type { CSSProperties } from "react";
 /** Co-located styles for the skill StatsTab. */
 export const s = {
   wrap: { maxWidth: 900 } satisfies CSSProperties,
+  header: { display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 12, marginBottom: 20 } satisfies CSSProperties,
   tiles: { display: "flex", gap: 14, flexWrap: "wrap" } satisfies CSSProperties,
   tile: { flex: "1 1 180px", minWidth: 180, display: "flex" } satisfies CSSProperties,
+  /* The period name sits inside the card (top-right, level with the label) so the
+     four tiles keep one height. */
+  tileColumn: { position: "relative", display: "flex", flex: 1, minWidth: 0 } satisfies CSSProperties,
+  tileCaption: { position: "absolute", top: 14, right: 14, fontSize: 11.5, color: "var(--text-muted)" } satisfies CSSProperties,
   /* Not decoration: these figures are measured over runs where the skill was
      present, which is correlation. The line says so, right under the numbers
      it qualifies. */

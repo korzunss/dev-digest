@@ -13,6 +13,7 @@ import { api } from "../api";
 import { THIRTY_DAYS, browserTimeZone, periodKey, resolveWindow, type PeriodSel } from "../period";
 import type {
   AgentPerfDashboard,
+  AgentStatsBreakdown,
   AgentPerfStats,
   PerfQuery,
   PerfRunsCount,
@@ -46,6 +47,20 @@ export function useAgentPerfStats(agentId: string | null | undefined, sel: Perio
     queryKey: ["agent-performance", "stats", agentId, periodKey(sel), tz],
     queryFn: () => api.get<AgentPerfStats>(`/agents/${agentId}/stats?${qs(resolveWindow(sel, new Date(), tz))}`),
     enabled: !!agentId && enabled,
+  });
+}
+
+/**
+ * The four Stats-tab breakdown panels in one request (spec 016, AC-34). Not
+ * gated on the stats request — the panels decide their own states (D4).
+ */
+export function useAgentStatsBreakdown(agentId: string | null | undefined, sel: PeriodSel) {
+  const tz = browserTimeZone();
+  return useQuery({
+    queryKey: ["agent-performance", "breakdown", agentId, periodKey(sel), tz],
+    queryFn: () =>
+      api.get<AgentStatsBreakdown>(`/agents/${agentId}/stats/breakdown?${qs(resolveWindow(sel, new Date(), tz))}`),
+    enabled: !!agentId,
   });
 }
 

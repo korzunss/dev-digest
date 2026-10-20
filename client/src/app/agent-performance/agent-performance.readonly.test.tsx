@@ -1,15 +1,16 @@
 /* AC-28: reloading, changing the period, sorting, expanding, collapsing, opening View, "Load more"
    and opening a trace only READ. The `api` mock exposes every write verb as a spy, and each GET must
-   be a performance read (`/agents/performance…`, `/agents/:id/stats…`) or the agent list — never a
+   be a performance read (`/agents/performance…`, `/agents/:id/stats…` incl. `/stats/breakdown`) or the agent list — never a
    review start, a run, a provider or a model call. A write verb, or a GET anywhere else, fails here. */
 import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { Agent } from "@devdigest/shared";
-import type { AgentPerfDashboard, AgentPerfStats, RunHistoryItem } from "@devdigest/shared/contracts/agent-performance.js";
+import type { AgentPerfDashboard, AgentPerfStats, AgentStatsBreakdown, RunHistoryItem } from "@devdigest/shared/contracts/agent-performance.js";
 import messages from "../../../messages/en/agentPerformance.json";
 import agentsMessages from "../../../messages/en/agents.json";
+import prReview from "../../../messages/en/prReview.json";
 import { figures, row, split, zeroRow } from "./_components/AgentPerfTable/fixtures";
 import { AgentPerformanceView } from "./_components/AgentPerformanceView/AgentPerformanceView";
 import { StatsTab } from "../agents/[id]/_components/AgentEditor/_components/StatsTab/StatsTab";
@@ -71,17 +72,24 @@ const dashboard: AgentPerfDashboard = {
   cost_by_model: [{ key: "m", label: "gpt-4.1", amount_usd: 1, split: split(1) }],
 };
 const stats: AgentPerfStats = { window: window_, agent_id: AGENT_ID, agent_name: AGENT.name, figures: figures({ runs: 142 }), previous, buckets: [] };
+const breakdown: AgentStatsBreakdown = {
+  window: window_, counted_runs: 142, local_runs: 100,
+  skills: { tracked_since: null, denominator: 0, rows: [] },
+  memory: { tracked_since: null, denominator: 0, rows: [] },
+  findings: { total: 0, by_category: [], bucket_kind: "7d", buckets: [] },
+};
 const item = (n: number): RunHistoryItem => ({
   run_id: `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`, ran_at: "2026-10-18T09:00:00.000Z", pr_number: n, tokens: 10,
   cost_usd: 0.01, cost_source: "api", findings_count: 1, source: "local", has_trace: true,
 });
 
 /** The only GETs a read-only screen may send. */
-const ALLOWED = [/^\/agents\/performance(\/runs-count)?\?/, /^\/agents\/[0-9a-f-]+\/stats(\/runs)?\?/, /^\/agents$/];
+const ALLOWED = [/^\/agents\/performance(\/runs-count)?\?/, /^\/agents\/[0-9a-f-]+\/stats(\/runs|\/breakdown)?\?/, /^\/agents$/];
 
 function serve() {
   get.mockImplementation(async (path: string) => {
     if (path.startsWith("/agents/performance")) return dashboard;
+    if (path.includes("/stats/breakdown")) return breakdown;
     if (path.includes("/stats/runs")) return path.includes("cursor=c1") ? { items: [item(3)], next_cursor: null } : { items: [item(1), item(2)], next_cursor: "c1" };
     if (path.includes("/stats?")) return stats;
     if (path === "/agents") return [{ ...AGENT, id: dashboard.rows[0]!.agent_id }];
@@ -93,7 +101,7 @@ function mount(ui: React.ReactElement) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <NextIntlClientProvider locale="en" messages={{ agentPerformance: messages, agents: agentsMessages }}>
+      <NextIntlClientProvider locale="en" messages={{ agentPerformance: messages, agents: agentsMessages, prReview }}>
         {ui}
       </NextIntlClientProvider>
     </QueryClientProvider>,

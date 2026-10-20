@@ -195,6 +195,12 @@ client/package.json` before reaching for it out of habit.
 
 ## Recurring Errors & Fixes
 
+### 2026-10-20 — a new request in the Agent StatsTab breaks `app/agent-performance/*.test.tsx`, outside the tab's folder
+**Symptom:** plan 43 added `GET /agents/:id/stats/breakdown` to the agent StatsTab; the tab's own tests and every step's Done-when were green, but the full `pnpm test` failed in `agent-performance.readonly.test.tsx` (`unexpected GET /agents/…/stats/breakdown?…`) and `agent-performance.period-rejection.test.tsx` (`Found multiple elements with the role "alert"`, `MISSING_MESSAGE agentPerformance`).
+**Cause:** those suites mount the real Agent StatsTab with a strict `get` mock that throws on unknown paths. The throw put the new panels into their error state, adding four `role="alert"` regions, and the panels read `panels.*`/`prReview.*` keys the suites did not load.
+**Rule:** when a component gains a request, `rg` for every test that mounts it (`rg -l "StatsTab|AgentEditor" client/src --glob '*.test.tsx'`), list those files in the plan step's *Files*, and run the full client suite before handing back — a targeted `vitest run <folder>` misses them.
+**Evidence:** `client/src/app/agent-performance/agent-performance.readonly.test.tsx` · `agent-performance.period-rejection.test.tsx` · plan 43 Verification log "plan change G6-F1"
+
 ### 2026-10-12 — a value import from `@devdigest/shared` 500s every page in `next dev`, while typecheck and vitest stay green
 **Symptom:** plan 37: `/agents/:id` returned 500 with `Module not found: Can't resolve './contracts/findings.js'` from `src/vendor/shared/index.ts`; client typecheck and all 652 tests had passed.
 **Cause:** four new files imported the value `AGENT_VERSION_MESSAGE_MAX` from `@devdigest/shared`. Every other client import from it is type-only and erased, so Next had never bundled the vendored index, whose `./contracts/*.js` specifiers webpack does not map to `.ts` (no `extensionAlias` in `next.config.mjs`). tsc and vitest do map them.
