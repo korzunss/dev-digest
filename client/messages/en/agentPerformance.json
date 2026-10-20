@@ -1,32 +1,122 @@
 {
   "title": "Agent Performance",
-  "subtitle": "Accept-rate is the headline quality signal · cost shown as a breakdown",
+  "subtitle": "Which agents earn their keep — accept rate is the quality signal",
+  "statsLoadError": "Could not load this agent's performance.",
   "loadError": "Could not load agent performance.",
-  "summary": {
-    "totalRuns": "Total runs",
-    "avgAcceptRate": "Avg accept-rate",
-    "totalCost": "Total cost",
-    "mostActive": "Most active"
+  "retry": "Retry",
+  "period": {
+    "label": "Period",
+    "1d": "1 day",
+    "30d": "30 days",
+    "custom": "Custom",
+    "from": "From",
+    "to": "To",
+    "apply": "Apply",
+    "errors": {
+      "future": "The end date cannot be in the future.",
+      "order": "The start date must be on or before the end date.",
+      "tooLong": "A custom range can span at most 365 days."
+    }
   },
-  "costByAgent": "Cost by agent",
-  "costByModel": "Cost by model",
-  "noCost": "No cost recorded yet.",
-  "sort": {
-    "acceptRate": "accept-rate",
-    "runs": "runs",
-    "cost": "cost"
+  "tiles": {
+    "totalRuns": "Total runs",
+    "totalCost": "Total cost",
+    "avgAcceptRate": "Avg accept rate",
+    "mostActive": "Most-active agent",
+    "avgCostPerRun": "Avg cost / run",
+    "avgDuration": "Avg duration",
+    "acceptRate": "Accept rate",
+    "successfulRuns": "successful runs"
+  },
+  "mostActive": {
+    "runs": "{runs, plural, one {# run} other {# runs}}",
+    "accept": "{percent} accept",
+    "acceptSmall": "{percent} accept (n = {n}, small sample)",
+    "noDecisions": "no decisions yet",
+    "none": "No agent has runs in this period"
+  },
+  "cost": {
+    "unknownRuns": "{n, plural, one {# run} other {# runs}} without cost; total is a lower bound",
+    "providerReported": "provider-reported",
+    "estimate": "DevDigest estimate",
+    "notRecorded": "source not recorded",
+    "estimateTooltip": "Includes costs estimated from token counts × the model price.",
+    "billingNote": "Reconciled billing data is not available.",
+    "deltaLower": "{amount} lower than the previous period",
+    "deltaHigher": "{amount} higher than the previous period"
+  },
+  "accept": {
+    "n": "n = {n}",
+    "smallSample": "small sample",
+    "noDecisions": "No decisions yet",
+    "failedNotCounted": "+{n, plural, one {# failed run} other {# failed runs}} not counted",
+    "up": "Higher than the previous period",
+    "down": "Lower than the previous period",
+    "runsBasis": "{runs, plural, one {# run} other {# runs}}"
+  },
+  "sparkline": {
+    "label": "{runs, plural, one {# run} other {# runs}} over the period",
+    "none": "No runs over the period"
   },
   "table": {
     "agent": "Agent",
-    "accept": "Accept",
     "runs": "Runs",
-    "findings": "Findings",
-    "cost": "Cost",
-    "trend": "Trend"
+    "avgCost": "Avg cost",
+    "avgDuration": "Avg dur.",
+    "accept": "Accept",
+    "lastRun": "Last run",
+    "view": "View",
+    "viewAgent": "View {name}",
+    "sortBy": "Sort by {column}",
+    "expand": "Show recent runs of {name}",
+    "collapse": "Hide recent runs of {name}",
+    "deleted": "Deleted agents",
+    "disabled": "disabled",
+    "noRuns": "No runs in this period",
+    "recent": "last {n, plural, one {# run} other {# runs}} · avg {duration} · {cost}",
+    "recentLabel": "Duration of the last {n, plural, one {# run} other {# runs}}"
   },
   "empty": {
-    "title": "No agent runs yet",
-    "body": "Run a review (manually) to populate per-agent performance."
+    "title": "No successful runs in this period",
+    "body": "Pick a longer period, or run a review to populate agent performance.",
+    "tryThirty": "Try 30 days — {n, plural, one {# run} other {# runs}}"
   },
-  "perAgent": "Per-agent"
+  "noAgents": {
+    "title": "No agents yet",
+    "body": "Create an agent and run a review to see how it performs.",
+    "link": "Go to Agents"
+  },
+  "breakdown": {
+    "title": "Cost breakdown",
+    "byAgent": "By agent",
+    "byModel": "By model",
+    "deleted": "Deleted agents",
+    "unknownModel": "Unknown model",
+    "none": "No cost recorded in this period"
+  },
+  "runHistory": {
+    "title": "Run history",
+    "timestamp": "Timestamp",
+    "pr": "PR",
+    "tokens": "Tokens",
+    "cost": "Cost",
+    "findings": "Findings",
+    "source": "Source",
+    "local": "local",
+    "ci": "CI",
+    "viewTrace": "View trace",
+    "noTrace": "No trace stored for this run",
+    "loadMore": "Load more",
+    "loadingMore": "Loading…",
+    "loadMoreError": "Could not load more runs.",
+    "none": "No runs in this period"
+  },
+  "card": {
+    "runs": "{runs, plural, one {# run} other {# runs}}",
+    "avg": "{avg} avg",
+    "accept": "{percent} accept",
+    "acceptSmall": "{percent} accept (n = {n}, small sample)",
+    "noDecisions": "no decisions yet",
+    "noRuns": "No runs in 30 days"
+  }
 }

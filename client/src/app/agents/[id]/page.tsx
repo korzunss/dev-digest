@@ -10,9 +10,12 @@ import { useTranslations } from "next-intl";
 import { ConfirmModal } from "@/components/confirm-modal";
 import { AppShell } from "../../../components/app-shell";
 import { AgentCard } from "../_components/AgentCard";
+import { summaryFor } from "../_components/AgentCard/helpers";
 import { AgentEditor } from "./_components/AgentEditor";
 import { TABS } from "./_components/AgentEditor/constants";
 import { useAgents, useAgent, useUpdateAgent } from "../../../lib/hooks/agents";
+import { useAgentPerfDashboard } from "../../../lib/hooks/agent-performance";
+import { THIRTY_DAYS } from "../../../lib/period";
 import { ApiError } from "../../../lib/api";
 
 const VALID_TABS: readonly string[] = TABS.map((tb) => tb.key);
@@ -27,6 +30,8 @@ export default function AgentEditorPage() {
   const { data: agents } = useAgents();
   const { data: agent, isLoading, isError, error, refetch } = useAgent(id);
   const update = useUpdateAgent();
+  // One 30-day request feeds the summary line of every card in the left list (AC-31).
+  const perf = useAgentPerfDashboard(THIRTY_DAYS);
 
   const tab = VALID_TABS.includes(search.get("tab") ?? "") ? search.get("tab")! : "config";
   // Staged, unsaved edits on the Skills tab. While set, anything that would
@@ -102,6 +107,7 @@ export default function AgentEditorPage() {
                 ag={a}
                 active={a.id === id}
                 skillCount={a.skill_count ?? undefined}
+                summary={summaryFor(perf, a.id)}
                 onClick={() => {
                   if (a.id !== id) guarded(() => router.push(`/agents/${a.id}?tab=${tab}`));
                 }}

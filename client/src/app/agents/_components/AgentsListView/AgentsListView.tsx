@@ -8,7 +8,10 @@ import { useTranslations } from "next-intl";
 import { Button, Dropdown, EmptyState, ErrorState, Skeleton, Icon } from "@devdigest/ui";
 import { AppShell } from "../../../../components/app-shell";
 import { useAgents, useUpdateAgent } from "../../../../lib/hooks/agents";
+import { useAgentPerfDashboard } from "@/lib/hooks/agent-performance";
+import { THIRTY_DAYS } from "@/lib/period";
 import { AgentCard } from "../AgentCard";
+import { summaryFor } from "../AgentCard/helpers";
 import { CreateAgentModal } from "./_components/CreateAgentModal";
 import { TEMPLATES } from "./constants";
 import { filterAgents } from "./helpers";
@@ -19,6 +22,8 @@ export function AgentsListView() {
   const router = useRouter();
   const { data: agents, isLoading, isError, refetch } = useAgents();
   const update = useUpdateAgent();
+  // One request feeds every card's 30-day line (AC-31); a failure only drops the lines.
+  const perf = useAgentPerfDashboard(THIRTY_DAYS);
   const [creating, setCreating] = React.useState(false);
   const [search, setSearch] = React.useState("");
 
@@ -87,6 +92,7 @@ export function AgentsListView() {
                 key={a.id}
                 ag={a}
                 skillCount={a.skill_count ?? undefined}
+                summary={summaryFor(perf, a.id)}
                 onClick={() => router.push(`/agents/${a.id}?tab=config`)}
                 onToggle={(enabled) => update.mutate({ id: a.id, patch: { enabled } })}
               />

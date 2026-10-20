@@ -1,6 +1,6 @@
 # server — current gotchas
 
-Last reconciled with ../INSIGHTS.md: 2026-10-15
+Last reconciled with ../INSIGHTS.md: 2026-10-19
 
 This is a curated index of rules still in force. Full write-ups live in
 [`server/INSIGHTS.md`](../INSIGHTS.md) (append-only log). A rule that stops
@@ -9,6 +9,7 @@ holding is edited or removed here. Items are added or updated by the
 
 ## DB & migrations
 
+- **In raw `sql`, select timestamps via `to_char(date_trunc('milliseconds', col) AT TIME ZONE 'UTC', …)`, and key a timestamp keyset on `date_trunc('milliseconds', col), id`.** `db.execute` returns `timestamptz` as an unsafe Postgres-format string, and µs `ran_at` repeats a row across a ms cursor. — spot it: `Invalid Date` from a raw aggregate, or the same run on two history pages. — [INSIGHTS: 2026-10-19 — raw `db.execute` returns `timestamptz` as a Postgres-format string…](../INSIGHTS.md#2026-10-19--raw-dbexecute-returns-timestamptz-as-a-postgres-format-string-and-µs-ran_at-repeats-rows-across-a-ms-keyset-cursor)
 - **In a raw drizzle `sql` template, bind a date as `d.toISOString()` with `::timestamptz` (ids with `::uuid`) — postgres-js cannot bind a JS `Date` there; the builder helpers (`gte`, `lt`) can.** — spot it: a keyset/cursor query 500s with `The "string" argument must be of type string … Received an instance of Date`. — [INSIGHTS: 2026-10-15 — postgres-js + drizzle raw `sql` cannot bind a JS `Date`](../INSIGHTS.md#2026-10-15--postgres-js--drizzle-raw-sql-cannot-bind-a-js-date)
 - **A row type derived from `db/schema` (`typeof t.repos.$inferSelect`) goes in the module's `repository.ts` or `server/src/db/rows.ts`, never in `types.ts`/`service.ts` — a type-only `import type` from `db/schema` still breaks `db-confined-to-repositories` (`tsPreCompilationDeps: true`).** — spot it: `import type * as t from '../../db/schema.js'` in a non-repository module file that typechecks and passes every test. — [INSIGHTS: 2026-10-06 — a type-only `import type … from 'db/schema'` is still a db-outside-repository edge](../INSIGHTS.md#2026-10-06--a-type-only-import-type--from-dbschema-in-a-modules-typests-is-still-a-db-outside-repository-edge)
 - **A data fix that a DDL change needs goes into a `pnpm db:generate --custom` stub, generated before the schema edit**. It is the only hand-written migration kind, and the migrator runs it in the same transaction as the DDL. Compare snapshots with `jq -S 'del(.id,.prevId)'`. — spot it: the DDL migration comes out empty (the stub was generated after the schema edit), or a custom snapshot "diff" looks like drift. — [INSIGHTS: 2026-09-30 — a data migration goes into a `pnpm db:generate --custom` stub](../INSIGHTS.md#2026-09-30--a-data-migration-goes-into-a-pnpm-dbgenerate---custom-stub-generated-before-the-schema-edit)

@@ -4,23 +4,63 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { Icon, Badge, Toggle } from "@devdigest/ui";
+import { Icon, Badge, Skeleton, Toggle } from "@devdigest/ui";
 import type { Agent } from "@devdigest/shared";
 import { ConfirmModal } from "@/components/confirm-modal";
+import { SMALL_SAMPLE_MAX, acceptTone, formatPercent, provenanceOf } from "@/components/perf-kit";
+import { formatCostUsd } from "@/lib/format-cost";
 import { useDeleteAgent } from "../../../../lib/hooks/agents";
-import { modelColor } from "./helpers";
+import { modelColor, type AgentCardSummary } from "./helpers";
 import { s } from "./styles";
+
+/** "142 runs · 78% accept · $0.04 avg", "No runs in 30 days", a placeholder, or nothing (AC-30 to AC-32). */
+function CardSummary({ summary }: { summary: AgentCardSummary }) {
+  const t = useTranslations("agentPerformance");
+  if (summary.state === "error") return null;
+  if (summary.state === "loading") {
+    return (
+      <div style={s.summary} aria-busy="true">
+        <Skeleton height={12} width={150} />
+      </div>
+    );
+  }
+  const { current } = summary.row;
+  if (current.runs === 0) return <div style={s.summary}>{t("card.noRuns")}</div>;
+  const decisions = current.accepted + current.dismissed;
+  const hasDecisions = decisions > 0 && formatPercent(current.accept_rate) != null;
+  const tone = hasDecisions ? acceptTone(current.accept_rate, decisions) : undefined;
+  return (
+    <div className="tnum" style={s.summary}>
+      {t("card.runs", { runs: current.runs })}
+      {" · "}
+      {hasDecisions ? (
+        <span style={{ color: tone }}>
+          {decisions <= SMALL_SAMPLE_MAX
+            ? t("card.acceptSmall", { percent: formatPercent(current.accept_rate), n: decisions })
+            : t("card.accept", { percent: formatPercent(current.accept_rate) })}
+        </span>
+      ) : (
+        t("card.noDecisions")
+      )}
+      {" · "}
+      {t("card.avg", { avg: formatCostUsd(current.avg_cost_usd, provenanceOf(current.cost_split)) })}
+    </div>
+  );
+}
 
 export function AgentCard({
   ag,
   active,
   skillCount,
+  summary,
   onClick,
   onToggle,
 }: {
   ag: Agent;
   active?: boolean;
   skillCount?: number;
+  /** The 30-day figures line; absent renders no line. */
+  summary?: AgentCardSummary;
   onClick?: () => void;
   onToggle?: (enabled: boolean) => void;
 }) {
@@ -85,6 +125,7 @@ export function AgentCard({
           </Badge>
         )}
       </div>
+      {summary && <CardSummary summary={summary} />}
     </div>
   );
 }

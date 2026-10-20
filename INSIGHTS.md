@@ -301,6 +301,12 @@ that path; it's runtime data, and the next resync overwrites it.
 
 ## Tool & Library Notes
 
+### 2026-10-19 — a new contract outside the `shared` barrel: deep-path import keeps the runner bundle unchanged
+**Symptom:** a new contract in the barrel would make the committed `agent-runner/dist/index.js` stale (see the 2026-10-15 entry below), forcing a separate runner PR.
+**Cause:** the runner bundle inlines whatever the barrel `index.ts` reaches; a file the barrel doesn't export is not inlined.
+**Rule:** for a contract only server and client use, add `contracts/<name>.ts` to both vendored copies without touching either `index.ts`, and import it as `@devdigest/shared/contracts/<name>.js`. It resolves through the existing tsconfig `@devdigest/shared/*` paths (tsc, tsx, Next) and the vitest directory alias. In `client/`, keep it `import type`. `shared-type-only-imports.test.ts` matches deep paths only since plan 42 (`(?:\/[^"']*)?` suffix). Prove the barrel is untouched with `git diff --quiet HEAD -- */vendor/shared/index.ts`.
+**Evidence:** plan 42 D4; `client/src/lib/shared-type-only-imports.test.ts:22`; live `GET /agents/performance` under `dev.sh` (plan 42 M1)
+
 ### 2026-10-15 — `agent-runner/dist/index.js` inlines `@devdigest/shared` and reviewer-core: any shared edit makes the committed bundle stale
 **Symptom:** after a contract-only change (`CiRunsQuery.since` gained `.max(40)`), `npm run build` in `agent-runner/` changed `dist/index.js` (body + `sha256:` header) although no runner file was touched; the `agent-runner.yml` freshness check (`git diff --exit-code dist/index.js`) would fail.
 **Cause:** esbuild bundles everything the runner imports, including `server/src/vendor/shared` and `reviewer-core` via path aliases.
@@ -490,6 +496,12 @@ tree looks right in exactly the case the index is wrong.
 · the five committed links in `019925b`
 
 ## Recurring Errors & Fixes
+
+### 2026-10-19 — `sdd.sh handback-check` logs "unknown" for a full report whose table is headed `| Step |`
+**Symptom:** the G1 implementer report had a complete step table, Done-when outputs and a Handoff, but `handback-check --log` wrote `handback: unknown G1`.
+**Cause:** the check is a literal `grep -qF '| Step / gap |'` (`sdd.sh` `cmd_handback_check`). The implementer template doesn't fix that header, so `| Step |` fails it.
+**Rule:** end every implementer prompt with "the step table with the header `| Step / gap | Status | Files changed |`". If "unknown" still appears, read the diff and log the correction instead of trusting the label.
+**Evidence:** `.claude/skills/sdd-engineering/scripts/sdd.sh:243`; plan 42 Verification log (`handback: unknown G1` and the correction after it); G2–G5 passed after the prompt named the header
 
 ### 2026-10-15 — a `\u202A`-style escape written through Edit/heredoc landed as raw invisible bidi characters
 **Symptom:** a regex meant to strip bidi controls, `/[\u202A-\u202E\u2066-\u2069]/g`, was saved into `server/src/modules/ci/service.ts` with the **raw** code points (bytes `e2 80 aa …`) — invisible in review, the Trojan-Source pattern GitHub flags as hidden Unicode. A Python `r'''…'''` heredoc rewrite produced the same raw bytes.

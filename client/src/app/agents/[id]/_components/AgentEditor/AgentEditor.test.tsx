@@ -93,7 +93,9 @@ describe("A2 Agent Editor (smoke)", () => {
   it("offers a Versions tab last and renders its history on tab=versions", () => {
     renderWithIntl(<AgentEditor agent={{ ...AGENT, version: 2 }} tab="versions" onTab={() => {}} />);
     const labels = screen.getAllByRole("button").map((b) => b.textContent);
-    expect(labels.indexOf("Versions")).toBe(labels.indexOf("Evals") + 1);
+    // Stats sits right after Evals (plan 42, TQ1); Versions follows it.
+    expect(labels.indexOf("Stats")).toBe(labels.indexOf("Evals") + 1);
+    expect(labels.indexOf("Versions")).toBe(labels.indexOf("Stats") + 1);
     expect(screen.getByText("Tuned the prompt")).toBeInTheDocument();
     expect(screen.getByText(messages.versions.current)).toBeInTheDocument();
   });

@@ -1,5 +1,4 @@
-/* AgentEditor — the agent's Config, Skills, Context, Evals, Versions and CI tabs. Stats arrives with
-   a later lesson. Tab state lives in ?tab= so a tab is linkable. */
+/* AgentEditor — the agent's Config, Skills, Context, Evals, Stats, Versions and CI tabs. Tab state lives in ?tab= so a tab is linkable. */
 "use client";
 
 import React from "react";
@@ -11,6 +10,7 @@ import { ConfigTab } from "./_components/ConfigTab";
 import { ContextTab } from "./_components/ContextTab";
 import { EvalsTab } from "./_components/EvalsTab";
 import { SkillsTab } from "./_components/SkillsTab";
+import { StatsTab } from "./_components/StatsTab";
 import { VersionsTab } from "./_components/VersionsTab";
 import { TABS } from "./constants";
 import { s } from "./styles";
@@ -41,6 +41,8 @@ export function AgentEditor({
           <ContextTab agent={agent} />
         ) : tab === "evals" ? (
           <EvalsTab agent={agent} />
+        ) : tab === "stats" ? (
+          <StatsTab key={agent.id} agent={agent} />
         ) : tab === "versions" ? (
           <VersionsTab agent={agent} />
         ) : tab === "ci" ? (

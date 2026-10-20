@@ -232,6 +232,12 @@ foreign key POINTS AT"
 
 ## Tool & Library Notes
 
+### 2026-10-19 — raw `db.execute` returns `timestamptz` as a Postgres-format string, and µs `ran_at` repeats rows across a ms keyset cursor
+**Symptom:** in a raw drizzle `sql` aggregate, timestamp columns come back as strings like `2026-10-15 14:54:50.861+00`, which are not a safe `new Date()` input. A keyset history paged with a JS-`Date` cursor (ms precision) repeated a row on the next page.
+**Cause:** postgres-js applies no type parsing to `db.execute` rows built from raw `sql`, so the builder's Date mapping never runs. `ran_at` defaults to `now()` with µs precision, so `ran_at < cursor` with a ms cursor still matches the row the cursor was built from.
+**Rule:** in raw `sql`, select timestamps as `to_char(date_trunc('milliseconds', col) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`. For a keyset over a timestamp, compare and `ORDER BY date_trunc('milliseconds', col), id`, never the raw column.
+**Evidence:** `server/src/modules/agent-performance/repository.ts:34-35` (`isoMs`), `:199` (keyset); plan 42 G1 report; `server/test/agent-performance.it.test.ts` (history paging)
+
 ### 2026-10-15 — a GitHub Actions re-run keeps the run's `created_at`, so a `created_at` scan cursor never ingests it
 **Symptom:** the CI ingest cursor (newest scanned `created_at`) re-listed the newest no-artifact run on every refresh with `>=`, and with `> cursor` it could never see a re-run (attempt 2+) of an already-scanned run.
 **Cause:** a re-run is the same workflow run id with a new `run_attempt`; GitHub keeps `created_at` and bumps only `updated_at`. The list endpoint filters by `created` only.
