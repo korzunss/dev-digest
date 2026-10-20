@@ -68,3 +68,4 @@ why, in one or two lines.
 | [07-workflow-retro](07-workflow-retro.md) | chosen | go (Opt4) + Opt1 | [plan 23](../plans/23-workflow-retro-skill.md) |
 | [08-sdd-repeat-flags](08-sdd-repeat-flags.md) | open | go (Opt3) | — |
 | [09-sdd-repeat-flags-after-42](09-sdd-repeat-flags-after-42.md) | open | go (Opt1) | — |
+| [10-sdd-f1-repeat-after-43](10-sdd-f1-repeat-after-43.md) | open | go (Opt1, = 09 Opt1 + size normaliser for single-run stages) | — |
