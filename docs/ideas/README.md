@@ -67,3 +67,4 @@ why, in one or two lines.
 | [06-fewer-false-criticals](06-fewer-false-criticals.md) | chosen | go (Opt2) + Opt1 | [plan 10](../plans/10-agent-precision.md) |
 | [07-workflow-retro](07-workflow-retro.md) | chosen | go (Opt4) + Opt1 | [plan 23](../plans/23-workflow-retro-skill.md) |
 | [08-sdd-repeat-flags](08-sdd-repeat-flags.md) | open | go (Opt3) | — |
+| [09-sdd-repeat-flags-after-42](09-sdd-repeat-flags-after-42.md) | open | go (Opt1) | — |
