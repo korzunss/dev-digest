@@ -11,20 +11,19 @@
     "isolatedModules": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
+    "verbatimModuleSyntax": false,
     "declaration": false,
-    "noEmit": true,
+    "sourceMap": true,
+    "composite": false,
+    "outDir": "dist",
     "types": ["node"],
     "lib": ["ES2022"],
     "paths": {
       "@devdigest/shared": ["../server/src/vendor/shared/index.ts"],
       "@devdigest/shared/*": ["../server/src/vendor/shared/*"],
       "@devdigest/reviewer-core": ["../reviewer-core/src/index.ts"],
-      "zod": ["./node_modules/zod"],
-      "zod/*": ["./node_modules/zod/*"],
-      "openai": ["./node_modules/openai"],
-      "openai/*": ["./node_modules/openai/*"],
-      "yaml": ["./node_modules/yaml"]
+      "@devdigest/reviewer-core/*": ["../reviewer-core/src/*"]
     }
   },
-  "include": ["src/**/*.ts", "test/**/*.ts", "src/globals.d.ts"]
+  "include": ["src/**/*.ts"]
 }
