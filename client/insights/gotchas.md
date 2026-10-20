@@ -1,6 +1,6 @@
 # client — current gotchas
 
-Last reconciled with ../INSIGHTS.md: 2026-10-15
+Last reconciled with ../INSIGHTS.md: 2026-10-19
 
 This is a curated index of rules still in force. Full write-ups live in
 [`client/INSIGHTS.md`](../INSIGHTS.md) (append-only log). A rule that stops
@@ -9,6 +9,7 @@ holding is edited or removed here. Items are added or updated by the
 
 ## Tests
 
+- **Give vitest hook bodies braces — `beforeEach(() => { get.mockReset(); })`; a concise arrow returns the mock, and vitest calls it as a teardown.** — spot it: `Cannot read properties of undefined (reading 'startsWith')` inside `callCleanupHooks`, after the test's own assertions passed. — [INSIGHTS: 2026-10-19 — `beforeEach(() => get.mockReset())` hands vitest the mock as a cleanup function](../INSIGHTS.md#2026-10-19--beforeeach--getmockreset-hands-vitest-the-mock-as-a-cleanup-function)
 - **Mock a hook from its real initial value (e.g. `useRunEvents` → `running: false` on the first render) and flip it as the hook does; a mock that is "live" from the first render hides mount-render bugs.** — spot it: a drawer/panel fix green in tests that misbehaves only right after mount in the browser. — [INSIGHTS: 2026-10-15 — a hook mock that starts in the "live" state hides first-render bugs](../INSIGHTS.md#2026-10-15--a-hook-mock-that-starts-in-the-live-state-hides-first-render-bugs)
 - **There is no `@testing-library/user-event` in this package — write interaction tests with synchronous `fireEvent`, not `userEvent.setup()`.** — spot it: a new test's `user-event` import fails to resolve, in a repo where every other RTL idiom works. — [INSIGHTS: 2026-09-18 — there is no `@testing-library/user-event` here; use `fireEvent`](../INSIGHTS.md#2026-09-18--there-is-no-testing-libraryuser-event-here-use-fireevent)
 - **Import only types from `@devdigest/shared` in `client/`; mirror a needed constant locally.** A value import makes Next bundle the vendored index, whose `.js` specifiers webpack can't resolve — every page using it 500s in `next dev` while typecheck and vitest pass. `src/lib/shared-type-only-imports.test.ts` guards it. — spot it: `Module not found: Can't resolve './contracts/…js'` from `src/vendor/shared/index.ts`. — [INSIGHTS: 2026-10-12 — a value import from `@devdigest/shared` 500s every page in `next dev`](../INSIGHTS.md#2026-10-12--a-value-import-from-devdigestshared-500s-every-page-in-next-dev-while-typecheck-and-vitest-stay-green)
@@ -17,6 +18,7 @@ holding is edited or removed here. Items are added or updated by the
 
 ## UI
 
+- **Style part of an i18n line by splitting it into plain keys and composing JSX — `t.rich` rejects element values (TS2322) and markup in messages is out; always pass `now` to `format.relativeTime(d, new Date())`.** — spot it: TS2322 on a `t.rich` value, a `<tag>` in `messages/en/*.json`, or `ENVIRONMENT_FALLBACK` in a test. — [INSIGHTS: 2026-10-19 — next-intl: `t.rich` won't take a React element…](../INSIGHTS.md#2026-10-19--next-intl-trich-wont-take-a-react-element-and-relativetime-without-now-throws-in-tests)
 - **To wait for a resource that 404s until written (e.g. a run trace), use `retry: false` + a function `refetchInterval` bounded by a deadline; `retry: false` alone never re-fetches.** Every observer of the key polls. — spot it: a drawer stuck on "no trace" right after a run ends. — [INSIGHTS: 2026-10-15 — polling for a resource that 404s until it is written](../INSIGHTS.md#2026-10-15--polling-for-a-resource-that-404s-until-it-is-written-refetchinterval-as-a-function-keeps-going-with-retry-false)
 - **Adding a nav item to `src/vendor/ui/nav.ts` is the one sanctioned hand-edit of vendored UI — record it in the spec that asks for it and comment the line, since a vendor refresh silently drops it.** — spot it: a new route only reachable by typing its URL, with no NAV/SETTINGS_ITEM extension point anywhere downstream. — [INSIGHTS: 2026-09-22 — `vendor/ui/nav.ts` is the one vendored file we edit, and the edit is disposable](../INSIGHTS.md#2026-09-22--vendoruinavts-is-the-one-vendored-file-we-edit-and-the-edit-is-disposable)
 - **An editor that PUTs the whole list back must not render its controls until the stored list has loaded — early-return `Skeleton` on `isLoading` and `ErrorState`+retry on `isError`.** — spot it: the first toggle on a freshly opened tab replaces every stored link with one. — [INSIGHTS: 2026-10-05 — a list editor backed by a replace-all PUT, rendered before its data loads, wipes the stored list](../INSIGHTS.md#2026-10-05--a-list-editor-backed-by-a-replace-all-put-rendered-before-its-data-loads-wipes-the-stored-list-on-the-first-click)

@@ -1,6 +1,6 @@
-# /sdd — stages
+# /sdd-engineering — stages
 
-Detail for the stage table in [SKILL.md](SKILL.md). `S` below stands for `bash .claude/skills/sdd/scripts/sdd.sh`. Agent prompts name the plan or spec by **path**, never pasted text; the agent file in `.claude/agents/` holds the rules. `NN` is the plan number.
+Detail for the stage table in [SKILL.md](SKILL.md). `S` below stands for `bash .claude/skills/sdd-engineering/scripts/sdd.sh`. Agent prompts name the plan or spec by **path**, never pasted text; the agent file in `.claude/agents/` holds the rules. `NN` is the plan number.
 
 ## `intake`
 - Read `insights/gotchas.md` of every package the request names and the `grep '^### '` headings of that package's `INSIGHTS.md` and the root `INSIGHTS.md`; name the entries that bear on the task.

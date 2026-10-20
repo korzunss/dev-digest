@@ -1,17 +1,17 @@
 ---
-name: sdd
-description: "Drives a feature through spec → plan → implement → review → hand-over in the main session, stopping at every user gate and handing over a commit message at the end (never commits). Invoke only on demand via /sdd."
+name: sdd-engineering
+description: "Drives a feature through spec → plan → implement → review → hand-over in the main session, stopping at every user gate and handing over a commit message at the end (never commits). Invoke only on demand via /sdd-engineering."
 argument-hint: "<spec path | \"requirements\"> [--designs <paths…> | figma:<url>] [--ref-repo <git url | path>] [--req \"<extra>\"] [--mode single|multi] [--skip-research] [--no-retro] [--resume <spec|plan path>]"
 disable-model-invocation: true
 user-invocable: true
 version: "1.1.0"
 ---
 
-# /sdd — spec-driven pipeline, end to end
+# /sdd-engineering — spec-driven pipeline, end to end
 
 The **main session** runs this skill. It does not contain engineering rules: it sequences the agents in `.claude/agents/`, stops at every user gate, and records progress in the plan. The rules live in `AGENTS.md` → *Plan → implement → verify* and `.claude/agents/README.md` — read them, do not restate them here.
 
-Input: `$ARGUMENTS`. Per-stage detail (prompts, checks, `--resume` table): [stages.md](stages.md). The review fix loop: [review-loop.md](review-loop.md). Every edit to a `Status:` line, a handoff, a log line and every git checkpoint goes through `scripts/sdd.sh` (run it from the repo root: `bash .claude/skills/sdd/scripts/sdd.sh <subcommand>`; `help` lists them).
+Input: `$ARGUMENTS`. Per-stage detail (prompts, checks, `--resume` table): [stages.md](stages.md). The review fix loop: [review-loop.md](review-loop.md). Every edit to a `Status:` line, a handoff, a log line and every git checkpoint goes through `scripts/sdd.sh` (run it from the repo root: `bash .claude/skills/sdd-engineering/scripts/sdd.sh <subcommand>`; `help` lists them).
 
 ## 1. Arguments
 

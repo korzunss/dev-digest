@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # sdd.sh - the one entry point for the main session's edits and git checkpoints
-# of the /sdd pipeline. Run from anywhere inside the repo; it cd's to the root.
+# of the /sdd-engineering pipeline. Run from anywhere inside the repo; it cd's to the root.
 # BSD/macOS safe: no in-place sed, no GNU-only flags. Never touches the real index.
 set -euo pipefail
 

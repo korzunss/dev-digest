@@ -19,7 +19,7 @@ function walk(dir: string, out: string[] = []): string[] {
   return out;
 }
 
-const IMPORT_RE = /import\s+(type\s+)?([^;]*?)\s+from\s+["']@devdigest\/shared["']/g;
+const IMPORT_RE = /import\s+(type\s+)?([^;]*?)\s+from\s+["']@devdigest\/shared(?:\/[^"']*)?["']/g;
 
 function valueImports(source: string): string[] {
   const hits: string[] = [];

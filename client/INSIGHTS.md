@@ -21,6 +21,12 @@ _Nothing yet._
 
 ## What Doesn't Work
 
+### 2026-10-19 — `beforeEach(() => get.mockReset())` hands vitest the mock as a cleanup function
+**Symptom:** a test fails after its own assertions, inside `callCleanupHooks`, with `Cannot read properties of undefined (reading 'startsWith')` (or `GET undefined`). The mocked `api.get` implementation is being called with no arguments. It hit two separate agents in plan 42 (G5 and the test-writer).
+**Cause:** vitest treats a function returned from `beforeEach` as a teardown. `mockReset()` returns the mock itself, so the concise arrow body returns it and vitest calls the mock after each test.
+**Rule:** write hook bodies with braces: `beforeEach(() => { get.mockReset(); })`.
+**Evidence:** `client/src/app/agent-performance/agent-performance.readonly.test.tsx:111`, `agent-performance.period-rejection.test.tsx:48`; plan 42 G5 and test-writer reports
+
 ### 2026-10-15 — a hook mock that starts in the "live" state hides first-render bugs
 **Symptom:** a `RunTraceDrawer` fix passed every test and a plan-verifier pass, yet on the results page the drawer showed "No trace available yet" instead of "pending" for runs that ended > 30 s after it was opened; the trace was also fetched while the run was still running.
 **Cause:** the real `useRunEvents` returns `running: false` on the first render and flips to `true` in its effect; the tests mocked it as `running: true` from the first render, so the mount render that misread "not running yet" as "ended" was never exercised.
@@ -95,6 +101,12 @@ pass either way unless one asserts the dialog's parent
 under document.body").
 
 ## Tool & Library Notes
+
+### 2026-10-19 — next-intl: `t.rich` won't take a React element, and `relativeTime` without `now` throws in tests
+**Symptom:** `t("card.summary", { accept: <span …/> })` through `t.rich` fails `pnpm typecheck` with TS2322. A `<tone>…</tone>` tag in the message works, but it puts markup into i18n strings. Separately, `format.relativeTime(date)` errors with `ENVIRONMENT_FALLBACK` under `NextIntlClientProvider` in vitest.
+**Cause:** `t.rich` values are typed as primitives or tag callbacks, not ReactNode. `relativeTime` without a `now` argument relies on a global `now` that the test provider does not configure.
+**Rule:** to style one part of a line, split the message into plain keys and compose the element in JSX. Always pass `now` explicitly: `format.relativeTime(d, new Date())`.
+**Evidence:** `client/src/app/agents/_components/AgentCard/AgentCard.tsx:34-39` (plain keys, plan 42 P9 fix); `client/src/app/agent-performance/_components/AgentPerfTable/AgentPerfTable.tsx:90`
 
 ### 2026-10-15 — polling for a resource that 404s until it is written: `refetchInterval` as a function keeps going with `retry: false`
 **Symptom:** the run trace is written after the run turns terminal, so the drawer's first `GET /runs/:id/trace` 404s; with `retry: false` and no interval the drawer showed "no trace" forever.
