@@ -1,7 +1,7 @@
 # Agent Performance
-<!-- verified against 005701d + working tree on 2026-10-19 · sources: server/src/modules/agent-performance/helpers.ts, server/src/modules/agent-performance/service.ts, server/src/modules/agent-performance/repository.ts, server/src/vendor/shared/contracts/agent-performance.ts, client/src/components/perf-kit/helpers.ts, client/src/components/perf-kit/CostAmount.tsx, client/src/app/agent-performance/_components/AgentPerformanceView/AgentPerformanceView.tsx, client/src/app/agent-performance/_components/AgentPerformanceView/KpiTiles.tsx, client/src/app/agent-performance/_components/AgentPerfTable/helpers.ts, client/src/app/agents/[id]/_components/AgentEditor/_components/StatsTab/StatsTab.tsx, client/src/app/agents/_components/AgentCard/AgentCard.tsx, client/messages/en/agentPerformance.json -->
+<!-- verified against 037890c1 + working tree on 2026-10-20 · sources: server/src/modules/agent-performance/helpers.ts, server/src/modules/agent-performance/service.ts, server/src/modules/agent-performance/repository.ts, server/src/modules/skills/service.ts, server/src/vendor/shared/contracts/agent-performance.ts, server/src/vendor/shared/contracts/skill-stats.ts, server/src/modules/reviews/run-executor.ts, client/src/lib/finding-category.ts, client/src/app/agents/[id]/_components/AgentEditor/_components/StatsTab/_components/BreakdownPanels/, client/src/app/skills/[id]/_components/SkillEditor/_components/StatsTab/StatsTab.tsx, client/src/components/perf-kit/helpers.ts, client/src/components/perf-kit/CostAmount.tsx, client/src/app/agent-performance/_components/AgentPerformanceView/AgentPerformanceView.tsx, client/src/app/agent-performance/_components/AgentPerformanceView/KpiTiles.tsx, client/src/app/agent-performance/_components/AgentPerfTable/helpers.ts, client/src/app/agents/[id]/_components/AgentEditor/_components/StatsTab/StatsTab.tsx, client/src/app/agents/_components/AgentCard/AgentCard.tsx, client/messages/en/agentPerformance.json -->
 
-Read this when you change what the Agent Performance page, the agent Stats tab or the agent-card summary line shows, or when you need the rules behind a number on them. It describes the feature as built by [plan 42](plans/42-agent-performance.md) (spec [015](../specs/015-agent-performance.md)). The spec holds the acceptance criteria; the code is the final word.
+Read this when you change what the Agent Performance page, the agent Stats tab or the agent-card summary line shows, or when you need the rules behind a number on them. It describes the feature as built by [plan 42](plans/42-agent-performance.md) (spec [015](../specs/015-agent-performance.md)) and extended by [plan 43](plans/43-agent-stats-breakdown.md) (spec [016](../specs/016-agent-stats-breakdown.md)): the Stats-tab breakdown panels and the period control on Skill → Stats. The specs hold the acceptance criteria; the code is the final word.
 
 Diátaxis type: explanation. Routes and parameters are in [`server/docs/agent-performance.md`](../server/docs/agent-performance.md); the client building blocks are in [`client/docs/agent-performance.md`](../client/docs/agent-performance.md).
 
@@ -12,7 +12,8 @@ Every surface is a read of stored runs, findings and traces. None starts a revie
 | Surface | Where | Scope | Shows |
 |---|---|---|---|
 | Agent Performance page | `/agent-performance`, sidebar GLOBAL → Agent Performance | the whole workspace, every repo; the repo picker is ignored | four KPI tiles (Total runs with a sparkline, Total cost, Avg accept rate with a ring, Most-active agent); one table row per existing agent plus a "Deleted agents" row; cost breakdown by agent and by model |
-| Stats tab | `/agents/<id>?tab=stats`, the `stats` tab after `evals` | one agent | four KPI tiles (Total runs, Avg cost / run, Avg duration, Accept rate with a ring); the Run history table |
+| Stats tab | `/agents/<id>?tab=stats`, the `stats` tab after `evals` | one agent | four KPI tiles (Total runs, Avg cost / run, Avg duration, Accept rate with a ring); four breakdown panels (see [Stats-tab panels](#stats-tab-panels)); the Run history table |
+| Skill Stats tab | the Stats tab of a skill under `/skills/<id>` | one skill | usage tiles and findings by category, over a period chosen with the same period control (see [Skill → Stats](#skill--stats)) |
 | Agent card line | each card on `/agents` and in the left list of `/agents/<id>` | one agent, always the last 30 days | "N runs · X% accept · $Y avg", or "No runs in 30 days" |
 
 Page behaviour that is easy to miss:
@@ -69,6 +70,39 @@ A single derived money figure can mix sources: an average, a delta, a card's avg
 
 In the cost breakdown, each legend row shows its amount, and its split when the chart holds more than one provenance, so the estimated share is visible per agent and per model.
 
+## Stats-tab panels
+
+Under the tiles the agent Stats tab shows four panels from one request. They cover the same period as the tiles. Like the tiles, they read stored data and call no model.
+
+| Panel | Shows | Counts |
+|---|---|---|
+| Most-used skills | share of the agent's local runs whose prompt included each skill | local runs on or after the workspace's first run with a recorded skill |
+| Most-pulled memory | share of runs where a memory entry (text plus PR) was pulled into the prompt | local runs with a stored trace on or after the first stored trace |
+| Findings by severity | stacked columns per time bucket: 4 hours for 1 day, weeks for 30 days or a custom range of up to 90 local days, months beyond that | every finding of a counted run, by the run's time |
+| Findings by category | donut with the total in the centre and a legend of count and percent | every finding of a counted run |
+
+Rules that are easy to miss:
+
+- **Local runs only for skills and memory.** CI runs record neither, so a CI-only agent shows a "no local runs" line in these panels, and in the findings panels (CI runs record no findings). The panels still appear for such an agent, because they hide only when the period has no counted run at all (local and CI).
+- **"Tracked since".** Skill and memory shares use the runs since the first one that recorded anything as the denominator. When the period starts earlier, the panel says "No data before <date>".
+- **Severity is matched exactly** against `CRITICAL`, `WARNING` and `SUGGESTION`. Anything else, `INFO` or lower case included, is counted as "Other", which the legend shows only when it is above 0. Categories are shown as stored; an unknown one keeps its name in a fallback colour.
+- **Totals agree.** The findings total equals the sum over categories and the sum over buckets.
+- **DST.** Four-hour buckets are real hours, so a bucket can read 3 or 5 hours on the clock on a DST day. Week and month buckets start at local midnights in the browser's zone.
+- **Memory is empty today.** Reviews do not pull memory: `server/src/modules/reviews/run-executor.ts` stores `memory_pulled: []`. The memory panel therefore shows "No memory pulled in this period" until something fills that field.
+
+Why 90 days: a user decision on spec 016 (B5, 2026-10-20). A custom range can run to 365 days, which would be 53 weekly bars; up to 90 days stays at 13 or fewer weekly bars, and anything longer switches to calendar months.
+
+The three independent regions of the tab (tiles, panels, history) fail separately: a stats error does not hide the panels, and the panels' own error shows a Retry in each of the four slots. Details: [`client/docs/agent-performance.md`](../client/docs/agent-performance.md#breakdownpanels), route and SQL: [`server/docs/agent-performance.md`](../server/docs/agent-performance.md#breakdown).
+
+## Skill → Stats
+
+The Skill Stats tab takes the same period selection as the agent tab (1 day, 30 days, custom, kept in the URL). Its figures `runs_with_skill`, `runs_total`, pull rate, accept rate and findings are scoped to that period. The list of agents using the skill is not.
+
+- **Period validation is shared.** The skills module asks the Agent Performance service to check the window and the time zone, so both tabs refuse the same invalid periods with a 422.
+- **Empty means never used.** The tab shows its empty state only when no agent has the skill attached and no run ever recorded it. A period without runs shows the tiles with dashes.
+- **The rail card stays at 30 days.** The skill list's footer line is unchanged and ignores the tab's period.
+- **`findings_30d` now means "findings in the requested window".** The field kept its name so the shared contract did not change; the tab labels the tile "FINDINGS" and names the period under it.
+
 ## Why the contract bypasses the barrel
 
 The Zod schemas live in `server/src/vendor/shared/contracts/agent-performance.ts`, with a hand-kept identical copy in `client/src/vendor/shared/contracts/agent-performance.ts`. `index.ts` of `@devdigest/shared` does not re-export them. Import them by the deep path:
@@ -87,10 +121,14 @@ What makes the deep path resolve:
 
 Two consequences to remember: edit both copies together, and a name already exported by the barrel (`AgentStats`, `AgentPerf`, `AgentPerfRow`, `PerfCostSegment`) must not be reused in this file. The old `AgentStats` and `AgentPerf*` contracts are untouched.
 
+Plan 43 follows the same rule twice. The breakdown schemas (`AgentStatsBreakdown` and its parts) sit in the same `agent-performance.ts`. The period-scoped skill response, `SkillStatsPeriod`, sits in a second deep-path file, `server/src/vendor/shared/contracts/skill-stats.ts` (also copied to the client). It extends `SkillStats` from `knowledge.ts`, which the barrel does re-export, so extending it in place would have changed the runner bundle; `skill-stats.ts` is imported by no barrel file.
+
 ## Not built
 
 - Billing reconciliation (invoices, CSV, provider usage APIs).
-- The Stats-tab panels Most-used skills, Most-pulled memory, Findings by severity and by category; the Memory sidebar item.
+- The Memory sidebar item.
+- Memory pulled into review prompts: the memory panel is built and always empty until a review records `memory_pulled`.
+- Breakdown panels on Skill → Stats and on the global dashboard; a "Sync CI" action.
 - Per-agent icons in the table: agents store no icon (plan 42, follow-up DG6).
 - Persisting sort order or row expansion.
 
@@ -98,4 +136,4 @@ Two consequences to remember: edit both copies together, and a name already expo
 
 - [`server/docs/agent-performance.md`](../server/docs/agent-performance.md) — routes, parameters, SQL, the no-index decision.
 - [`client/docs/agent-performance.md`](../client/docs/agent-performance.md) — `lib/period.ts`, hooks, `perf-kit`, `period-control`.
-- Spec [015](../specs/015-agent-performance.md) · plan [42](plans/42-agent-performance.md).
+- Specs [015](../specs/015-agent-performance.md), [016](../specs/016-agent-stats-breakdown.md) · plans [42](plans/42-agent-performance.md), [43](plans/43-agent-stats-breakdown.md).

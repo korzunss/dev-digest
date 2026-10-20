@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, lt } from 'drizzle-orm';
 import type { Db } from '../../db/client.js';
 import * as t from '../../db/schema.js';
 import type { SkillSource, SkillType } from '@devdigest/shared';
@@ -236,11 +236,11 @@ export class SkillsRepository {
   }
 
   /** Completed runs in the window — the denominator of PULL FREQUENCY. */
-  async completedRunCount(workspaceId: string, since: Date): Promise<number> {
+  async completedRunCount(workspaceId: string, since: Date, until?: Date): Promise<number> {
     const rows = await this.db
       .select({ id: t.agentRuns.id })
       .from(t.agentRuns)
-      .where(this.windowedRuns(workspaceId, since));
+      .where(this.windowedRuns(workspaceId, since, until));
     return rows.length;
   }
 
@@ -249,6 +249,7 @@ export class SkillsRepository {
     workspaceId: string,
     skillIds: string[],
     since: Date,
+    until?: Date,
   ): Promise<Map<string, number>> {
     const counts = new Map<string, number>();
     if (skillIds.length === 0) return counts;
@@ -256,7 +257,7 @@ export class SkillsRepository {
       .select({ skillId: t.runSkills.skillId })
       .from(t.runSkills)
       .innerJoin(t.agentRuns, eq(t.agentRuns.id, t.runSkills.runId))
-      .where(and(this.windowedRuns(workspaceId, since), inArray(t.runSkills.skillId, skillIds)));
+      .where(and(this.windowedRuns(workspaceId, since, until), inArray(t.runSkills.skillId, skillIds)));
     for (const r of rows) counts.set(r.skillId, (counts.get(r.skillId) ?? 0) + 1);
     return counts;
   }
@@ -272,6 +273,7 @@ export class SkillsRepository {
     workspaceId: string,
     skillIds: string[],
     since: Date,
+    until?: Date,
   ): Promise<SkillFindingRow[]> {
     if (skillIds.length === 0) return [];
     const rows = await this.db
@@ -285,13 +287,27 @@ export class SkillsRepository {
       .innerJoin(t.agentRuns, eq(t.agentRuns.id, t.runSkills.runId))
       .innerJoin(t.reviews, eq(t.reviews.runId, t.agentRuns.id))
       .innerJoin(t.findings, eq(t.findings.reviewId, t.reviews.id))
-      .where(and(this.windowedRuns(workspaceId, since), inArray(t.runSkills.skillId, skillIds)));
+      .where(and(this.windowedRuns(workspaceId, since, until), inArray(t.runSkills.skillId, skillIds)));
     return rows.map((r) => ({
       skillId: r.skillId,
       category: r.category,
       accepted: r.acceptedAt !== null,
       dismissed: r.dismissedAt !== null,
     }));
+  }
+
+  /**
+   * Was the skill ever recorded on a run of this workspace, in any window and
+   * whatever the run's outcome (spec 016 AC-47)? One row is enough.
+   */
+  async everUsed(workspaceId: string, skillId: string): Promise<boolean> {
+    const rows = await this.db
+      .select({ runId: t.runSkills.runId })
+      .from(t.runSkills)
+      .innerJoin(t.agentRuns, eq(t.agentRuns.id, t.runSkills.runId))
+      .where(and(eq(t.agentRuns.workspaceId, workspaceId), eq(t.runSkills.skillId, skillId)))
+      .limit(1);
+    return rows.length > 0;
   }
 
   /** Record which skills a run pulled, in prompt order. */
@@ -315,13 +331,15 @@ export class SkillsRepository {
 
   /** A run only counts once it finished — a failed run pulled a prompt too, but
    *  it produced no findings, so counting it would depress every accept rate. */
-  private windowedRuns(workspaceId: string, since: Date) {
+  private windowedRuns(workspaceId: string, since: Date, until?: Date) {
     return and(
       eq(t.agentRuns.workspaceId, workspaceId),
       eq(t.agentRuns.status, 'done'),
       // CI runs (source 'ci') carry no run_skills and stay out of skill stats.
       eq(t.agentRuns.source, 'local'),
       gte(t.agentRuns.ranAt, since),
+      // The window's end is exclusive: a run exactly at `to` belongs to the next period.
+      until ? lt(t.agentRuns.ranAt, until) : undefined,
     );
   }
 }

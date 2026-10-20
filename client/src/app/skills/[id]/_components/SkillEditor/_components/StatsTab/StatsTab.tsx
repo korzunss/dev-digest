@@ -13,30 +13,83 @@
 "use client";
 
 import React from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Donut, EmptyState, ErrorState, Icon, MetricCard, SectionLabel, Skeleton } from "@devdigest/ui";
 import type { Skill } from "@devdigest/shared";
+import { PeriodControl } from "@/components/period-control";
+import { parsePeriod, type PeriodSel } from "@/lib/period";
 import { useSkillStats } from "../../../../../../../lib/hooks/skills";
 import { formatCount, formatRate } from "../../../../../_components/SkillCard";
 import { DONUT_SIZE } from "./constants";
 import { donutSegments, formatSegmentValue, hasNothingToShow } from "./helpers";
 import { s } from "./styles";
 
+function periodName(sel: PeriodSel, label: (kind: "1d" | "30d") => string): string {
+  return sel.period === "custom" ? `${sel.from} – ${sel.to}` : label(sel.period);
+}
+
 export function StatsTab({ skill }: { skill: Skill }) {
   const t = useTranslations("skills");
   const tc = useTranslations("common");
-  const { data: stats, isLoading, isError, refetch } = useSkillStats(skill.id);
+  const tp = useTranslations("agentPerformance");
+  const router = useRouter();
+  const pathname = usePathname();
+  const search = useSearchParams();
+  const sel = parsePeriod(search);
+  const { data: stats, isLoading, isError, refetch } = useSkillStats(skill.id, sel);
 
-  if (isLoading) return <Skeleton height={180} />;
-  if (isError || !stats) return <ErrorState body={t("stats.loadError")} onRetry={() => refetch()} />;
+  const setPeriod = (next: PeriodSel) => {
+    // Keep `tab` (and anything else); only the period params change.
+    const sp = new URLSearchParams(search.toString());
+    for (const key of ["period", "from", "to"]) sp.delete(key);
+    sp.set("period", next.period);
+    if (next.period === "custom" && next.from && next.to) {
+      sp.set("from", next.from);
+      sp.set("to", next.to);
+    }
+    router.replace(`${pathname}?${sp.toString()}`);
+  };
+
+  // The period control is part of every state, so a failed or empty period can be changed (AC-42).
+  const header = (
+    <div style={s.header}>
+      <PeriodControl value={sel} onChange={setPeriod} />
+    </div>
+  );
+
+  if (isLoading) {
+    return (
+      <div style={s.wrap}>
+        {header}
+        <Skeleton height={180} />
+      </div>
+    );
+  }
+  if (isError || !stats) {
+    return (
+      <div style={s.wrap}>
+        {header}
+        <ErrorState body={t("stats.loadError")} onRetry={() => refetch()} />
+      </div>
+    );
+  }
   if (hasNothingToShow(stats)) {
-    return <EmptyState icon="BarChart" title={t("stats.empty.title")} body={t("stats.empty.body")} />;
+    return (
+      <div style={s.wrap}>
+        {header}
+        <EmptyState icon="BarChart" title={t("stats.empty.title")} body={t("stats.empty.body")} />
+      </div>
+    );
   }
 
+  // No local run in the period carried the skill: nothing was measured, so no 0% and no 0 (AC-46).
+  const measured = stats.runs_with_skill > 0;
   const segments = donutSegments(stats.findings_by_category);
 
   return (
     <div style={s.wrap}>
+      {header}
       <div style={s.tiles}>
         <div style={s.tile}>
           <MetricCard
@@ -45,13 +98,16 @@ export function StatsTab({ skill }: { skill: Skill }) {
           />
         </div>
         <div style={s.tile}>
-          <MetricCard label={t("stats.pullFrequency")} value={formatRate(stats.pull_rate)} />
+          <MetricCard label={t("stats.pullFrequency")} value={formatRate(measured ? stats.pull_rate : null)} />
         </div>
         <div style={s.tile}>
-          <MetricCard label={t("stats.acceptRate")} value={formatRate(stats.accept_rate)} />
+          <MetricCard label={t("stats.acceptRate")} value={formatRate(measured ? stats.accept_rate : null)} />
         </div>
         <div style={s.tile}>
-          <MetricCard label={t("stats.findings30d")} value={formatCount(stats.findings_30d)} />
+          <div style={s.tileColumn}>
+            <MetricCard label={t("stats.findings")} value={measured ? formatCount(stats.findings_30d) : "—"} />
+            <span style={s.tileCaption}>{periodName(sel, (kind) => tp(`period.${kind}`))}</span>
+          </div>
         </div>
       </div>
 
@@ -80,7 +136,9 @@ export function StatsTab({ skill }: { skill: Skill }) {
 
         <div style={s.panel}>
           <SectionLabel icon="BarChart">{t("stats.findingsByCategory")}</SectionLabel>
-          {segments.length === 0 ? (
+          {!measured ? (
+            <div style={s.panelEmpty}>{t("stats.noFindingsInPeriod")}</div>
+          ) : segments.length === 0 ? (
             // Nothing to draw. An empty ring would read as "measured, all
             // zero"; this says there is no breakdown yet without hiding the
             // tiles, which do have something to say.

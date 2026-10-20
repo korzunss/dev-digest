@@ -2,12 +2,19 @@ import { sql, type SQL } from 'drizzle-orm';
 import type { Db } from '../../db/client.js';
 import type {
   AggregateRow,
+  BreakdownBucketKind,
   BucketRow,
+  CategoryCountRow,
+  CountedRunsRow,
   DecisionRow,
   HistoryCursor,
+  MemoryUsageRow,
   ModelCostRow,
   RecentRunRow,
   RunHistoryRow,
+  SeverityBucketRow,
+  SkillUsageRow,
+  UsageRead,
 } from './types.js';
 import { RECENT_RUNS } from './constants.js';
 
@@ -235,5 +242,199 @@ export class AgentPerformanceRepository {
       SELECT count(*)::int AS n FROM agent_runs r
       WHERE r.status = 'done' AND ${this.scope(r, workspaceId, win, agentId)}`);
     return N(rows[0]?.n);
+  }
+
+  /** AC-41 / M-2: the agent's counted runs in the window, and the local ones among them. */
+  async countedRuns(workspaceId: string, win: PerfWindowArgs, agentId: string): Promise<CountedRunsRow> {
+    const r = sql`r`;
+    const rows = await this.db.execute(sql`
+      SELECT count(*) FILTER (WHERE r.status = 'done')::int AS counted,
+        count(*) FILTER (WHERE r.status = 'done' AND r.source = 'local')::int AS local
+      FROM agent_runs r
+      WHERE ${this.scope(r, workspaceId, win, agentId)}`);
+    return { counted: N(rows[0]?.counted), local: N(rows[0]?.local) };
+  }
+
+  /** AC-4: the earliest `ran_at` of a done local run of the workspace that has a recorded skill. */
+  async skillsTrackedSince(workspaceId: string): Promise<Date | null> {
+    const rows = await this.db.execute(sql`
+      SELECT ${isoMs(sql`min(r.ran_at)`)} AS since FROM agent_runs r
+      WHERE r.workspace_id = ${workspaceId}::uuid AND r.status = 'done' AND r.source = 'local'
+        AND EXISTS (SELECT 1 FROM run_skills rs WHERE rs.run_id = r.id)`);
+    const v = rows[0]?.since;
+    return v ? new Date(v as string) : null;
+  }
+
+  /** AC-13: the earliest `ran_at` of a done local run of the workspace that has a stored run trace. */
+  async memoryTrackedSince(workspaceId: string): Promise<Date | null> {
+    const rows = await this.db.execute(sql`
+      SELECT ${isoMs(sql`min(r.ran_at)`)} AS since FROM agent_runs r
+      WHERE r.workspace_id = ${workspaceId}::uuid AND r.status = 'done' AND r.source = 'local'
+        AND EXISTS (SELECT 1 FROM run_traces rt WHERE rt.run_id = r.id)`);
+    const v = rows[0]?.since;
+    return v ? new Date(v as string) : null;
+  }
+
+  /**
+   * AC-5 / AC-6 / AC-12: the agent's counted local runs of the window on or after
+   * `since` (the denominator) and, per skill that still exists, how many of
+   * them recorded it. `since` null (nothing tracked yet) reads nothing.
+   */
+  async skillUsage(
+    workspaceId: string,
+    win: PerfWindowArgs,
+    agentId: string,
+    since: Date | null,
+  ): Promise<UsageRead<SkillUsageRow>> {
+    if (!since) return { denominator: 0, rows: [] };
+    const r = sql`r`;
+    const from = since.toISOString();
+    const [den, rows] = await Promise.all([
+      this.db.execute(sql`
+        SELECT count(*)::int AS n FROM agent_runs r
+        WHERE r.status = 'done' AND r.source = 'local' AND r.ran_at >= ${from}::timestamptz
+          AND ${this.scope(r, workspaceId, win, agentId)}`),
+      this.db.execute(sql`
+        SELECT s.id::text AS skill_id, s.name AS name, count(*)::int AS n
+        FROM run_skills rs
+        JOIN agent_runs r ON r.id = rs.run_id
+        JOIN skills s ON s.id = rs.skill_id AND s.workspace_id = ${workspaceId}::uuid
+        WHERE r.status = 'done' AND r.source = 'local' AND r.ran_at >= ${from}::timestamptz
+          AND ${this.scope(r, workspaceId, win, agentId)}
+        GROUP BY s.id, s.name
+        ORDER BY n DESC, s.name, s.id`),
+    ]);
+    return {
+      denominator: N(den[0]?.n),
+      rows: Array.from(rows, (x) => ({ skillId: x.skill_id as string, name: x.name as string, runs: N(x.n) })),
+    };
+  }
+
+  /**
+   * AC-14 / AC-15: the agent's counted local runs with a stored trace on or
+   * after `since` (the denominator) and, per memory entry (text + pr), the
+   * distinct runs that pulled it. Reads `trace->'memory_pulled'` defensively:
+   * a trace without an array, or an entry without a string text, adds no row.
+   */
+  async memoryUsage(
+    workspaceId: string,
+    win: PerfWindowArgs,
+    agentId: string,
+    since: Date | null,
+  ): Promise<UsageRead<MemoryUsageRow>> {
+    if (!since) return { denominator: 0, rows: [] };
+    const r = sql`r`;
+    const from = since.toISOString();
+    const [den, rows] = await Promise.all([
+      this.db.execute(sql`
+        SELECT count(*)::int AS n FROM agent_runs r
+        JOIN run_traces rt ON rt.run_id = r.id
+        WHERE r.status = 'done' AND r.source = 'local' AND r.ran_at >= ${from}::timestamptz
+          AND ${this.scope(r, workspaceId, win, agentId)}`),
+      this.db.execute(sql`
+        SELECT m.text AS text, m.pr AS pr, count(DISTINCT m.run_id)::int AS n
+        FROM (
+          SELECT rt.run_id AS run_id, e->>'text' AS text,
+            CASE WHEN jsonb_typeof(e->'pr') = 'number' AND (e->>'pr') ~ '^-?[0-9]{1,9}$'
+                 THEN (e->>'pr')::int END AS pr
+          FROM agent_runs r
+          JOIN run_traces rt ON rt.run_id = r.id
+          CROSS JOIN LATERAL jsonb_array_elements(
+            CASE WHEN jsonb_typeof(rt.trace->'memory_pulled') = 'array'
+                 THEN rt.trace->'memory_pulled' ELSE '[]'::jsonb END) e
+          WHERE r.status = 'done' AND r.source = 'local' AND r.ran_at >= ${from}::timestamptz
+            AND ${this.scope(r, workspaceId, win, agentId)}
+            AND jsonb_typeof(e->'text') = 'string'
+        ) m
+        GROUP BY m.text, m.pr
+        ORDER BY n DESC, m.text, m.pr NULLS FIRST`),
+    ]);
+    return {
+      denominator: N(den[0]?.n),
+      rows: Array.from(rows, (x) => ({ text: x.text as string, pr: NN(x.pr), runs: N(x.n) })),
+    };
+  }
+
+  /** AC-20 / AC-25: every finding of the agent's counted runs (the M-7 join), by stored category. */
+  async findingsByCategory(workspaceId: string, win: PerfWindowArgs, agentId: string): Promise<CategoryCountRow[]> {
+    const r = sql`r`;
+    const rows = await this.db.execute(sql`
+      SELECT f.category AS category, count(*)::int AS n
+      FROM agent_runs r
+      JOIN reviews rv ON rv.run_id = r.id
+      JOIN findings f ON f.review_id = rv.id
+      WHERE r.status = 'done' AND ${this.scope(r, workspaceId, win, agentId)}
+      GROUP BY f.category
+      ORDER BY n DESC, f.category`);
+    return Array.from(rows, (x) => ({ category: x.category as string, count: N(x.n) }));
+  }
+
+  /**
+   * AC-27…AC-33: the same findings per severity in every bucket of `kind`
+   * (empty buckets included), assigned by the run's `ran_at`. Buckets are
+   * instant ranges `[start, end)` built in SQL: `4h` = six real 4-hour steps
+   * from the window start, `7d` = 7 calendar days in `tz` counted from the
+   * start, `month` = calendar months in `tz`; the first starts at `from`, the
+   * last ends at `to`. `kind` picks one of three fixed fragments; the instants
+   * and the zone are bound. Severity matches the stored literals exactly.
+   */
+  async severityBuckets(
+    workspaceId: string,
+    win: PerfWindowArgs,
+    tz: string,
+    kind: BreakdownBucketKind,
+    agentId: string,
+  ): Promise<SeverityBucketRow[]> {
+    const r = sql`r`;
+    const from = sql`${win.from.toISOString()}::timestamptz`;
+    const to = sql`${win.to.toISOString()}::timestamptz`;
+    const localFrom = sql`(${from} AT TIME ZONE ${tz})`;
+    const localLast = sql`((${to} - interval '1 millisecond') AT TIME ZONE ${tz})`;
+    let buckets: SQL;
+    if (kind === '4h') {
+      buckets = sql`
+        SELECT i, ${from} + i * interval '4 hours' AS s,
+          CASE WHEN i = 5 THEN ${to} ELSE ${from} + (i + 1) * interval '4 hours' END AS e
+        FROM generate_series(0, 5) i`;
+    } else if (kind === '7d') {
+      buckets = sql`
+        SELECT i,
+          GREATEST((${localFrom} + i * interval '7 days') AT TIME ZONE ${tz}, ${from}) AS s,
+          LEAST((${localFrom} + (i + 1) * interval '7 days') AT TIME ZONE ${tz}, ${to}) AS e
+        FROM generate_series(0, floor(extract(epoch FROM (${localLast} - ${localFrom})) / 604800)::int) i`;
+    } else {
+      buckets = sql`
+        SELECT (row_number() OVER (ORDER BY m) - 1)::int AS i,
+          GREATEST(m AT TIME ZONE ${tz}, ${from}) AS s,
+          LEAST((m + interval '1 month') AT TIME ZONE ${tz}, ${to}) AS e
+        FROM generate_series(
+          date_trunc('month', ${localFrom}), date_trunc('month', ${localLast}), interval '1 month') m`;
+    }
+    const rows = await this.db.execute(sql`
+      WITH b AS (${buckets}),
+      f AS (
+        SELECT r.ran_at AS ran_at, f.severity AS severity
+        FROM agent_runs r
+        JOIN reviews rv ON rv.run_id = r.id
+        JOIN findings f ON f.review_id = rv.id
+        WHERE r.status = 'done' AND ${this.scope(r, workspaceId, win, agentId)}
+      )
+      SELECT b.i AS i, ${isoMs(sql`b.s`)} AS start, ${isoMs(sql`b.e`)} AS "end",
+        count(*) FILTER (WHERE f.severity = 'CRITICAL')::int AS critical,
+        count(*) FILTER (WHERE f.severity = 'WARNING')::int AS warning,
+        count(*) FILTER (WHERE f.severity = 'SUGGESTION')::int AS suggestion,
+        count(*) FILTER (WHERE f.severity IS NOT NULL
+          AND f.severity NOT IN ('CRITICAL', 'WARNING', 'SUGGESTION'))::int AS other
+      FROM b LEFT JOIN f ON f.ran_at >= b.s AND f.ran_at < b.e
+      GROUP BY b.i, b.s, b.e
+      ORDER BY b.i`);
+    return Array.from(rows, (x) => ({
+      start: new Date(x.start as string),
+      end: new Date(x.end as string),
+      critical: N(x.critical),
+      warning: N(x.warning),
+      suggestion: N(x.suggestion),
+      other: N(x.other),
+    }));
   }
 }

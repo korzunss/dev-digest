@@ -1,4 +1,4 @@
-import type { PerfQuery } from '@devdigest/shared/contracts/agent-performance.js';
+import type { BreakdownBucketKind, PerfQuery } from '@devdigest/shared/contracts/agent-performance.js';
 import type { AgentPerformanceRepository } from './repository.js';
 
 /**
@@ -79,6 +79,48 @@ export interface HistoryCursor {
   ranAt: Date;
   id: string;
 }
+
+/** Counted (`done`) runs of an agent in a window, and the local ones among them (spec 016, AC-41). */
+export interface CountedRunsRow {
+  counted: number;
+  local: number;
+}
+
+export interface SkillUsageRow {
+  skillId: string;
+  name: string;
+  runs: number;
+}
+
+export interface MemoryUsageRow {
+  text: string;
+  pr: number | null;
+  runs: number;
+}
+
+/** A usage panel's read: its denominator and rows; `{ 0, [] }` when nothing is tracked yet. */
+export interface UsageRead<Row> {
+  denominator: number;
+  rows: Row[];
+}
+
+export interface CategoryCountRow {
+  /** The stored value, unmapped (AC-25). */
+  category: string;
+  count: number;
+}
+
+/** One severity bucket; `other` = any severity that is not exactly CRITICAL/WARNING/SUGGESTION (AC-33). */
+export interface SeverityBucketRow {
+  start: Date;
+  end: Date;
+  critical: number;
+  warning: number;
+  suggestion: number;
+  other: number;
+}
+
+export type { BreakdownBucketKind };
 
 /** The agent fields the screens read. `container.agentsRepo` satisfies this structurally. */
 export interface PerfAgent {

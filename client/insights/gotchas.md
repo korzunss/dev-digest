@@ -1,6 +1,6 @@
 # client — current gotchas
 
-Last reconciled with ../INSIGHTS.md: 2026-10-19
+Last reconciled with ../INSIGHTS.md: 2026-10-20
 
 This is a curated index of rules still in force. Full write-ups live in
 [`client/INSIGHTS.md`](../INSIGHTS.md) (append-only log). A rule that stops
@@ -9,6 +9,7 @@ holding is edited or removed here. Items are added or updated by the
 
 ## Tests
 
+- **When a component gains a request, find every test that mounts it (`rg -l "<Component>" client/src --glob '*.test.tsx'`), put those files in the step's *Files*, and run the full `pnpm test`.** Strict `get` mocks elsewhere throw on the new path. — spot it: `unexpected GET …` or `Found multiple elements with the role "alert"` in a suite outside the component's folder. — [INSIGHTS: 2026-10-20 — a new request in the Agent StatsTab breaks `app/agent-performance/*.test.tsx`, outside the tab's folder](../INSIGHTS.md#2026-10-20--a-new-request-in-the-agent-statstab-breaks-appagent-performancetesttsx-outside-the-tabs-folder)
 - **Give vitest hook bodies braces — `beforeEach(() => { get.mockReset(); })`; a concise arrow returns the mock, and vitest calls it as a teardown.** — spot it: `Cannot read properties of undefined (reading 'startsWith')` inside `callCleanupHooks`, after the test's own assertions passed. — [INSIGHTS: 2026-10-19 — `beforeEach(() => get.mockReset())` hands vitest the mock as a cleanup function](../INSIGHTS.md#2026-10-19--beforeeach--getmockreset-hands-vitest-the-mock-as-a-cleanup-function)
 - **Mock a hook from its real initial value (e.g. `useRunEvents` → `running: false` on the first render) and flip it as the hook does; a mock that is "live" from the first render hides mount-render bugs.** — spot it: a drawer/panel fix green in tests that misbehaves only right after mount in the browser. — [INSIGHTS: 2026-10-15 — a hook mock that starts in the "live" state hides first-render bugs](../INSIGHTS.md#2026-10-15--a-hook-mock-that-starts-in-the-live-state-hides-first-render-bugs)
 - **There is no `@testing-library/user-event` in this package — write interaction tests with synchronous `fireEvent`, not `userEvent.setup()`.** — spot it: a new test's `user-event` import fails to resolve, in a repo where every other RTL idiom works. — [INSIGHTS: 2026-09-18 — there is no `@testing-library/user-event` here; use `fireEvent`](../INSIGHTS.md#2026-09-18--there-is-no-testing-libraryuser-event-here-use-fireevent)

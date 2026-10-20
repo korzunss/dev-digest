@@ -1,21 +1,31 @@
 import { z } from 'zod';
 import type {
+  AgentStatsBreakdown,
+  BreakdownBucketKind,
   PerfCostSplit,
   PerfFigures,
   PerfMostActive,
   PerfPrevious,
   PerfRecentRuns,
+  PerfPeriodKind,
   PerfRow,
+  PerfWindow,
 } from '@devdigest/shared/contracts/agent-performance.js';
 import { ValidationError } from '../../platform/errors.js';
-import { CLOCK_SKEW_MS, DAY_MS, MAX_CUSTOM_MS, RECENT_RUNS } from './constants.js';
+import { CLOCK_SKEW_MS, DAY_MS, MAX_CUSTOM_MS, MONTH_BUCKETS_AFTER_DAYS, RECENT_RUNS } from './constants.js';
 import type {
   AggregateRow,
+  CategoryCountRow,
+  CountedRunsRow,
   DecisionRow,
   HistoryCursor,
+  MemoryUsageRow,
   PerfWindowQuery,
   PerfWindowResolved,
   RecentRunRow,
+  SeverityBucketRow,
+  SkillUsageRow,
+  UsageRead,
 } from './types.js';
 
 /**
@@ -216,4 +226,72 @@ export function decodeCursor(raw: string): HistoryCursor {
   const parsed = CursorPayload.safeParse(json);
   if (!parsed.success) throw new ValidationError('Invalid cursor');
   return { ranAt: new Date(parsed.data.t), id: parsed.data.id };
+}
+
+/** The local calendar date (`YYYY-MM-DD`) of an instant in `tz`. */
+function localDate(d: Date, tz: string): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+}
+
+/**
+ * Spec 016 AC-27…AC-29: which bucket width the severity chart uses. `1d` is
+ * six 4-hour buckets, `30d` is 7-day buckets, and a custom range is 7-day
+ * buckets up to `MONTH_BUCKETS_AFTER_DAYS` local calendar days (start and end
+ * dates inclusive, the end being `to - 1 ms`) and calendar months beyond.
+ */
+export function breakdownBucketKind(period: PerfPeriodKind, from: Date, to: Date, tz: string): BreakdownBucketKind {
+  if (period === '1d') return '4h';
+  if (period === '30d') return '7d';
+  const first = Date.parse(`${localDate(from, tz)}T00:00:00Z`);
+  const last = Date.parse(`${localDate(new Date(to.getTime() - 1), tz)}T00:00:00Z`);
+  const days = Math.round((last - first) / DAY_MS) + 1;
+  return days > MONTH_BUCKETS_AFTER_DAYS ? 'month' : '7d';
+}
+
+export interface BreakdownParts {
+  window: PerfWindow;
+  counts: CountedRunsRow;
+  bucketKind: BreakdownBucketKind;
+  skillsSince: Date | null;
+  skills: UsageRead<SkillUsageRow>;
+  memorySince: Date | null;
+  memory: UsageRead<MemoryUsageRow>;
+  categories: CategoryCountRow[];
+  buckets: SeverityBucketRow[];
+}
+
+/**
+ * Assembles the panels' response from the raw reads. A panel with no
+ * "tracked since" has denominator 0 and no rows whatever the reads said. The
+ * findings total is the sum of the category counts (AC-21). Nothing is rounded.
+ */
+export function toBreakdown(p: BreakdownParts): AgentStatsBreakdown {
+  return {
+    window: p.window,
+    counted_runs: p.counts.counted,
+    local_runs: p.counts.local,
+    skills: {
+      tracked_since: p.skillsSince ? p.skillsSince.toISOString() : null,
+      denominator: p.skillsSince ? p.skills.denominator : 0,
+      rows: p.skillsSince ? p.skills.rows.map((r) => ({ skill_id: r.skillId, name: r.name, runs: r.runs })) : [],
+    },
+    memory: {
+      tracked_since: p.memorySince ? p.memorySince.toISOString() : null,
+      denominator: p.memorySince ? p.memory.denominator : 0,
+      rows: p.memorySince ? p.memory.rows.map((r) => ({ text: r.text, pr: r.pr, runs: r.runs })) : [],
+    },
+    findings: {
+      total: p.categories.reduce((s, c) => s + c.count, 0),
+      by_category: p.categories.map((c) => ({ category: c.category, count: c.count })),
+      bucket_kind: p.bucketKind,
+      buckets: p.buckets.map((b) => ({
+        start: b.start.toISOString(),
+        end: b.end.toISOString(),
+        critical: b.critical,
+        warning: b.warning,
+        suggestion: b.suggestion,
+        other: b.other,
+      })),
+    },
+  };
 }

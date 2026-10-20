@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
+import { SkillStatsPeriod, SkillStatsQuery } from '@devdigest/shared/contracts/skill-stats.js';
 import { ContextPathsBody, SkillSource, SkillType } from '@devdigest/shared';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
@@ -20,7 +21,7 @@ import { SkillsService } from './service.js';
  *   POST   /skills/:id/versions/:version/restore → re-apply an old body (appends)
  *   GET    /skills/:id/context     → attached project-context documents
  *   PUT    /skills/:id/context     → replace the attached set (ordered)
- *   GET    /skills/:id/stats       → usage figures for the Stats tab
+ *   GET    /skills/:id/stats?period&from&to&tz → usage figures in the window for the Stats tab
  *   POST   /skills/import/preview  → parse a .md / .zip / URL, storing NOTHING
  */
 
@@ -194,12 +195,16 @@ export default async function skillsRoutes(appBase: FastifyInstance) {
     },
   );
 
-  app.get('/skills/:id/stats', { schema: { params: IdParams } }, async (req) => {
-    const { workspaceId } = await getContext(app.container, req);
-    const stats = await service.stats(workspaceId, req.params.id);
-    if (!stats) throw new NotFoundError('Skill not found');
-    return stats;
-  });
+  app.get(
+    '/skills/:id/stats',
+    { schema: { params: IdParams, querystring: SkillStatsQuery, response: { 200: SkillStatsPeriod } } },
+    async (req) => {
+      const { workspaceId } = await getContext(app.container, req);
+      const stats = await service.stats(workspaceId, req.params.id, req.query);
+      if (!stats) throw new NotFoundError('Skill not found');
+      return stats;
+    },
+  );
 
   app.get('/skills/:id/versions', { schema: { params: IdParams } }, async (req) => {
     const { workspaceId } = await getContext(app.container, req);

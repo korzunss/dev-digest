@@ -11,3 +11,6 @@ export const RECENT_RUNS = 5;
 
 /** AC-23 / AC-23a: Run history page size. */
 export const HISTORY_PAGE = 50;
+
+/** Spec 016 AC-28 / AC-29: a custom range of more local calendar days than this uses month buckets. */
+export const MONTH_BUCKETS_AFTER_DAYS = 90;

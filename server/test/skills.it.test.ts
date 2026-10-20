@@ -10,6 +10,24 @@ import { MockGitClient, MockForgeClient } from '../src/adapters/mocks.js';
 import { SkillsRepository } from '../src/modules/skills/repository.js';
 
 const hasDocker = await dockerAvailable();
+const HOUR = 3_600_000;
+const DAY = 24 * HOUR;
+const SHA = 'a'.repeat(40);
+
+/** The query `/skills/:id/stats` now requires: `period` + window instants + zone. */
+function statsQuery(o: { period?: string; from?: number; to?: number; tz?: string } = {}) {
+  const to = o.to ?? Date.now();
+  const period = o.period ?? '30d';
+  const from = o.from ?? to - (period === '1d' ? DAY : 30 * DAY);
+  const qs = new URLSearchParams({
+    period,
+    from: new Date(from).toISOString(),
+    to: new Date(to).toISOString(),
+    tz: o.tz ?? 'UTC',
+  });
+  return `?${qs.toString()}`;
+}
+
 const d = hasDocker ? describe : describe.skip;
 
 if (!hasDocker) {
@@ -622,7 +640,7 @@ d('/skills', () => {
       payload: { skill_ids: [skill.id] },
     });
 
-    const stats = (await app.inject({ method: 'GET', url: `/skills/${skill.id}/stats` })).json();
+    const stats = (await app.inject({ method: 'GET', url: `/skills/${skill.id}/stats${statsQuery()}` })).json();
     expect(stats).toMatchObject({
       skill_id: skill.id,
       agent_count: 1,
@@ -639,7 +657,7 @@ d('/skills', () => {
   it('404s on the new sub-resources for an unknown skill', async () => {
     const app = await makeApp();
     const ghost = '00000000-0000-0000-0000-000000000000';
-    for (const url of [`/skills/${ghost}/stats`, `/skills/${ghost}/context`]) {
+    for (const url of [`/skills/${ghost}/stats${statsQuery()}`, `/skills/${ghost}/context`]) {
       expect((await app.inject({ method: 'GET', url })).statusCode).toBe(404);
     }
     expect(
@@ -654,4 +672,170 @@ d('/skills', () => {
     await app.close();
   });
 
+
+  describe('stats over a period (spec 016)', () => {
+    async function seedRuns() {
+      const db = pg.handle.db;
+      const [ws] = await db.select().from(t.workspaces).limit(1);
+      const wsId = ws!.id;
+      const app = await makeApp();
+      const skill = await createSkill(app, { ...createBody, name: `period-skill-${Math.random().toString(36).slice(2, 8)}` });
+      const [agent] = await db
+        .insert(t.agents)
+        .values({ workspaceId: wsId, name: 'Period Agent', provider: 'openrouter', model: 'x/y', systemPrompt: 'p' })
+        .returning();
+      const [repo] = await db
+        .insert(t.repos)
+        .values({ workspaceId: wsId, owner: 'acme', name: `p${Date.now()}`, fullName: `acme/p${Date.now()}` })
+        .returning();
+      const [pr] = await db
+        .insert(t.pullRequests)
+        .values({
+          workspaceId: wsId, repoId: repo!.id, number: 1, title: 't', author: 'a', branch: 'b', base: 'main',
+          headSha: SHA, additions: 1, deletions: 0, filesCount: 1, status: 'needs_review',
+        })
+        .returning();
+      const run = async (ranAt: Date, withSkill: boolean, accepted: boolean) => {
+        const [r] = await db
+          .insert(t.agentRuns)
+          .values({ workspaceId: wsId, agentId: agent!.id, status: 'done', source: 'local', model: 'm', ranAt })
+          .returning();
+        if (withSkill) await db.insert(t.runSkills).values({ runId: r!.id, skillId: skill.id, order: 0 });
+        const [rv] = await db
+          .insert(t.reviews)
+          .values({ workspaceId: wsId, prId: pr!.id, agentId: agent!.id, runId: r!.id, kind: 'review' })
+          .returning();
+        await db.insert(t.findings).values({
+          reviewId: rv!.id, file: 'a.ts', startLine: 1, endLine: 1, severity: 'warning', category: 'bug',
+          title: 't', rationale: 'r', confidence: 0.5, ...(accepted ? { acceptedAt: new Date() } : { dismissedAt: new Date() }),
+        });
+        return r!;
+      };
+      return { app, skill, wsId, run };
+    }
+
+    it('AC-43: only runs inside the window count; the end is exclusive', async () => {
+      const { app, skill, run } = await seedRuns();
+      const now = Date.now();
+      await run(new Date(now - HOUR), true, true);
+      await run(new Date(now - 2 * DAY), true, false);
+      const day = (await app.inject({ method: 'GET', url: `/skills/${skill.id}/stats${statsQuery({ period: '1d', to: now })}` })).json();
+      expect(day).toMatchObject({ runs_with_skill: 1, runs_total: 1, accept_rate: 1, findings_30d: 1 });
+      const month = (await app.inject({ method: 'GET', url: `/skills/${skill.id}/stats${statsQuery({ to: now })}` })).json();
+      expect(month).toMatchObject({ runs_with_skill: 2, findings_30d: 2 });
+      // A custom window ending exactly at a run excludes it.
+      const at = now - 3 * HOUR;
+      await run(new Date(at), true, true);
+      const custom = (
+        await app.inject({
+          method: 'GET',
+          url: `/skills/${skill.id}/stats${statsQuery({ period: 'custom', from: at - DAY, to: at })}`,
+        })
+      ).json();
+      expect(custom.runs_with_skill).toBe(0);
+      await app.close();
+    });
+
+    it('AC-44: agents are the same for 1d and 30d', async () => {
+      const { app, skill, run } = await seedRuns();
+      const agent = (
+        await app.inject({
+          method: 'POST', url: '/agents',
+          payload: { name: 'Linked', provider: 'openai', model: 'gpt-4o-mini', system_prompt: 'x' },
+        })
+      ).json();
+      await app.inject({ method: 'POST', url: `/agents/${agent.id}/skills`, payload: { skill_ids: [skill.id] } });
+      await run(new Date(Date.now() - 5 * DAY), true, true);
+      const a = (await app.inject({ method: 'GET', url: `/skills/${skill.id}/stats${statsQuery({ period: '1d' })}` })).json();
+      const b = (await app.inject({ method: 'GET', url: `/skills/${skill.id}/stats${statsQuery()}` })).json();
+      expect(a.agent_count).toBe(1);
+      expect(a.agents).toEqual(b.agents);
+      await app.close();
+    });
+
+    it('AC-47: a skill with no agents and only an old run is ever_used', async () => {
+      const { app, skill, run } = await seedRuns();
+      await run(new Date(Date.now() - 60 * DAY), true, true);
+      const s = (await app.inject({ method: 'GET', url: `/skills/${skill.id}/stats${statsQuery({ period: '1d' })}` })).json();
+      expect(s).toMatchObject({ agent_count: 0, runs_with_skill: 0, ever_used: true });
+      await app.close();
+    });
+
+    it('AC-48: GET /skills keeps the 30-day rollup', async () => {
+      const { app, skill, run } = await seedRuns();
+      await run(new Date(Date.now() - 10 * DAY), true, true);
+      const list = (await app.inject({ method: 'GET', url: '/skills' })).json();
+      const row = list.find((x: { id: string }) => x.id === skill.id);
+      expect(row.accept_rate).toBe(1);
+      expect(row.pull_rate).toBeGreaterThan(0);
+      await app.close();
+    });
+
+    it('AC-49: a bad query is a 422; an unknown skill with a valid one is a 404', async () => {
+      const app = await makeApp();
+      const skill = await createSkill(app, { ...createBody, name: 'bad-query-skill' });
+      const get = (qs: string, id = skill.id) => app.inject({ method: 'GET', url: `/skills/${id}/stats${qs}` });
+      expect((await get(statsQuery({ tz: 'Mars/Base' }))).statusCode).toBe(422);
+      expect((await get(statsQuery({ period: '1d', from: Date.now() - 2 * DAY }))).statusCode).toBe(422);
+      expect((await get('')).statusCode).toBe(422);
+      expect((await get(statsQuery(), '00000000-0000-0000-0000-000000000000')).statusCode).toBe(404);
+      await app.close();
+    });
+
+    // a future end, an injection-shaped tz and a non-uuid id are all refused
+    it('AC-49: a future window and a hostile tz are 422', async () => {
+      const app = await makeApp();
+      const skill = await createSkill(app, { ...createBody, name: 'hostile-query-skill' });
+      const get = (qs: string, id = skill.id) => app.inject({ method: 'GET', url: `/skills/${id}/stats${qs}` });
+      expect((await get(statsQuery({ to: Date.now() + 10 * DAY, from: Date.now() - 20 * DAY }))).statusCode).toBe(422);
+      expect((await get(statsQuery({ tz: "UTC'; DROP TABLE skills;--" }))).statusCode).toBe(422);
+      expect((await get(statsQuery(), 'not-a-uuid')).statusCode).toBe(422);
+      await app.close();
+    });
+
+    // a skill of another workspace is a 404 even with a valid query (horizontal)
+    it("another workspace's skill is a 404 on /stats", async () => {
+      const db = pg.handle.db;
+      const app = await makeApp();
+      const [otherWs] = await db.insert(t.workspaces).values({ name: `stats-other-${Date.now()}` }).returning();
+      const [foreign] = await db
+        .insert(t.skills)
+        .values({ workspaceId: otherWs!.id, name: 'foreign-stats', description: 'd', type: 'custom', source: 'manual', body: 'b' })
+        .returning();
+      const res = await app.inject({ method: 'GET', url: `/skills/${foreign!.id}/stats${statsQuery()}` });
+      expect(res.statusCode).toBe(404);
+      await app.close();
+    });
+
+    // AC-46 server side: no run in the period => runs_with_skill 0 and null rates, not 0
+    it('AC-46: a period without the skill reports 0 runs and null pull/accept rates', async () => {
+      const { app, skill, run } = await seedRuns();
+      await run(new Date(Date.now() - 10 * DAY), true, true);
+      const s = (await app.inject({ method: 'GET', url: `/skills/${skill.id}/stats${statsQuery({ period: '1d' })}` })).json();
+      expect(s.runs_with_skill).toBe(0);
+      expect(s.accept_rate).toBeNull();
+      expect(s.findings_30d).toBe(0);
+      expect(s.findings_by_category).toEqual({});
+      await app.close();
+    });
+
+    // a run of another workspace recording this skill is neither a use nor "ever used" here
+    it("AC-47: another workspace's run of the skill neither counts nor sets ever_used", async () => {
+      const db = pg.handle.db;
+      const { app, skill } = await seedRuns();
+      const [otherWs] = await db.insert(t.workspaces).values({ name: `ever-other-${Date.now()}` }).returning();
+      const [otherAgent] = await db
+        .insert(t.agents)
+        .values({ workspaceId: otherWs!.id, name: 'Foreign Agent', provider: 'openrouter', model: 'x/y', systemPrompt: 'p' })
+        .returning();
+      const [r] = await db
+        .insert(t.agentRuns)
+        .values({ workspaceId: otherWs!.id, agentId: otherAgent!.id, status: 'done', source: 'local', model: 'm', ranAt: new Date(Date.now() - HOUR) })
+        .returning();
+      await db.insert(t.runSkills).values({ runId: r!.id, skillId: skill.id, order: 0 });
+      const s = (await app.inject({ method: 'GET', url: `/skills/${skill.id}/stats${statsQuery()}` })).json();
+      expect(s).toMatchObject({ runs_with_skill: 0, ever_used: false });
+      await app.close();
+    });
+  });
 });

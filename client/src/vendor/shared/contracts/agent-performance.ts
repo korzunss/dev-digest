@@ -193,3 +193,73 @@ export const RunHistoryPage = z.object({
   next_cursor: z.string().nullable(),
 });
 export type RunHistoryPage = z.infer<typeof RunHistoryPage>;
+
+/**
+ * Agent Stats breakdown panels (spec 016): most-used skills, most-pulled
+ * memory, findings by category and by severity over time. Raw counts only;
+ * shares, labels and percentages are computed by the client. Same non-barrel
+ * rule as the rest of this file.
+ */
+
+/** Width of one severity bucket: 4 real hours (1 day), 7 local days (≤ 90 days), or a calendar month. */
+export const BreakdownBucketKind = z.enum(['4h', '7d', 'month']);
+export type BreakdownBucketKind = z.infer<typeof BreakdownBucketKind>;
+
+export const BreakdownSkillRow = z.object({
+  skill_id: z.string().uuid(),
+  name: z.string(),
+  /** Runs of the skills denominator whose recorded skills include this one. */
+  runs: z.number().int(),
+});
+export type BreakdownSkillRow = z.infer<typeof BreakdownSkillRow>;
+
+export const BreakdownMemoryRow = z.object({
+  text: z.string(),
+  pr: z.number().int().nullable(),
+  /** Distinct runs that pulled this entry (identity = text + pr). */
+  runs: z.number().int(),
+});
+export type BreakdownMemoryRow = z.infer<typeof BreakdownMemoryRow>;
+
+/** `category` is the stored value, unmapped (AC-25). */
+export const BreakdownCategoryCount = z.object({
+  category: z.string(),
+  count: z.number().int(),
+});
+export type BreakdownCategoryCount = z.infer<typeof BreakdownCategoryCount>;
+
+/** `other` = any stored severity that is not exactly CRITICAL / WARNING / SUGGESTION (AC-33). */
+export const BreakdownBucket = z.object({
+  start: z.string().datetime({ offset: true }),
+  end: z.string().datetime({ offset: true }),
+  critical: z.number().int(),
+  warning: z.number().int(),
+  suggestion: z.number().int(),
+  other: z.number().int(),
+});
+export type BreakdownBucket = z.infer<typeof BreakdownBucket>;
+
+export const AgentStatsBreakdown = z.object({
+  window: PerfWindow,
+  /** M-2 for this request (AC-41): at 0 the panels hide. */
+  counted_runs: z.number().int(),
+  /** Counted runs with `source = 'local'`. */
+  local_runs: z.number().int(),
+  skills: z.object({
+    tracked_since: z.string().datetime({ offset: true }).nullable(),
+    denominator: z.number().int(),
+    rows: z.array(BreakdownSkillRow),
+  }),
+  memory: z.object({
+    tracked_since: z.string().datetime({ offset: true }).nullable(),
+    denominator: z.number().int(),
+    rows: z.array(BreakdownMemoryRow),
+  }),
+  findings: z.object({
+    total: z.number().int(),
+    by_category: z.array(BreakdownCategoryCount),
+    bucket_kind: BreakdownBucketKind,
+    buckets: z.array(BreakdownBucket),
+  }),
+});
+export type AgentStatsBreakdown = z.infer<typeof AgentStatsBreakdown>;

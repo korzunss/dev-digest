@@ -11,7 +11,13 @@ vi.mock("../api", () => ({
   ApiError: class extends Error {},
 }));
 
-import { useAgentPerfDashboard, useAgentPerfStats, useAgentRunHistory, useRunsCount30d } from "./agent-performance";
+import {
+  useAgentPerfDashboard,
+  useAgentPerfStats,
+  useAgentRunHistory,
+  useAgentStatsBreakdown,
+  useRunsCount30d,
+} from "./agent-performance";
 
 function setup() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -75,6 +81,36 @@ describe("agent-performance hooks", () => {
     renderHook(() => useAgentRunHistory("a1", { period: "30d" }, false), { wrapper });
     renderHook(() => useRunsCount30d(null, false), { wrapper });
     expect(get).not.toHaveBeenCalled();
+  });
+
+  // AC-34/40: one request for all four panels, carrying the validated period, window and tz
+  it("the breakdown hook sends one GET with period, from, to and tz, and none without an agent", async () => {
+    get.mockResolvedValue({ counted_runs: 0 });
+    const { wrapper } = setup();
+    renderHook(() => useAgentStatsBreakdown(null, { period: "30d" }), { wrapper });
+    expect(get).not.toHaveBeenCalled();
+    const { result } = renderHook(() => useAgentStatsBreakdown("a1", { period: "1d" }), { wrapper });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(get).toHaveBeenCalledTimes(1);
+    const url = new URL(`http://x${get.mock.calls[0]![0] as string}`);
+    expect(url.pathname).toBe("/agents/a1/stats/breakdown");
+    expect(url.searchParams.get("period")).toBe("1d");
+    expect(url.searchParams.get("tz")).toBeTruthy();
+    expect(Date.parse(url.searchParams.get("to")!) - Date.parse(url.searchParams.get("from")!)).toBe(24 * 3_600_000);
+  });
+
+  // AC-2: a period change is a new request, not a cached answer for the old period
+  it("the breakdown hook refetches when the period changes", async () => {
+    get.mockResolvedValue({ counted_runs: 0 });
+    const { wrapper } = setup();
+    const { result, rerender } = renderHook(
+      ({ period }: { period: "1d" | "30d" }) => useAgentStatsBreakdown("a1", { period }),
+      { wrapper, initialProps: { period: "1d" as "1d" | "30d" } },
+    );
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    rerender({ period: "30d" });
+    await waitFor(() => expect(get).toHaveBeenCalledTimes(2));
+    expect(new URL(`http://x${get.mock.calls[1]![0] as string}`).searchParams.get("period")).toBe("30d");
   });
 
   it("asks for the 30-day count of one agent when enabled", async () => {

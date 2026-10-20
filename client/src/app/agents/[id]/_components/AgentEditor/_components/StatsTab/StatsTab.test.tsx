@@ -5,8 +5,9 @@ import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { Agent } from "@devdigest/shared";
-import type { AgentPerfStats, RunHistoryPage } from "@devdigest/shared/contracts/agent-performance.js";
+import type { AgentPerfStats, AgentStatsBreakdown, RunHistoryPage } from "@devdigest/shared/contracts/agent-performance.js";
 import messages from "../../../../../../../../messages/en/agentPerformance.json";
+import prReview from "../../../../../../../../messages/en/prReview.json";
 import { figures, split } from "../../../../../../agent-performance/_components/AgentPerfTable/fixtures";
 
 const get = vi.fn();
@@ -52,9 +53,23 @@ const stats = (over: Partial<AgentPerfStats> = {}): AgentPerfStats => ({
 
 const emptyHistory: RunHistoryPage = { items: [], next_cursor: null };
 
-function serve(result: AgentPerfStats | Error, count = 42) {
+const breakdown = (over: Partial<AgentStatsBreakdown> = {}): AgentStatsBreakdown => ({
+  window: window_,
+  counted_runs: 142,
+  local_runs: 100,
+  skills: { tracked_since: null, denominator: 0, rows: [] },
+  memory: { tracked_since: null, denominator: 0, rows: [] },
+  findings: { total: 0, by_category: [], bucket_kind: "7d", buckets: [] },
+  ...over,
+});
+
+function serve(result: AgentPerfStats | Error, count = 42, panels: AgentStatsBreakdown | Error = breakdown()) {
   get.mockImplementation(async (path: string) => {
     if (path.startsWith("/agents/performance/runs-count")) return { runs: count };
+    if (path.includes("/stats/breakdown")) {
+      if (panels instanceof Error) throw panels;
+      return panels;
+    }
     if (path.includes("/stats/runs")) return emptyHistory;
     if (path.includes("/stats?")) {
       if (result instanceof Error) throw result;
@@ -68,7 +83,7 @@ function renderTab() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <NextIntlClientProvider locale="en" messages={{ agentPerformance: messages }}>
+      <NextIntlClientProvider locale="en" messages={{ agentPerformance: messages, prReview }}>
         <StatsTab agent={AGENT} />
       </NextIntlClientProvider>
     </QueryClientProvider>,
@@ -97,7 +112,8 @@ describe("StatsTab", () => {
     expect(screen.getByText("Run history")).toBeInTheDocument();
     expect(paths().filter((p) => p.includes("/stats?"))).toHaveLength(1);
     expect(paths().some((p) => p.startsWith("/agents/performance/runs-count"))).toBe(false);
-    expect(paths().length).toBeLessThanOrEqual(3);
+    expect(paths().filter((p) => p.includes("/stats/breakdown?"))).toHaveLength(1);
+    expect(paths().length).toBeLessThanOrEqual(4);
   });
 
   it("replaces tiles and history with the empty state and offers Try 30 days on a short period (AC-25, AC-18a)", async () => {
@@ -126,5 +142,46 @@ describe("StatsTab", () => {
     expect(await screen.findByText("Could not load this agent's performance.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /30 days/ })).toBeInTheDocument();
     expect(screen.queryByText("Avg cost / run")).not.toBeInTheDocument();
+  });
+  it("keeps the panels beside the empty-period state, and asks at most four requests (AC-34, AC-37)", async () => {
+    serve(stats({ figures: figures({ runs: 0, runs_not_counted: 0, total_cost_usd: null, avg_cost_usd: null, avg_duration_ms: null, accept_rate: null, accepted: 0, dismissed: 0, cost_known_runs: 0, cost_split: split() }) }));
+    renderTab();
+    await screen.findByText("No successful runs in this period");
+    expect(await screen.findByText("Most-used skills")).toBeInTheDocument();
+    expect(paths().length).toBeLessThanOrEqual(4);
+  });
+
+  // AC-34: on a full render the tab sends exactly one request per region, four at most
+  it("sends one request each for the tiles, the panels, the history and the count, never more than four (AC-34)", async () => {
+    serve(stats());
+    renderTab();
+    await screen.findByText("142");
+    await screen.findByText("Most-used skills");
+    await vi.waitFor(() => expect(paths().some((p) => p.includes("/stats/runs"))).toBe(true));
+    expect(paths().length).toBeLessThanOrEqual(4);
+    expect(paths().filter((p) => p.includes("/stats/breakdown?"))).toHaveLength(1);
+    expect(paths().filter((p) => /\/stats\?/.test(p))).toHaveLength(1);
+    expect(paths().filter((p) => p.includes("/stats/runs"))).toHaveLength(1);
+  });
+
+  it("keeps the panels when the stats request fails, and hides them on a 404 (AC-37, AC-3)", async () => {
+    serve(new ApiError("boom", 500));
+    renderTab();
+    expect(await screen.findByText("Could not load this agent's performance.")).toBeInTheDocument();
+    expect(await screen.findByText("Most-used skills")).toBeInTheDocument();
+    cleanup();
+
+    serve(new ApiError("Agent not found", 404), 42, new ApiError("Agent not found", 404));
+    renderTab();
+    expect(await screen.findByText("Couldn’t load this agent")).toBeInTheDocument();
+    expect(screen.queryByText("Most-used skills")).not.toBeInTheDocument();
+  });
+
+  it("hides the panels when the breakdown counted no runs (AC-3, AC-41)", async () => {
+    serve(stats(), 42, breakdown({ counted_runs: 0 }));
+    renderTab();
+    await screen.findByText("142");
+    await vi.waitFor(() => expect(paths().some((p) => p.includes("/stats/breakdown?"))).toBe(true));
+    expect(screen.queryByText("Most-used skills")).not.toBeInTheDocument();
   });
 });

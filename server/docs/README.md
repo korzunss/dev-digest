@@ -10,7 +10,7 @@ enough to decide whether to open it.
 | [`../src/modules/repo-intel/README.md`](../src/modules/repo-intel/README.md) | Working on repo indexing, the symbol/import graph, or the repo map fed into review prompts |
 | [`eval-pipeline.md`](./eval-pipeline.md) | Changing how eval suite cases are saved, run or scored, adding an `/eval` route, or checking what `pnpm verify:l06` and `pnpm mutation:eval-scoring` prove |
 | [`eval-pipeline-demo.md`](./eval-pipeline-demo.md) | Demoing the eval pipeline with a live model: building a suite from accepted/dismissed findings, comparing prompt versions, promoting one |
-| [`agent-performance.md`](./agent-performance.md) | Changing the `agent-performance` module — its four GET routes, the period/tz/cursor parameters, the SQL aggregates, or why `agent_runs` gets no new index |
+| [`agent-performance.md`](./agent-performance.md) | Changing the `agent-performance` module — its five GET routes (including `/agents/:id/stats/breakdown`), the period/tz/cursor parameters, the SQL aggregates and severity buckets, the period on `GET /skills/:id/stats`, or why `agent_runs` gets no new index |
 
 _No other server docs yet — add a row above when you add one._
 

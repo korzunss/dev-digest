@@ -6,7 +6,7 @@ inlining it. One line per document, enough to decide whether to open it.
 | Document | Read it when |
 |----------|--------------|
 | [`ui-architecture.md`](./ui-architecture.md) | Adding a route, a data hook, or a UI test — RSC/client split, code placement, TanStack Query + SSE, i18n, styling, and how tests here are written |
-| [`agent-performance.md`](./agent-performance.md) | Changing `lib/period.ts`, the Agent Performance hooks, `perf-kit`, `period-control`, the Stats tab or the agent-card summary line |
+| [`agent-performance.md`](./agent-performance.md) | Changing `lib/period.ts`, the Agent Performance hooks, `perf-kit`, `period-control`, the agent Stats tab and its `BreakdownPanels`, the Skill → Stats tab, `lib/finding-category.ts` or the agent-card summary line |
 | [`../src/vendor/ui/README.md`](../src/vendor/ui/README.md) | Using or extending the vendored `@devdigest/ui` primitives |
 
 ## What belongs here
