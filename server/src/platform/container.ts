@@ -52,6 +52,8 @@ import { EvalSkillSuiteService } from '../modules/eval/skill-suite-service.js';
 import { EVAL_CASE_CALL_DEADLINE_MS } from '../modules/eval/constants.js';
 import { CiService } from '../modules/ci/service.js';
 import { CiRepository } from '../modules/ci/repository.js';
+import { AgentPerformanceService } from '../modules/agent-performance/service.js';
+import { AgentPerformanceRepository } from '../modules/agent-performance/repository.js';
 import { ReviewService } from '../modules/reviews/service.js';
 import { AgentsService } from '../modules/agents/service.js';
 import {
@@ -126,6 +128,7 @@ export class Container {
   private _blast?: BlastService;
   private _brief?: BriefService;
   private _ci?: CiService;
+  private _agentPerformance?: AgentPerformanceService;
   private _context?: ContextService;
   private _evalPipeline?: EvalPipelineService;
   private _evalSkillSuite?: EvalSkillSuiteService;
@@ -256,6 +259,14 @@ export class Container {
       agents: this.agentsRepo,
       forge: (ref) => this.forge(ref),
       bundle: this.overrides.runnerBundle ?? new FsRunnerBundleSource(this.config.agentRunnerBundle),
+    }));
+  }
+
+  /** Agent Performance (spec 015): read-only aggregates; agents come from the shared agents repo. */
+  get agentPerformance(): AgentPerformanceService {
+    return (this._agentPerformance ??= new AgentPerformanceService({
+      repo: new AgentPerformanceRepository(this.db),
+      agents: this.agentsRepo,
     }));
   }
 

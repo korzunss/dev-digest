@@ -1,6 +1,6 @@
 ---
 name: workflow-retro
-description: "Main-session process retro for one finished plan: what happened, cost, what worked, what did not, proposed corrections filed as plan follow-ups. Invoke on demand via /workflow-retro <plan path>, or automatically at the /sdd hand-over."
+description: "Main-session process retro for one finished plan: what happened, cost, what worked, what did not, proposed corrections filed as plan follow-ups. Invoke on demand via /workflow-retro <plan path>, or automatically at the /sdd-engineering hand-over."
 argument-hint: "<plan path>"
 disable-model-invocation: true
 user-invocable: true
@@ -12,7 +12,7 @@ version: "1.1.0"
 ## 1. Scope and boundaries
 
 - The **main session** writes the retro inline: no subagent, no new agent. One plan, process only (how the pipeline ran), never the product code.
-- It supersedes plan 23's "no `/workflow-retro` skill" (plan 29). It runs on demand, or automatically at the `/sdd` hand-over when the plan's `metrics:` line reports ≥1 flag (plan 38, reversing plan 29 GAP1(b)). An **auto run** is that `/sdd` case: the main session Reads this file and follows §2–§3 (no Skill-tool call), and it never asks a question.
+- It supersedes plan 23's "no `/workflow-retro` skill" (plan 29). It runs on demand, or automatically at the `/sdd-engineering` hand-over when the plan's `metrics:` line reports ≥1 flag (plan 38, reversing plan 29 GAP1(b)). An **auto run** is that `/sdd-engineering` case: the main session Reads this file and follows §2–§3 (no Skill-tool call), and it never asks a question.
 - Never writes `INSIGHTS.md`, `insights/gotchas.md`, specs, agents, code, the plan's `Status:` or any other plan; never commits. Lessons worth an `INSIGHTS.md` entry are listed as *insight candidates* for `engineering-insights` (its gate and routing apply, see `.claude/skills/engineering-insights/SKILL.md`).
 - A mechanical failure is proposed as a guard (`sdd.sh`, its selftest, an agent template), not as a reminder to be careful (idea 07, option 4).
 
@@ -25,7 +25,7 @@ version: "1.1.0"
 
 ## 3. Procedure
 
-`S` below is `bash .claude/skills/sdd/scripts/sdd.sh`.
+`S` below is `bash .claude/skills/sdd-engineering/scripts/sdd.sh`.
 
 In an auto run, check the step 6 path **before step 1**: if the file exists, run `S log <plan> "retro: skipped (exists)"` and stop — no scan, no reads, no `retro-fact:` lines, no question.
 
@@ -38,7 +38,7 @@ In an auto run, check the step 6 path **before step 1**: if the file exists, run
 7. Write the file from the §4 template with the Write tool; drop the HTML comments from the result.
 8. File each `P<n>`: `S follow-up <plan> "retro P<n>: <change> — <where>"`.
 9. `S log <plan> "retro: <path>"` — `S state` skips `retro:` lines, so a `done` plan keeps its stage.
-10. Reply with the path, the `P<n>` ids and the insight candidates. In an auto run, the reply goes into the `/sdd` hand-over instead of a separate message.
+10. Reply with the path, the `P<n>` ids and the insight candidates. In an auto run, the reply goes into the `/sdd-engineering` hand-over instead of a separate message.
 
 ## 4. Output template
 
