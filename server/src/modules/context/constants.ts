@@ -26,12 +26,3 @@ export const EXCLUDED_DIRS = ['.git', 'node_modules'] as const;
 /** Bounds on the user-configured search roots of a repo. */
 export const MAX_ROOT_GLOBS = 20;
 export const MAX_GLOB_LENGTH = 256;
-
-/** Structural caps on a root glob — keep picomatch's regex from backtracking exponentially. */
-export const MAX_SEGMENT_WILDCARDS = 2;
-// Measured on a 4,093-char path of 255-char `a` segments (worst case: nothing
-// matches): `**` + one `*a*` segment + `**` takes ~8 ms; 4 `**` took ~2 s on a
-// 245-char path; two multi-wildcard segments with 2 `**` took ~1.5 s at 4 KB.
-export const MAX_DOUBLE_STARS = 2;
-// Segments with 2 wildcards (e.g. `*a*`): two of them anywhere cost 45 ms - 1.5 s at 4 KB, so at most one.
-export const MAX_MULTI_WILDCARD_SEGMENTS = 1;

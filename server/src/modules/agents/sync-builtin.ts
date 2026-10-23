@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { parseArgs } from 'node:util';
 import { createDb } from '../../db/client.js';
 import { BUILTIN_AGENT_PROMPTS } from '../../db/seed-prompts.js';
+import { NODE_TS_SKILL_AGENTS, NODE_TYPESCRIPT_SKILL } from '../../db/seed-skills.js';
 import { loadConfig } from '../../platform/config.js';
 import { Container } from '../../platform/container.js';
 import { GENERAL_AGENT_NAME, GENERAL_DETACHED_SKILLS } from './constants.js';
@@ -13,8 +14,10 @@ import { AgentsService } from './service.js';
  * skills that moved into the repo-context block from General Reviewer. Manual
  * tool: no LLM call, no network. Prompts edited in the UI are overwritten; the
  * previous text stays in `agent_versions`. Each agent's sync is ONE transaction
- * (`AgentsService.syncBuiltin`): detach, prompt, version bump and snapshot
- * commit together or not at all.
+ * (`AgentsService.syncBuiltin`): detach, attach, prompt, version bump and snapshot
+ * commit together or not at all. It also creates `node-typescript-review` when
+ * the workspace lacks it (an existing one is never modified) and attaches it,
+ * last, to the four stack-neutral reviewers that do not carry it yet.
  */
 export async function syncBuiltinAgents(
   service: AgentsService,
@@ -24,6 +27,17 @@ export async function syncBuiltinAgents(
   const dryRun = opts.dryRun === true;
   const agents = await service.list(workspaceId);
   const lines: string[] = [];
+  const skill = await service.ensureBuiltinSkill(workspaceId, NODE_TYPESCRIPT_SKILL, { dryRun });
+  const skillName = NODE_TYPESCRIPT_SKILL.name;
+  lines.push(
+    `${skillName}: ${
+      skill.status === 'created'
+        ? 'created'
+        : skill.status === 'would-create'
+          ? 'would be created (dry run)'
+          : 'exists — attached unchanged'
+    }`,
+  );
   for (const [name, prompt] of Object.entries(BUILTIN_AGENT_PROMPTS)) {
     const agent = agents.find((a) => a.name === name);
     if (!agent) {
@@ -34,6 +48,9 @@ export async function syncBuiltinAgents(
     const result = await service.syncBuiltin(workspaceId, agent.id, {
       systemPrompt: prompt,
       detachSkillNames: name === GENERAL_AGENT_NAME ? GENERAL_DETACHED_SKILLS : [],
+      attachSkill: NODE_TS_SKILL_AGENTS.includes(name)
+        ? { id: skill.id, name: skillName }
+        : undefined,
       dryRun,
     });
     if (!result) {
@@ -41,6 +58,7 @@ export async function syncBuiltinAgents(
       continue;
     }
     if (result.detached.length) lines.push(`${name}: detached: ${result.detached.join(', ')}`);
+    if (result.attached) lines.push(`${name}: attached: ${result.attached}`);
     if (!result.changed) {
       lines.push(`${name}: unchanged`);
       continue;

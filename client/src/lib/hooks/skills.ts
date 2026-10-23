@@ -8,26 +8,25 @@ import { changedPaths, invalidateContextDocs } from "./context";
 import { browserTimeZone, periodKey, resolveWindow, type PeriodSel } from "../period";
 import type {
   AgentSkillLink,
-  Skill,
   SkillContext,
   SkillImportPreview,
   SkillSource,
   SkillType,
-  SkillVersion,
 } from "@devdigest/shared";
+import type { ScopedSkill, ScopedSkillVersion } from "@devdigest/shared/contracts/skill-scope.js";
 import type { SkillStatsPeriod } from "@devdigest/shared/contracts/skill-stats.js";
 
 export function useSkills() {
   return useQuery({
     queryKey: ["skills"],
-    queryFn: () => api.get<Skill[]>("/skills"),
+    queryFn: () => api.get<ScopedSkill[]>("/skills"),
   });
 }
 
 export function useSkill(id: string | null | undefined) {
   return useQuery({
     queryKey: ["skill", id],
-    queryFn: () => api.get<Skill>(`/skills/${id}`),
+    queryFn: () => api.get<ScopedSkill>(`/skills/${id}`),
     enabled: !!id,
   });
 }
@@ -35,7 +34,7 @@ export function useSkill(id: string | null | undefined) {
 export function useSkillVersions(id: string | null | undefined) {
   return useQuery({
     queryKey: ["skill-versions", id],
-    queryFn: () => api.get<SkillVersion[]>(`/skills/${id}/versions`),
+    queryFn: () => api.get<ScopedSkillVersion[]>(`/skills/${id}/versions`),
     enabled: !!id,
   });
 }
@@ -52,14 +51,16 @@ export interface CreateSkillInput {
 export function useCreateSkill() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: CreateSkillInput) => api.post<Skill>("/skills", input),
+    mutationFn: (input: CreateSkillInput) => api.post<ScopedSkill>("/skills", input),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["skills"] }),
   });
 }
 
 export interface UpdateSkillInput {
   id: string;
-  patch: Partial<Pick<Skill, "name" | "description" | "type" | "body" | "enabled">> & {
+  patch: Partial<
+    Pick<ScopedSkill, "name" | "description" | "type" | "body" | "enabled" | "paths">
+  > & {
     /**
      * The author's note on what changed, stored on the version this save
      * appends. Not a field of the skill — a skill has no "message", the
@@ -73,7 +74,7 @@ export interface UpdateSkillInput {
 export function useUpdateSkill() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, patch }: UpdateSkillInput) => api.put<Skill>(`/skills/${id}`, patch),
+    mutationFn: ({ id, patch }: UpdateSkillInput) => api.put<ScopedSkill>(`/skills/${id}`, patch),
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["skills"] });
       qc.setQueryData(["skill", data.id], data);
@@ -273,7 +274,7 @@ export function useRestoreSkillVersion() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, version, message }: { id: string; version: number; message?: string }) =>
-      api.post<Skill>(`/skills/${id}/versions/${version}/restore`, message ? { message } : undefined),
+      api.post<ScopedSkill>(`/skills/${id}/versions/${version}/restore`, message ? { message } : undefined),
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["skills"] });
       qc.setQueryData(["skill", data.id], data);

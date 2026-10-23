@@ -18,6 +18,7 @@ import {
   useSkillVersions,
   useVersionDiff,
 } from "../../../../../../../lib/hooks/skills";
+import { appliesToSummary } from "../../../../../../../lib/skills/applies-to";
 import { parsePatch } from "../../../../../../../components/diff-viewer/helpers";
 import { CodeLine } from "../../../../../../../components/diff-viewer/CodeLine";
 import { DIFF_WIDTH } from "./constants";
@@ -72,8 +73,14 @@ export function VersionsTab({ skill }: { skill: Skill }) {
               <Badge color="var(--text-muted)" mono>
                 {t("preview.version", { version: v.version })}
               </Badge>
-              <span style={v.message ? s.message : s.noMessage}>
-                {v.message ?? t("versions.noMessage")}
+              <span style={s.messageCol}>
+                <span style={v.message ? s.message : s.noMessage}>
+                  {v.message ?? t("versions.noMessage")}
+                </span>
+                {/* A pre-feature version has no stored globs (null) — read as unscoped. */}
+                <span className="mono" style={s.appliesTo}>
+                  {appliesToSummary(v.paths) ?? t("appliesTo.all")}
+                </span>
               </span>
               <span className="tnum" style={s.date}>
                 {formatVersionDate(v.created_at)}

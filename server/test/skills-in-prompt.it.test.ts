@@ -11,6 +11,7 @@ import { seed } from '../src/db/seed.js';
 import { MockLLMProvider, MockEmbedder, MockGitClient } from '../src/adapters/mocks.js';
 import * as t from '../src/db/schema.js';
 import type { Review } from '@devdigest/shared';
+import { renderSkillBlock } from '../src/modules/skills/helpers.js';
 
 const hasDocker = await dockerAvailable();
 const d = hasDocker ? describe : describe.skip;
@@ -27,6 +28,16 @@ const DIFF = `diff --git a/src/config.ts b/src/config.ts
    port: 3000,
 +  stripeKey: "sk_live_xxx",
    redisUrl: x,`;
+
+// A PR touching a .ts and a .cs file: two stacks, so scoped skills split the run.
+const MIXED_DIFF = `${DIFF}
+diff --git a/src/Program.cs b/src/Program.cs
+--- a/src/Program.cs
++++ b/src/Program.cs
+@@ -1,2 +1,3 @@
+ class P {
++  int x;
+ }`;
 
 const REVIEW_FIXTURE: Review = {
   verdict: 'comment',
@@ -93,7 +104,7 @@ d('skills reach the prompt', () => {
     return git;
   }
 
-  function makeApp(opts: { withClone?: boolean } = {}) {
+  function makeApp(opts: { withClone?: boolean; diff?: string } = {}) {
     return buildApp({
       // Isolated from the developer's real secrets.json (spec 006 Option B) —
       // see server/test/helpers/config.ts.
@@ -101,14 +112,16 @@ d('skills reach the prompt', () => {
       db: pg.handle.db,
       overrides: {
         embedder: new MockEmbedder(),
-        git: opts.withClone ? gitAtClone() : new MockGitClient({ diff: DIFF }),
+        // Deterministic token counts so a per-call multiple can be asserted exactly.
+        tokenizer: { count: (s: string) => s.length },
+        git: opts.withClone ? gitAtClone() : new MockGitClient({ diff: opts.diff ?? DIFF }),
         llm: { openai: new MockLLMProvider('openai', { structured: REVIEW_FIXTURE }) },
       },
     });
   }
 
   /** A fresh repo+PR per run — MockForgeClient only ever lists PR #482. */
-  async function setupPr() {
+  async function setupPr(opts: { extraFiles?: string[] } = {}) {
     const db = pg.handle.db;
     const name = `skills-repo-${prSeq++}`;
     const [repo] = await db
@@ -139,6 +152,15 @@ d('skills reach the prompt', () => {
       deletions: 0,
       patch: '@@ -10,3 +10,4 @@\n   port: 3000,\n+  stripeKey: "sk_live_xxx",\n   redisUrl: x,',
     });
+    for (const extra of opts.extraFiles ?? []) {
+      await db.insert(t.prFiles).values({
+        prId: pr!.id,
+        path: extra,
+        additions: 1,
+        deletions: 0,
+        patch: '@@ -1,2 +1,3 @@\n class P {\n+  int x;\n }',
+      });
+    }
     return pr!;
   }
 
@@ -154,12 +176,12 @@ d('skills reach the prompt', () => {
     ).json();
   }
 
-  async function makeSkill(app: App, name: string, body: string) {
+  async function makeSkill(app: App, name: string, body: string, paths: string[] = []) {
     return (
       await app.inject({
         method: 'POST',
         url: '/skills',
-        payload: { name, description: `What ${name} is for.`, type: 'custom', body },
+        payload: { name, description: `What ${name} is for.`, type: 'custom', body, paths },
       })
     ).json();
   }
@@ -349,6 +371,91 @@ d('skills reach the prompt', () => {
       .from(t.runSkills)
       .where(eq(t.runSkills.runId, runId));
     expect(rows).toEqual([]);
+    await app.close();
+  });
+
+  it('a skill scoped to another stack stays out of the prompt and run_skills', async () => {
+    const app = await makeApp();
+    const agent = await makeAgent(app, 'Scoped Reviewer');
+    const cs = await makeSkill(app, 'cs-only-rule', '# cs\nDotnet only.', ['**/*.cs']);
+    const any = await makeSkill(app, 'any-file-rule', '# any\nEvery file.');
+    await app.inject({
+      method: 'POST',
+      url: `/agents/${agent.id}/skills`,
+      payload: { skill_ids: [cs.id, any.id] },
+    });
+
+    const trace = await runAndReadTrace(app, (await setupPr()).id, agent.id);
+    expect(trace.prompt_assembly.skills).toContain('any-file-rule');
+    expect(trace.prompt_assembly.skills).not.toContain('cs-only-rule');
+    expect(trace.prompt_groups).toHaveLength(1);
+    expect(trace.prompt_groups[0].skills).toEqual([{ name: 'any-file-rule', version: 1 }]);
+
+    expect(await pg.handle.db.select().from(t.runSkills).where(eq(t.runSkills.skillId, cs.id))).toEqual([]);
+    expect(await pg.handle.db.select().from(t.runSkills).where(eq(t.runSkills.skillId, any.id))).toHaveLength(1);
+    await app.close();
+  });
+
+  it('a mixed-stack PR makes one call per skill set and counts skill tokens per call', async () => {
+    const app = await makeApp({ diff: MIXED_DIFF });
+    const agent = await makeAgent(app, 'Mixed Reviewer');
+    const cs = await makeSkill(app, 'mixed-cs-rule', '# cs\nDotnet only.', ['**/*.cs']);
+    const any = await makeSkill(app, 'mixed-any-rule', '# any\nEvery file.');
+    await app.inject({
+      method: 'POST',
+      url: `/agents/${agent.id}/skills`,
+      payload: { skill_ids: [any.id, cs.id] },
+    });
+
+    const pr = await setupPr({ extraFiles: ['src/Program.cs'] });
+    const res = await app.inject({ method: 'POST', url: `/pulls/${pr.id}/review`, payload: { agentId: agent.id } });
+    const runId = res.json().runs[0].run_id as string;
+    await waitForPrRuns(pg.handle.db, pr.id, { expected: 1 });
+    const trace = await readTrace(app, runId);
+
+    expect(trace.prompt_groups).toHaveLength(2);
+    const names = trace.prompt_groups.map((g: { skills: { name: string }[] }) => g.skills.map((x) => x.name));
+    expect(names).toEqual([['mixed-any-rule'], ['mixed-any-rule', 'mixed-cs-rule']]);
+    expect(trace.prompt_groups.every((g: { skipped: boolean }) => !g.skipped)).toBe(true);
+
+    const rows = await pg.handle.db.select().from(t.runSkills).where(eq(t.runSkills.runId, runId));
+    const tokens = (id: string) => rows.find((r) => r.skillId === id)?.tokens;
+    expect(tokens(any.id)).toBe(renderSkillBlock('mixed-any-rule', '# any\nEvery file.').length * 2);
+    expect(tokens(cs.id)).toBe(renderSkillBlock('mixed-cs-rule', '# cs\nDotnet only.').length);
+    await app.close();
+  });
+
+  it('a document inherited only through a skill that no call uses is not injected', async () => {
+    const app = await makeApp({ withClone: true });
+    const agent = await makeAgent(app, 'Inherit Scoped Reviewer');
+    const cs = await makeSkill(app, 'cs-doc-carrier', '# cs', ['**/*.cs']);
+    const any = await makeSkill(app, 'any-doc-carrier', '# any');
+    await app.inject({
+      method: 'POST',
+      url: `/agents/${agent.id}/skills`,
+      payload: { skill_ids: [cs.id, any.id] },
+    });
+    await app.inject({ method: 'PUT', url: `/skills/${cs.id}/context`, payload: { paths: ['docs/architecture.md'] } });
+    await app.inject({ method: 'PUT', url: `/skills/${any.id}/context`, payload: { paths: ['specs/public-api.md'] } });
+
+    const trace = await runAndReadTrace(app, (await setupPr()).id, agent.id);
+    expect(trace.prompt_assembly.specs).toContain('Every route is versioned.');
+    expect(trace.prompt_assembly.specs).not.toContain('One module per feature.');
+    await app.close();
+  });
+
+  it('a workspace with no scoped skill keeps one call and the same skills block', async () => {
+    const app = await makeApp();
+    const agent = await makeAgent(app, 'Unscoped Reviewer');
+    const a = await makeSkill(app, 'plain-a', '# a');
+    const b = await makeSkill(app, 'plain-b', '# b');
+    await app.inject({ method: 'POST', url: `/agents/${agent.id}/skills`, payload: { skill_ids: [a.id, b.id] } });
+
+    const trace = await runAndReadTrace(app, (await setupPr()).id, agent.id);
+    expect(trace.prompt_groups).toHaveLength(1);
+    expect(trace.prompt_assembly.skills).toBe(
+      [renderSkillBlock('plain-a', '# a'), renderSkillBlock('plain-b', '# b')].join('\n\n'),
+    );
     await app.close();
   });
 

@@ -2,17 +2,20 @@ import { lookup } from 'node:dns/promises';
 import type { Container } from '../../platform/container.js';
 import { createTwoFilesPatch } from 'diff';
 import type {
-  Skill,
   SkillContext,
   SkillImportPreview,
   SkillSource,
   SkillType,
-  SkillVersion,
 } from '@devdigest/shared';
+import type {
+  ScopedSkill,
+  ScopedSkillVersion,
+} from '@devdigest/shared/contracts/skill-scope.js';
 import type { PerfQuery } from '@devdigest/shared/contracts/agent-performance.js';
 import type { SkillStatsPeriod } from '@devdigest/shared/contracts/skill-stats.js';
 import { SkillsRepository } from './repository.js';
 import { ValidationError } from '../../platform/errors.js';
+import { normalizeSkillPaths, skillPathProblem } from '../_shared/skill-paths.js';
 import {
   defaultEnabledFor,
   extractSkillFromArchive,
@@ -50,6 +53,8 @@ export interface CreateSkillInput {
   source?: SkillSource;
   enabled?: boolean;
   evidence_files?: string[];
+  /** Raw "Applies to" globs; normalised and validated here. */
+  paths?: string[];
 }
 
 export interface UpdateSkillInput {
@@ -58,7 +63,9 @@ export interface UpdateSkillInput {
   type?: SkillType;
   body?: string;
   enabled?: boolean;
-  /** Note recorded on the version a body change creates. */
+  /** Raw "Applies to" globs; normalised and validated here. */
+  paths?: string[];
+  /** Note recorded on the version a body or paths change creates. */
   message?: string;
 }
 
@@ -67,6 +74,22 @@ export interface SkillVersionDiff {
   from: number;
   to: number;
   patch: string;
+}
+
+/**
+ * Normalise a raw "Applies to" list and reject the first unacceptable glob
+ * (AC-3, AC-7). Runs before any write, so a rejected save leaves the stored
+ * skill untouched. The glob is echoed truncated: it is user input.
+ */
+function checkedPaths(raw: readonly string[]): string[] {
+  const paths = normalizeSkillPaths(raw);
+  for (const glob of paths) {
+    const problem = skillPathProblem(glob);
+    if (problem !== null) {
+      throw new ValidationError(`Applies to: "${glob.slice(0, 80)}" — ${problem}`);
+    }
+  }
+  return paths;
 }
 
 export class SkillsService {
@@ -80,7 +103,7 @@ export class SkillsService {
    * Every skill, with the rail card's rollup attached. Four queries for the
    * whole page rather than three per card — the same shape the PR list uses.
    */
-  async list(workspaceId: string): Promise<Skill[]> {
+  async list(workspaceId: string): Promise<ScopedSkill[]> {
     const rows = await this.repo.list(workspaceId);
     if (rows.length === 0) return [];
 
@@ -112,7 +135,7 @@ export class SkillsService {
     }));
   }
 
-  async get(workspaceId: string, id: string): Promise<Skill | undefined> {
+  async get(workspaceId: string, id: string): Promise<ScopedSkill | undefined> {
     const row = await this.repo.getById(workspaceId, id);
     return row ? toSkillDto(row) : undefined;
   }
@@ -126,8 +149,9 @@ export class SkillsService {
    * otherwise — see `defaultEnabledFor`: a foreign body is foreign instructions,
    * and a person has to read it before any agent runs with it.
    */
-  async create(workspaceId: string, input: CreateSkillInput): Promise<Skill> {
+  async create(workspaceId: string, input: CreateSkillInput): Promise<ScopedSkill> {
     const source = input.source ?? 'manual';
+    const paths = input.paths !== undefined ? checkedPaths(input.paths) : [];
     const row = await this.repo.insert({
       workspaceId,
       name: input.name,
@@ -137,6 +161,7 @@ export class SkillsService {
       body: input.body,
       enabled: input.enabled ?? defaultEnabledFor(source),
       evidenceFiles: input.evidence_files ?? null,
+      paths,
     });
     return toSkillDto(row);
   }
@@ -145,8 +170,10 @@ export class SkillsService {
     workspaceId: string,
     id: string,
     patch: UpdateSkillInput,
-  ): Promise<Skill | undefined> {
+  ): Promise<ScopedSkill | undefined> {
+    const paths = patch.paths !== undefined ? checkedPaths(patch.paths) : undefined;
     const row = await this.repo.update(workspaceId, id, {
+      ...(paths !== undefined ? { paths } : {}),
       ...(patch.name !== undefined ? { name: patch.name } : {}),
       ...(patch.description !== undefined ? { description: patch.description } : {}),
       ...(patch.type !== undefined ? { type: patch.type } : {}),
@@ -162,7 +189,7 @@ export class SkillsService {
    * not in this workspace (the route maps that to 404), so one tenant's bodies
    * can't be read through another's.
    */
-  async listVersions(workspaceId: string, id: string): Promise<SkillVersion[] | undefined> {
+  async listVersions(workspaceId: string, id: string): Promise<ScopedSkillVersion[] | undefined> {
     const skill = await this.repo.getById(workspaceId, id);
     if (!skill) return undefined;
     const rows = await this.repo.listVersions(id);
@@ -208,18 +235,24 @@ export class SkillsService {
     id: string,
     version: number,
     message?: string,
-  ): Promise<Skill | undefined> {
+  ): Promise<ScopedSkill | undefined> {
     const skill = await this.repo.getById(workspaceId, id);
     if (!skill) return undefined;
 
     const snapshot = await this.repo.getVersion(id, version);
     if (!snapshot) throw new ValidationError('No such version of this skill.');
-    if (snapshot.body === skill.body) {
-      throw new ValidationError('That version is already the current body.');
+    // A pre-feature version has no paths and restores as "every file" (AC-6).
+    const restoredPaths = snapshot.paths ?? [];
+    const samePaths =
+      restoredPaths.length === skill.paths.length &&
+      restoredPaths.every((g, i) => g === skill.paths[i]);
+    if (snapshot.body === skill.body && samePaths) {
+      throw new ValidationError('That version is already the current body and Applies to.');
     }
 
     const row = await this.repo.update(workspaceId, id, {
       body: snapshot.body,
+      paths: restoredPaths,
       message: message ?? `Restored v${version}`,
     });
     return row ? toSkillDto(row) : undefined;

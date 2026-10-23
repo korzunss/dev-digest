@@ -509,6 +509,159 @@ d('/skills', () => {
     await app.close();
   });
 
+  describe('Applies to (spec 017)', () => {
+    it('rejects 21 globs with the limit and stores nothing', async () => {
+      const app = await makeApp();
+      const res = await app.inject({
+        method: 'POST',
+        url: '/skills',
+        payload: { ...createBody, name: 'too-many-globs', paths: Array.from({ length: 21 }, (_, i) => `d${i}/**`) },
+      });
+      expect(res.statusCode).toBe(422);
+      expect(res.body).toContain('20');
+      const list = (await app.inject({ method: 'GET', url: '/skills' })).json();
+      expect(list.some((s: { name: string }) => s.name === 'too-many-globs')).toBe(false);
+      await app.close();
+    });
+
+    it.each([['../x'], ['a**b']])('rejects %s naming the glob and leaves the row unchanged', async (bad) => {
+      const app = await makeApp();
+      const created = await createSkill(app, { ...createBody, name: `bad-glob-${bad.length}-${Math.random()}`, paths: ['src/**'] });
+      const res = await app.inject({ method: 'PUT', url: `/skills/${created.id}`, payload: { paths: ['ok/**', bad] } });
+      expect(res.statusCode).toBe(422);
+      expect(res.body).toContain(bad);
+      const after = (await app.inject({ method: 'GET', url: `/skills/${created.id}` })).json();
+      expect(after.paths).toEqual(['src/**']);
+      expect(after.version).toBe(1);
+      await app.close();
+    });
+
+    // Each unsafe shape is refused with 422 before any write, whichever route carries it.
+    it.each([
+      ['an absolute path', '/etc/**'],
+      ['a drive letter', 'C:/x/**'],
+      ['a negation', '!src/**'],
+      ['an extglob', '@(a|b)/x.ts'],
+      ['a backtracking-prone wildcard run', '*a*a*a*a*a*b'],
+      ['a glued double star', 'src/a**b'],
+      ['a segment after the second double star', '**/a/**/b/c.ts'],
+    ])('POST /skills rejects %s and stores nothing', async (_label, bad) => {
+      const app = await makeApp();
+      const name = `unsafe-${Math.random().toString(36).slice(2)}`;
+      const res = await app.inject({ method: 'POST', url: '/skills', payload: { ...createBody, name, paths: [bad] } });
+      expect(res.statusCode).toBe(422);
+      const list = (await app.inject({ method: 'GET', url: '/skills' })).json();
+      expect(list.some((s: { name: string }) => s.name === name)).toBe(false);
+      await app.close();
+    });
+
+    // The schema rejects a glob over the char cap, and malformed `paths` types, before the service runs.
+    it.each([
+      ['a glob over 1024 chars', ['a'.repeat(1025)]],
+      ['a non-array paths', 'src/**'],
+      ['a non-string entry', [42]],
+      ['a null entry', [null]],
+    ])('POST /skills rejects %s with 422', async (_label, paths) => {
+      const app = await makeApp();
+      const res = await app.inject({
+        method: 'POST',
+        url: '/skills',
+        payload: { ...createBody, name: `schema-${Math.random().toString(36).slice(2)}`, paths },
+      });
+      expect(res.statusCode).toBe(422);
+      await app.close();
+    });
+
+    // The 20-glob cap is inclusive.
+    it('accepts exactly 20 globs', async () => {
+      const app = await makeApp();
+      const paths = Array.from({ length: 20 }, (_, i) => `d${i}/**`);
+      const created = await createSkill(app, { ...createBody, name: 'twenty-globs', paths });
+      expect(created.paths).toEqual(paths);
+      await app.close();
+    });
+
+    // A glob that is bad only after normalisation (`./` stripped) is still refused.
+    it('PUT rejects a glob that is unsafe after ./ is stripped and keeps the row', async () => {
+      const app = await makeApp();
+      const created = await createSkill(app, { ...createBody, name: 'dot-slash-escape', paths: ['src/**'] });
+      const res = await app.inject({ method: 'PUT', url: `/skills/${created.id}`, payload: { paths: ['./../x'] } });
+      expect(res.statusCode).toBe(422);
+      const after = (await app.inject({ method: 'GET', url: `/skills/${created.id}` })).json();
+      expect(after).toMatchObject({ paths: ['src/**'], version: 1 });
+      await app.close();
+    });
+
+    // Omitting `paths` on an update must not widen the scope back to "all files" nor bump the version.
+    it('PUT without paths leaves the scope unchanged', async () => {
+      const app = await makeApp();
+      const created = await createSkill(app, { ...createBody, name: 'omit-keeps-scope', paths: ['src/**'] });
+      const res = await app.inject({ method: 'PUT', url: `/skills/${created.id}`, payload: { description: 'Reworded description.' } });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({ paths: ['src/**'], version: 1 });
+      await app.close();
+    });
+
+    it('normalises ./src/** to src/** and keeps the author order', async () => {
+      const app = await makeApp();
+      const created = await createSkill(app, { ...createBody, name: 'normalised-globs', paths: ['./src/**', ' lib/** ', ''] });
+      expect(created.paths).toEqual(['src/**', 'lib/**']);
+      await app.close();
+    });
+
+    it('a paths-only change creates v+1 with the new paths; a pre-feature version restores []', async () => {
+      const app = await makeApp();
+      const created = await createSkill(app, { ...createBody, name: 'paths-versioned' });
+      expect(created.paths).toEqual([]);
+
+      const put = await app.inject({ method: 'PUT', url: `/skills/${created.id}`, payload: { paths: ['**/*.cs'] } });
+      expect(put.statusCode).toBe(200);
+      expect(put.json()).toMatchObject({ version: 2, paths: ['**/*.cs'] });
+      const versions = (await app.inject({ method: 'GET', url: `/skills/${created.id}/versions` })).json();
+      expect(versions[0].paths).toEqual(['**/*.cs']);
+
+      // Simulate a version written before the feature: no recorded paths.
+      await pg.handle.db
+        .update(t.skillVersions)
+        .set({ paths: null })
+        .where(eq(t.skillVersions.skillId, created.id));
+      const restored = await app.inject({
+        method: 'POST',
+        url: `/skills/${created.id}/versions/1/restore`,
+        payload: {},
+      });
+      expect(restored.statusCode).toBe(200);
+      expect(restored.json()).toMatchObject({ version: 3, paths: [] });
+
+      // Body and paths now both equal the snapshot: refused.
+      const again = await app.inject({
+        method: 'POST',
+        url: `/skills/${created.id}/versions/1/restore`,
+        payload: {},
+      });
+      expect(again.statusCode).toBe(422);
+      await app.close();
+    });
+
+    it('an import-created skill with a paths: front-matter line stores []', async () => {
+      const app = await makeApp();
+      const preview = await app.inject({
+        method: 'POST',
+        url: '/skills/import/preview',
+        payload: {
+          kind: 'md',
+          filename: 'scoped-import.md',
+          content: '---\nname: scoped-import\ndescription: Imported rule.\npaths: src/**\n---\nBody.',
+        },
+      });
+      expect(preview.statusCode).toBe(200);
+      const created = await app.inject({ method: 'POST', url: '/skills', payload: preview.json() });
+      expect(created.statusCode).toBe(201);
+      expect(created.json().paths).toEqual([]);
+      await app.close();
+    });
+  });
+
   it('attaches project-context documents in the posted order and dedupes them', async () => {
     const app = await makeApp();
     const created = await createSkill(app, { ...createBody, name: 'contextual-skill' });

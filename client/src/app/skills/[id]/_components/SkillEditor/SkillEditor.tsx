@@ -5,7 +5,7 @@
 import React from "react";
 import { useTranslations } from "next-intl";
 import { Tabs } from "@devdigest/ui";
-import type { Skill } from "@devdigest/shared";
+import type { ScopedSkill } from "@devdigest/shared/contracts/skill-scope.js";
 import { ConfigTab } from "./_components/ConfigTab";
 import { ContextTab } from "./_components/ContextTab";
 import { PreviewTab } from "./_components/PreviewTab";
@@ -17,7 +17,7 @@ import { s } from "./styles";
 
 /** One component per tab key. Config doubles as the fallback, so an unknown
     `?tab=` that slipped past the route's whitelist still renders something. */
-const PANES: Record<string, React.ComponentType<{ skill: Skill }>> = {
+const PANES: Record<string, React.ComponentType<{ skill: ScopedSkill }>> = {
   config: ConfigTab,
   context: ContextTab,
   preview: PreviewTab,
@@ -31,7 +31,7 @@ export function SkillEditor({
   tab,
   onTab,
 }: {
-  skill: Skill;
+  skill: ScopedSkill;
   tab: string;
   onTab: (t: string) => void;
 }) {

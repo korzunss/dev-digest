@@ -6,6 +6,7 @@ import { parseUnifiedDiff } from '../src/adapters/git/diff-parser.js';
 import { runCase, type CaseRunnerDeps } from '../src/modules/eval/pipeline-runner.js';
 import type { EvalAgentSnapshot } from '../src/modules/eval/types.js';
 import { ThrowingLLMProvider } from './helpers/llm-stubs.js';
+import { createPathMatcher } from '../src/modules/_shared/skill-paths.js';
 
 const DIFF = [
   'diff --git a/src/a.ts b/src/a.ts',
@@ -56,6 +57,29 @@ const review = (findings: ReturnType<typeof finding>[]): Review => ({
   findings,
 });
 const must = (file: string, line: number): EvalExpectation => ({ expect: 'must_find', file, start_line: line, end_line: line });
+
+describe('runCase — Applies to (AC-40)', () => {
+  const scopedSnapshot: EvalAgentSnapshot = {
+    ...snapshot,
+    skills: [
+      { id: 's-cs', name: 'cs', version: 1 },
+      { id: 's-any', name: 'any', version: 1 },
+    ],
+    rendered: ['CS-SKILL-BODY', 'ANY-SKILL-BODY'],
+    scoped: [
+      { id: 's-cs', name: 'cs', version: 1, body: 'CS-SKILL-BODY', paths: ['**/*.cs'] },
+      { id: 's-any', name: 'any', version: 1, body: 'ANY-SKILL-BODY', paths: [] },
+    ],
+  };
+
+  it('leaves out a skill whose globs match no case file, like a live review', async () => {
+    const llm = new MockLLMProvider('openai', { structured: review([]) });
+    await runCase(scopedSnapshot, llm, { diff: DIFF }, [], { ...deps, matchesPath: createPathMatcher() });
+    const req = JSON.stringify(llm.calls.filter((c) => c.method === 'completeStructured')[0]!.req);
+    expect(req).toContain('ANY-SKILL-BODY');
+    expect(req).not.toContain('CS-SKILL-BODY');
+  });
+});
 
 describe('runCase', () => {
   it('makes exactly one model call and scores the grounded findings in code', async () => {

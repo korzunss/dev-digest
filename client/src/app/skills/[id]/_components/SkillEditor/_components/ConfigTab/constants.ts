@@ -8,3 +8,6 @@ export const BODY_ROWS = 18;
 
 /** Rows in the description textarea — it is one or two sentences. */
 export const DESCRIPTION_ROWS = 2;
+
+/** Rows in the Applies to textarea — a few globs, one per line. */
+export const PATHS_ROWS = 3;

@@ -8,7 +8,9 @@ import type {
   EvalDraftRunResult,
   EvalSuiteCase,
   LLMProvider,
+  UnifiedDiff,
 } from '@devdigest/shared';
+import type { EvalSkillSuiteCase } from '@devdigest/shared/contracts/skill-scope.js';
 import { AppError, NotFoundError } from '../../platform/errors.js';
 import { EVAL_CASE_CONCURRENCY, EVAL_DRAFT_TOKEN_TTL_MS, EVAL_MAX_SUITE_CASES } from './constants.js';
 import {
@@ -50,8 +52,8 @@ export class EvalSkillSuiteService {
   constructor(private readonly deps: EvalSkillSuiteServiceDeps) {}
 
   private get runner(): CaseRunnerDeps {
-    const { review, parseDiff, callOptions, countTokens, estimateCost, now } = this.deps;
-    return { review, parseDiff, callOptions, countTokens, estimateCost, now };
+    const { review, parseDiff, callOptions, countTokens, estimateCost, matchesPath, now } = this.deps;
+    return { review, parseDiff, callOptions, countTokens, estimateCost, matchesPath, now };
   }
 
   private async skill(workspaceId: string, skillId: string): Promise<EvalSkill> {
@@ -64,12 +66,29 @@ export class EvalSkillSuiteService {
   // Cases
   // ===========================================================================
 
-  async listCases(workspaceId: string, skillId: string): Promise<EvalSuiteCase[]> {
-    await this.skill(workspaceId, skillId);
-    return (await this.deps.repo.listCases(workspaceId, { skillId })).map(toCaseDto);
+  async listCases(workspaceId: string, skillId: string): Promise<EvalSkillSuiteCase[]> {
+    const skill = await this.skill(workspaceId, skillId);
+    return (await this.deps.repo.listCases(workspaceId, { skillId })).map((row) => this.withScope(skill, row));
   }
 
-  async createCase(workspaceId: string, skillId: string, body: EvalCaseSaveBody): Promise<EvalSuiteCase> {
+  /**
+   * The case plus whether the skill's Applies to would keep it out of a live
+   * review of that diff (AC-42). Computed from the skill's current globs at read
+   * time; a skill with no globs, or no matcher, never flags.
+   */
+  private withScope(skill: EvalSkill, row: SuiteCaseRow): EvalSkillSuiteCase {
+    return { ...toCaseDto(row), outside_applies_to: this.isOutside(skill, row.inputDiff) };
+  }
+
+  private isOutside(skill: EvalSkill, rawDiff: string): boolean {
+    const { matchesPath } = this.deps;
+    if (skill.paths.length === 0 || !matchesPath) return false;
+    const parsed = this.deps.parseDiff(rawDiff) as UnifiedDiff & { deletedPaths?: string[] };
+    const paths = [...parsed.files.map((f) => f.path), ...(parsed.deletedPaths ?? [])];
+    return !paths.some((p) => matchesPath(p, skill.paths));
+  }
+
+  async createCase(workspaceId: string, skillId: string, body: EvalCaseSaveBody): Promise<EvalSkillSuiteCase> {
     const skill = await this.skill(workspaceId, skillId);
     // The token is single-use: consumed here whatever the outcome below.
     const token = body.draft_run_token ? this.takeToken(body.draft_run_token) : null;
@@ -123,7 +142,7 @@ export class EvalSkillSuiteService {
       await this.deps.repo.setLastResult(workspaceId, row.id, lastResult);
       row = (await this.deps.repo.getCase(workspaceId, row.id)) ?? row;
     }
-    return toCaseDto(row);
+    return this.withScope(skill, row);
   }
 
   // ===========================================================================

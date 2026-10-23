@@ -1,6 +1,7 @@
 import PQueue from 'p-queue';
 import type { Container } from '../../platform/container.js';
 import type { Intent, Provider, Review, RunTrace, SpecSkipped, UnifiedDiff } from '@devdigest/shared';
+import type { RunTraceWithGroups } from '@devdigest/shared/contracts/skill-scope.js';
 import type { ContextDoc } from '@devdigest/reviewer-core';
 import { reviewPullRequest, countBlockers } from '@devdigest/reviewer-core';
 import { RunLogger } from '../../platform/run-logger.js';
@@ -22,6 +23,7 @@ import { taskLine, mergeContextPaths } from './helpers.js';
 import { loadRepoRules, type LoadedRepoRules } from './repo-rules.js';
 import { loadDiff, type LoadedDiff } from './diff-loader.js';
 import { renderSkillBlock } from '../skills/helpers.js';
+import { createPathMatcher } from '../_shared/skill-paths.js';
 
 /** Thrown by a run when the user cancels it mid-flight (between chunks or mid-call). */
 export class RunCancelledError extends Error {
@@ -41,7 +43,7 @@ export type Logger = {
 
 /** The skills a run pulled, in prompt order, with their rendered blocks. */
 interface ResolvedSkills {
-  blocks: { skillId: string; order: number; body: string }[];
+  blocks: { skillId: string; order: number; body: string; name: string; version: number; paths: string[] }[];
 }
 
 /** Project-context documents a run actually managed to read. */
@@ -287,12 +289,15 @@ export class ReviewRunExecutor {
       // Skills attached to this agent, in the order the editor stored them —
       // that order is the order of the blocks in the assembled prompt.
       const skills = await this.resolveSkills(agent.id, runLog);
-      const skillBodies = skills.blocks.map((b) => b.body);
-
-      // Record WHICH skills this run pulled, before the model call: the trace
-      // keeps only the rendered text, which cannot be matched back to a skill
-      // once its body is edited. Every Stats figure reads this table.
-      await this.recordRunSkills(runId, skills, runLog);
+      // Each skill carries its Applies to globs; the engine picks the skills of
+      // every call from them (a skill with none applies to every file).
+      const scopedSkills = skills.blocks.map((b) => ({
+        id: b.skillId,
+        name: b.name,
+        version: b.version,
+        body: b.body,
+        paths: b.paths,
+      }));
 
       // Documents attached to the agent plus those inherited through its skills.
       const context = await this.buildContextDocs(repo, agent.id, runLog);
@@ -318,7 +323,7 @@ export class ReviewRunExecutor {
         // Linked skills. Same omit-when-empty contract: an agent with none
         // produces a prompt with no `## Skills / rules` section at all, rather
         // than an empty one.
-        ...(skillBodies.length > 0 ? { skills: skillBodies } : {}),
+        ...(scopedSkills.length > 0 ? { scopedSkills, matchesPath: createPathMatcher() } : {}),
         // Project-context documents inherited through those skills. Same
         // omit-when-empty contract: no documents ⇒ no `## Project context`.
         ...(context.docs.length > 0 ? { specs: context.docs } : {}),
@@ -353,6 +358,12 @@ export class ReviewRunExecutor {
         },
       });
       const { tokensIn, tokensOut, costUsd, costSource, grounding } = outcome;
+
+      // Record WHICH skills this run injected, once the engine has returned: the
+      // trace keeps only the rendered text, which cannot be matched back to a
+      // skill once its body is edited. Every Stats figure reads this table. A
+      // run whose engine threw records none.
+      await this.recordRunSkills(runId, skills, outcome.calls, runLog);
 
       const keptFindings = outcome.review.findings;
 
@@ -399,7 +410,7 @@ export class ReviewRunExecutor {
         error: null,
       });
 
-      const trace: RunTrace = {
+      const trace: RunTraceWithGroups = {
         config: {
           agent: agent.name,
           version: String(agent.version),
@@ -428,6 +439,14 @@ export class ReviewRunExecutor {
             ? this.container.tokenizer.count(outcome.assembly.specs)
             : null,
         },
+        prompt_groups: outcome.calls.map((c) => ({
+          label: c.label,
+          files: c.paths,
+          skills: skills.blocks
+            .filter((b) => c.skillIds.includes(b.skillId))
+            .map((b) => ({ name: b.name, version: b.version })),
+          skipped: !c.ok,
+        })),
         tool_calls: outcome.chunks.map((c) => ({
           tool: 'review_file',
           args: c.label,
@@ -514,6 +533,9 @@ export class ReviewRunExecutor {
         skillId: l.skill.id,
         order: i,
         body: renderSkillBlock(l.skill.name, l.skill.body),
+        name: l.skill.name,
+        version: l.skill.version,
+        paths: l.skill.paths,
       })),
     };
   }
@@ -536,9 +558,19 @@ export class ReviewRunExecutor {
     const empty: ResolvedContext = { docs: [], paths: [], skipped: [] };
 
     let wanted: string[];
+    // Skills that pull each inherited path in; a path the agent also attaches
+    // itself is shown in every call, so it is left out of this map.
+    const viaSkills = new Map<string, string[]>();
     try {
       const own = await this.agents.listContextDocs(agentId);
       const inherited = await this.agents.inheritedContextDocs(agentId);
+      const ownPaths = new Set(own.map((l) => l.path));
+      for (const l of inherited) {
+        if (ownPaths.has(l.path)) continue;
+        const ids = viaSkills.get(l.path) ?? [];
+        if (!ids.includes(l.skillId)) ids.push(l.skillId);
+        viaSkills.set(l.path, ids);
+      }
       wanted = mergeContextPaths(
         own.map((l) => l.path),
         inherited.map((l) => l.path),
@@ -568,7 +600,11 @@ export class ReviewRunExecutor {
           ? `; skipped ${result.skipped.length}: ${result.skipped.map((k) => `${k.path} (${k.reason})`).join(', ')}`
           : ''),
     );
-    return { docs: result.docs, paths, skipped: result.skipped };
+    const docs = result.docs.map((d) => {
+      const via = viaSkills.get(d.path);
+      return via ? { ...d, viaSkillIds: via } : d;
+    });
+    return { docs, paths, skipped: result.skipped };
   }
 
   /**
@@ -580,18 +616,19 @@ export class ReviewRunExecutor {
   private async recordRunSkills(
     runId: string,
     skills: ResolvedSkills,
+    calls: { skillIds: string[] }[],
     runLog: RunLogger,
   ): Promise<void> {
-    if (skills.blocks.length === 0) return;
+    // Only skills that reached at least one call; tokens = block cost × calls.
+    const entries = skills.blocks.flatMap((b) => {
+      const n = calls.filter((c) => c.skillIds.includes(b.skillId)).length;
+      return n > 0
+        ? [{ skillId: b.skillId, order: b.order, tokens: this.container.tokenizer.count(b.body) * n }]
+        : [];
+    });
+    if (entries.length === 0) return;
     try {
-      await this.container.skillsRepo.recordRunSkills(
-        runId,
-        skills.blocks.map((b) => ({
-          skillId: b.skillId,
-          order: b.order,
-          tokens: this.container.tokenizer.count(b.body),
-        })),
-      );
+      await this.container.skillsRepo.recordRunSkills(runId, entries);
     } catch (err) {
       runLog.info(`skills: could not record run usage — ${(err as Error).message}`);
     }

@@ -50,6 +50,14 @@ vi.mock("@/lib/hooks/ci", async (importActual) => ({
   },
 }));
 
+let attachedSkills: { skill_id: string }[] = [];
+let allSkills: { id: string; paths: string[] }[] = [];
+vi.mock("@/lib/hooks/skills", async (importActual) => ({
+  ...(await importActual<typeof import("@/lib/hooks/skills")>()),
+  useAgentSkills: () => ({ data: attachedSkills }),
+  useSkills: () => ({ data: allSkills }),
+}));
+
 let reposList: Repo[];
 const REPOS = [
   { id: "r1", provider: "github", full_name: "acme/payments-api" },
@@ -128,6 +136,8 @@ beforeEach(() => {
     blocked: null,
   };
   installedList = [];
+  attachedSkills = [];
+  allSkills = [];
   reposList = REPOS;
   checkResult = { errors: [], warnings: [] };
   installOutcome = { result: { installation: {} as never, pr_url: "https://github.com/acme/payments-api/pull/9", zip_base64: null } };
@@ -147,6 +157,17 @@ describe("wizardReducer", () => {
 });
 
 describe("ExportWizard", () => {
+  it("warns that Applies to is ignored in CI only when an attached skill is scoped", () => {
+    attachedSkills = [{ skill_id: "s1" }];
+    allSkills = [{ id: "s1", paths: [] }, { id: "s2", paths: ["**/*.ts"] }];
+    mount();
+    expect(screen.queryByRole("status")).toBeNull();
+    cleanup();
+    allSkills = [{ id: "s1", paths: ["**/*.ts"] }];
+    mount();
+    expect(screen.getByRole("status")).toHaveTextContent(w.scopedSkillsNote);
+  });
+
   it("Target: only GitHub Actions is selectable and the active GitHub repo is the default", () => {
     mount();
     expect(screen.getByRole("radio", { name: /GitHub Actions/ })).toBeEnabled();

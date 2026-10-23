@@ -5,7 +5,8 @@
 import React from "react";
 import { useTranslations } from "next-intl";
 import { Icon, Badge, Toggle } from "@devdigest/ui";
-import type { Skill } from "@devdigest/shared";
+import type { ScopedSkill } from "@devdigest/shared/contracts/skill-scope.js";
+import { appliesToSummary } from "../../../../lib/skills/applies-to";
 import { SOURCE_ICON, TYPE_COLOR } from "./constants";
 import { formatCount, formatRate, needsVetting } from "./helpers";
 import { s } from "./styles";
@@ -17,7 +18,7 @@ export function SkillCard({
   onToggle,
   onDelete,
 }: {
-  skill: Skill;
+  skill: ScopedSkill;
   active?: boolean;
   onClick?: () => void;
   onToggle?: (enabled: boolean) => void;
@@ -29,6 +30,7 @@ export function SkillCard({
   const t = useTranslations("skills");
   const color = TYPE_COLOR[skill.type];
   const unvetted = needsVetting(skill);
+  const appliesTo = appliesToSummary(skill.paths);
 
   return (
     <div onClick={onClick} style={s.card(!!active, skill.enabled)}>
@@ -56,6 +58,9 @@ export function SkillCard({
             <Icon.Trash size={14} />
           </button>
         )}
+      </div>
+      <div className="mono" style={s.appliesTo} title={appliesTo ?? undefined}>
+        {appliesTo ? t("appliesTo.label", { paths: appliesTo }) : t("appliesTo.all")}
       </div>
       <div style={s.description}>{skill.description}</div>
       <div style={s.metaRow}>

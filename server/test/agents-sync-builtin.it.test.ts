@@ -11,6 +11,7 @@ import { AgentsService } from '../src/modules/agents/service.js';
 import { syncBuiltinAgents } from '../src/modules/agents/sync-builtin.js';
 import { GENERAL_DETACHED_SKILLS } from '../src/modules/agents/constants.js';
 import { BUILTIN_AGENT_PROMPTS, GENERAL_REVIEWER_PROMPT } from '../src/db/seed-prompts.js';
+import { NODE_TS_SKILL_AGENTS, NODE_TYPESCRIPT_SKILL } from '../src/db/seed-skills.js';
 
 const hasDocker = await dockerAvailable();
 const d = hasDocker ? describe : describe.skip;
@@ -149,7 +150,10 @@ d('agents:sync-builtin', () => {
     const versions = await versionCount(generalId);
     const lines = await syncBuiltinAgents(service, workspaceId, {});
 
-    expect(lines.every((l) => l.endsWith(': unchanged'))).toBe(true);
+    expect(lines).toContain('node-typescript-review: exists — attached unchanged');
+    expect(
+      lines.filter((l) => !l.startsWith('node-typescript-review:')).every((l) => l.endsWith(': unchanged')),
+    ).toBe(true);
     expect((await service.get(workspaceId, generalId))!.version).toBe(before!.version);
     expect(await versionCount(generalId)).toBe(versions);
   });
@@ -294,5 +298,114 @@ d('agents:sync-builtin', () => {
     await service.setSkills(workspaceId, generalId, ids, 'ignored');
     expect((await service.get(workspaceId, generalId))!.version).toBe(versionBefore);
     expect(await versionCount(generalId)).toBe(count);
+  });
+});
+
+d('agents:sync-builtin — node-typescript-review (plan 44)', () => {
+  let pg: PgFixture;
+  let workspaceId: string;
+  let service: AgentsService;
+  const SKILL = NODE_TYPESCRIPT_SKILL.name;
+
+  const db = () => pg.handle.db;
+
+  async function skillNamesOf(agentName: string): Promise<string[]> {
+    const agent = (await service.list(workspaceId)).find((a) => a.name === agentName)!;
+    const rows = await db()
+      .select({ name: t.skills.name, order: t.agentSkills.order })
+      .from(t.agentSkills)
+      .innerJoin(t.skills, eq(t.agentSkills.skillId, t.skills.id))
+      .where(eq(t.agentSkills.agentId, agent.id));
+    return rows.sort((a, b) => a.order - b.order).map((r) => r.name);
+  }
+
+  const skillRows = () =>
+    db()
+      .select()
+      .from(t.skills)
+      .where(and(eq(t.skills.workspaceId, workspaceId), eq(t.skills.name, SKILL)));
+
+  async function dropSkill(): Promise<void> {
+    await db().delete(t.skills).where(and(eq(t.skills.workspaceId, workspaceId), eq(t.skills.name, SKILL)));
+  }
+
+  beforeAll(async () => {
+    pg = await startPg();
+    ({ workspaceId } = await seed(db()));
+    service = new AgentsService(new Container(isolatedTestConfig(), db()));
+  });
+  afterAll(async () => {
+    await pg?.stop();
+  });
+
+  it('a fresh seed creates the skill with its globs and links it last on the four agents, not Security', async () => {
+    const [row] = await skillRows();
+    expect(row).toMatchObject({ source: 'manual', enabled: true, paths: NODE_TYPESCRIPT_SKILL.paths });
+    for (const name of NODE_TS_SKILL_AGENTS) {
+      const names = await skillNamesOf(name);
+      expect(names.at(-1)).toBe(SKILL);
+    }
+    expect(await skillNamesOf('Security Reviewer')).not.toContain(SKILL);
+  });
+
+  it('re-seeding after the skill was deleted does not recreate it', async () => {
+    await dropSkill();
+    await seed(db());
+    expect(await skillRows()).toHaveLength(0);
+  });
+
+  it('dry run reports the skill and the attachments and writes nothing', async () => {
+    const lines = await syncBuiltinAgents(service, workspaceId, { dryRun: true });
+    expect(lines).toContain(`${SKILL}: would be created (dry run)`);
+    for (const name of NODE_TS_SKILL_AGENTS) expect(lines).toContain(`${name}: attached: ${SKILL}`);
+    expect(lines.join('\n')).not.toContain('Security Reviewer: attached');
+    expect(await skillRows()).toHaveLength(0);
+    for (const name of NODE_TS_SKILL_AGENTS) expect(await skillNamesOf(name)).not.toContain(SKILL);
+  });
+
+  it('sync creates and attaches it last; a second sync changes nothing', async () => {
+    const lines = await syncBuiltinAgents(service, workspaceId, {});
+    expect(lines).toContain(`${SKILL}: created`);
+    const [row] = await skillRows();
+    expect(row!.paths).toEqual(NODE_TYPESCRIPT_SKILL.paths);
+    for (const name of NODE_TS_SKILL_AGENTS) {
+      expect(lines).toContain(`${name}: attached: ${SKILL}`);
+      expect((await skillNamesOf(name)).at(-1)).toBe(SKILL);
+    }
+    expect(await skillNamesOf('Security Reviewer')).not.toContain(SKILL);
+
+    const again = await syncBuiltinAgents(service, workspaceId, {});
+    expect(again).toContain(`${SKILL}: exists — attached unchanged`);
+    expect(again.filter((l) => l.includes('attached:'))).toEqual([]);
+    expect(await skillRows()).toHaveLength(1);
+  });
+
+  it('a user skill of that name keeps its body and paths and is attached unchanged', async () => {
+    await dropSkill();
+    const [mine] = await db()
+      .insert(t.skills)
+      .values({
+        workspaceId,
+        name: SKILL,
+        description: 'mine',
+        type: 'custom',
+        source: 'manual',
+        body: '# my own rules',
+        paths: ['src/**'],
+        enabled: false,
+        version: 1,
+      })
+      .returning();
+
+    const lines = await syncBuiltinAgents(service, workspaceId, {});
+
+    expect(lines).toContain(`${SKILL}: exists — attached unchanged`);
+    for (const name of NODE_TS_SKILL_AGENTS) {
+      expect(lines).toContain(`${name}: attached: ${SKILL}`);
+      expect((await skillNamesOf(name)).at(-1)).toBe(SKILL);
+    }
+    const rows = await skillRows();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ id: mine!.id, body: '# my own rules', paths: ['src/**'], enabled: false, version: 1 });
   });
 });

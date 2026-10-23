@@ -98,6 +98,12 @@ function sectionFor(
 export interface ContextDoc {
   path: string;
   body: string;
+  /**
+   * Ids of the skills that pull this doc in when it is NOT attached to the agent
+   * itself. Used only to drop the doc from calls whose skill set shares none of
+   * them; never rendered. Absent ⇒ shown in every call.
+   */
+  viaSkillIds?: string[];
 }
 
 export interface PromptParts {

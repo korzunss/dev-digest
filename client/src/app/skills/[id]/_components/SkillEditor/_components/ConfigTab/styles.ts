@@ -29,6 +29,7 @@ export const s = {
     lineHeight: 1.5,
     marginBottom: 16,
   } satisfies CSSProperties,
+  pathsError: { fontSize: 12.5, color: "var(--crit)", marginTop: 6 } satisfies CSSProperties,
   noticeIcon: { color: "var(--warn)", flexShrink: 0, marginTop: 2 } satisfies CSSProperties,
   /* The strip above the body textarea: file chip · unsaved · token estimate.
      Its bottom corners are square so it reads as one control with the

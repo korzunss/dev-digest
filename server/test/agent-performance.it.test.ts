@@ -235,6 +235,35 @@ d('agent performance routes (spec 015)', () => {
     expect(stats.agent_name).toBe('PerfA');
   });
 
+  it('counts a skill only in the runs that injected it (narrowed run_skills, AC-30a)', async () => {
+    const mk = async (name: string, paths: string[]) =>
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/skills',
+          payload: { name, description: `${name} desc`, type: 'custom', body: `# ${name}`, paths },
+        })
+      ).json().id as string;
+    const scoped = await mk('narrow-cs-rule', ['**/*.cs']);
+    const unscoped = await mk('narrow-any-rule', []);
+    const runs = await pg.handle.db.select().from(t.agentRuns).where(eq(t.agentRuns.agentId, agentX));
+    // The scoped skill never reached a call (a PR with no .cs file); the unscoped one reached both runs.
+    await pg.handle.db
+      .insert(t.runSkills)
+      .values(runs.map((r) => ({ runId: r.id, skillId: unscoped, order: 0, tokens: 10 })));
+
+    const stats = (await get(`/agents/${agentX}/stats/breakdown`, win30())).json();
+    const rows: { skill_id: string; runs: number }[] = stats.skills.rows;
+    expect(rows.find((r) => r.skill_id === unscoped)?.runs).toBe(runs.length);
+    expect(rows.find((r) => r.skill_id === scoped)).toBeUndefined();
+
+    const scopedStats = (await get(`/skills/${scoped}/stats`, win30())).json();
+    const unscopedStats = (await get(`/skills/${unscoped}/stats`, win30())).json();
+    expect(scopedStats.runs_with_skill).toBe(0);
+    expect(unscopedStats.runs_with_skill).toBe(runs.length);
+    expect(unscopedStats.pull_rate).toBeGreaterThan(0);
+  });
+
   it('counts runs for the Try-30-days suggestion, workspace-wide and per agent', async () => {
     const all = (await get('/agents/performance/runs-count', win30())).json();
     expect(all.runs).toBeGreaterThanOrEqual(127);

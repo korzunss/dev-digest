@@ -79,7 +79,7 @@ function fakeRepo(initial: SuiteCaseRow[] = []) {
 
 function setup(opts: { cases?: SuiteCaseRow[]; skill?: Partial<EvalSkill>; llmFails?: boolean; review?: Review } = {}) {
   const repo = fakeRepo(opts.cases);
-  const skill: EvalSkill = { id: 'sk1', name: 'S', version: 2, enabled: true, rendered: 'BODY', ...opts.skill };
+  const skill: EvalSkill = { id: 'sk1', name: 'S', version: 2, enabled: true, rendered: 'BODY', paths: [], ...opts.skill };
   const llm = new MockLLMProvider('openai', { structured: opts.review ?? REVIEW });
   const deps: EvalSkillSuiteServiceDeps = {
     repo: repo as unknown as EvalPipelineRepository,

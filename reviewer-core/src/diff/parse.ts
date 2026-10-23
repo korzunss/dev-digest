@@ -11,8 +11,13 @@ import type { UnifiedDiff, DiffHunk } from '@devdigest/shared';
  *   +++ b/path
  *   @@ -oldStart,oldLines +newStart,newLines @@
  */
-export function parseUnifiedDiff(raw: string): UnifiedDiff {
+/** A parsed diff plus the old paths of files the diff deletes (`+++ /dev/null`). */
+export type ParsedDiff = UnifiedDiff & { deletedPaths: string[] };
+
+export function parseUnifiedDiff(raw: string): ParsedDiff {
   const files: UnifiedDiff['files'] = [];
+  const deletedPaths: string[] = [];
+  let oldPath = '';
   const lines = raw.split('\n');
 
   let current: UnifiedDiff['files'][number] | null = null;
@@ -25,8 +30,13 @@ export function parseUnifiedDiff(raw: string): UnifiedDiff {
   };
   const flushFile = () => {
     flushHunk();
-    if (current) files.push(current);
+    if (current) {
+      files.push(current);
+      // A deleted file has no `+++` path; its old path is kept for skill routing only.
+      if (!current.path && oldPath) deletedPaths.push(oldPath);
+    }
     current = null;
+    oldPath = '';
   };
 
   for (const line of lines) {
@@ -42,7 +52,13 @@ export function parseUnifiedDiff(raw: string): UnifiedDiff {
       current.path = p === '/dev/null' ? current.path : p;
       continue;
     }
-    if (line.startsWith('--- ')) continue;
+    if (line.startsWith('--- ')) {
+      if (current && !hunk) {
+        const p = line.slice(4).replace(/^a\//, '').trim();
+        oldPath = p === '/dev/null' ? '' : p;
+      }
+      continue;
+    }
     const hh = line.match(/^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/);
     if (hh) {
       flushHunk();
@@ -75,5 +91,5 @@ export function parseUnifiedDiff(raw: string): UnifiedDiff {
   }
   flushFile();
 
-  return { raw, files: files.filter((f) => f.path) };
+  return { raw, files: files.filter((f) => f.path), deletedPaths };
 }

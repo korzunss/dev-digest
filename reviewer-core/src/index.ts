@@ -37,6 +37,15 @@ export {
 // Map-reduce helpers (reduce partials, slice a file's diff).
 export { reduceReviews, sliceDiff } from './review/reduce.js';
 
+// Pure skill routing by changed path (matcher injected by the caller).
+export {
+  skillsForFile,
+  groupBySkillSet,
+  specsForCall,
+  type ScopedSkillInput,
+  type PathMatcher,
+} from './review/skill-routing.js';
+
 // Per-chunk repo-rule selection (plan 10) — pure, path-prefix based.
 export {
   buildRepoContext,
@@ -126,4 +135,4 @@ export {
 } from './smart-diff/constants.js';
 
 // Unified-diff parser (pure) — shared by the studio's git adapter and the CI runner.
-export { parseUnifiedDiff } from './diff/parse.js';
+export { parseUnifiedDiff, type ParsedDiff } from './diff/parse.js';

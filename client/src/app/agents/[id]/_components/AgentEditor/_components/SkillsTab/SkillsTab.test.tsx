@@ -1,7 +1,9 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
-import type { Agent, Skill } from "@devdigest/shared";
+import type { Agent } from "@devdigest/shared";
+import type { ScopedSkill } from "@devdigest/shared/contracts/skill-scope.js";
+type Skill = ScopedSkill;
 import agentMessages from "../../../../../../../../messages/en/agents.json";
 import skillMessages from "../../../../../../../../messages/en/skills.json";
 import commonMessages from "../../../../../../../../messages/en/common.json";
@@ -41,6 +43,7 @@ const SKILLS: Skill[] = [
     enabled: true,
     version: 1,
     evidence_files: null,
+    paths: ["**/*.ts", "**/*.tsx"],
   },
   {
     id: "sk2",
@@ -52,6 +55,7 @@ const SKILLS: Skill[] = [
     enabled: true,
     version: 1,
     evidence_files: null,
+    paths: [],
   },
   {
     id: "sk3",
@@ -63,6 +67,7 @@ const SKILLS: Skill[] = [
     enabled: false,
     version: 1,
     evidence_files: null,
+    paths: [],
   },
 ];
 
@@ -128,6 +133,12 @@ describe("sameOrder", () => {
 });
 
 describe("SkillsTab", () => {
+  it("shows each skill's Applies to under its name, All files when unscoped", () => {
+    renderTab();
+    expect(screen.getByText("**/*.ts, **/*.tsx")).toBeInTheDocument();
+    expect(screen.getAllByText(skillMessages.appliesTo.all)).toHaveLength(2);
+  });
+
   it("lists every workspace skill with the attached ones first", () => {
     renderTab();
     expect(screen.getByText("2 of 3 enabled")).toBeInTheDocument();

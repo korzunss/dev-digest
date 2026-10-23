@@ -196,7 +196,10 @@
     "snapshotNote": "Saving snapshots the body as <v>{version}</v>",
     "deleteTitle": "Delete skill",
     "deleteBody": "Removes it from all agents. This can't be undone.",
-    "deleteAction": "Delete"
+    "deleteAction": "Delete",
+    "appliesTo": "Applies to",
+    "appliesToHint": "One glob per line, e.g. **/*.ts. The skill reaches the model only for pull requests touching a matching file. Leave empty to apply to all files.",
+    "appliesToPlaceholder": "**/*.ts"
   },
   "evals": {
     "run": "Run on evals",
@@ -256,5 +259,9 @@
       "title": "Only one version so far",
       "body": "Editing the body in the Config tab appends a snapshot here."
     }
+  },
+  "appliesTo": {
+    "all": "All files",
+    "label": "Applies to: {paths}"
   }
 }

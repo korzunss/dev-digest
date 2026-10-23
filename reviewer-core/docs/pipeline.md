@@ -21,8 +21,11 @@ slots — `skills`, `memory`, `specs`, `callers`, `repoMap`, `prDescription`,
 full path list) and `repoRulesMaxChars`; per chunk, `buildRepoContext`
 (`src/review/repo-rules.ts`) picks the root rules plus the sets whose `scope`
 is a directory prefix of the chunk's paths (deepest first) and feeds them, with
-the file list, into the `memory` slot. With both fields absent the prompt is
-unchanged. Slugs, DB rows, and file reads are already
+the file list, into the `memory` slot. The caller loads `AGENTS.md` and
+`insights/gotchas.md` only from the repo root and two directory levels below it,
+at most 40 files, 12,000 chars per file; the block handed to one call is capped
+at 8,000 chars (`server/src/modules/reviews/constants.ts`). With both fields
+absent the prompt is unchanged. Slugs, DB rows, and file reads are already
 resolved by the caller; the engine only ever sees strings.
 
 ### Mode selection

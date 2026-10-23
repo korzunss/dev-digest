@@ -17,6 +17,7 @@ import type { Agent } from "@devdigest/shared";
 import { AGENT_NOTE_MAX } from "../../constants";
 import { useAgentSkills, useSetAgentSkills, useSkills } from "../../../../../../../lib/hooks/skills";
 import { TYPE_COLOR } from "../../../../../../skills/_components/SkillCard";
+import { appliesToSummary } from "@/lib/skills/applies-to";
 import { moveId, toggleAttachment } from "@/lib/attachment-order";
 import { attachedIds, filterRows, orderedRows, sameOrder } from "./helpers";
 import { SaveBar } from "./SaveBar";
@@ -172,8 +173,13 @@ export function SkillsTab({ agent, onDirtyChange }: SkillsTabProps) {
                   onChange={() => commit(toggleAttachment(attached, skill.id))}
                 />
 
-                <span className="mono" style={s.name}>
-                  {skill.name}
+                <span style={s.nameCol}>
+                  <span className="mono" style={s.name}>
+                    {skill.name}
+                  </span>
+                  <span className="mono" style={s.appliesTo}>
+                    {appliesToSummary(skill.paths) ?? ts("appliesTo.all")}
+                  </span>
                 </span>
 
                 {!skill.enabled && <span style={s.muted}>{ts("preview.disabled")}</span>}

@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { SkillStatsPeriod, SkillStatsQuery } from '@devdigest/shared/contracts/skill-stats.js';
+import { SkillPaths } from '@devdigest/shared/contracts/skill-scope.js';
 import { ContextPathsBody, SkillSource, SkillType } from '@devdigest/shared';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
@@ -35,6 +36,8 @@ const CreateSkillBody = z.object({
   source: SkillSource.optional(),
   enabled: z.boolean().optional(),
   evidence_files: z.array(z.string()).optional(),
+  // Shape only (count, length); glob rules run in the service (AC-3, AC-4).
+  paths: SkillPaths.optional(),
 });
 
 /**
@@ -63,6 +66,7 @@ const UpdateSkillBody = z.object({
   type: SkillType.optional(),
   body: z.string().min(1).optional(),
   enabled: z.boolean().optional(),
+  paths: SkillPaths.optional(),
   /** Recorded on the version a body change creates; ignored otherwise. */
   message: z.string().min(1).optional(),
 });
@@ -109,6 +113,7 @@ export default async function skillsRoutes(appBase: FastifyInstance) {
       ...(body.source !== undefined ? { source: body.source } : {}),
       ...(body.enabled !== undefined ? { enabled: body.enabled } : {}),
       ...(body.evidence_files !== undefined ? { evidence_files: body.evidence_files } : {}),
+      ...(body.paths !== undefined ? { paths: body.paths } : {}),
     });
     reply.status(201);
     return skill;

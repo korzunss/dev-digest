@@ -1,5 +1,7 @@
+import { sql } from 'drizzle-orm';
 import {
   pgTable,
+  check,
   uuid,
   text,
   integer,
@@ -31,12 +33,18 @@ export const skills = pgTable(
     enabled: boolean('enabled').notNull().default(true),
     version: integer('version').notNull().default(1),
     evidenceFiles: jsonb('evidence_files').$type<string[]>(),
+    // "Applies to" globs, an ordered list that is never queried by element (no
+    // index). Empty = the skill applies to every file.
+    paths: text('paths').array().notNull().default(sql`'{}'::text[]`),
     createdAt: now(),
   },
   // `GET /skills` filters on workspace_id, and Postgres indexes the column a FK
   // POINTS AT, never the column holding it — so this is not implied by the
   // `.references()` above.
-  (t) => ({ wsIdx: index('skills_ws_idx').on(t.workspaceId) }),
+  (t) => ({
+    wsIdx: index('skills_ws_idx').on(t.workspaceId),
+    pathsMax: check('skills_paths_max', sql`cardinality(${t.paths}) <= 20`),
+  }),
 );
 
 export const skillVersions = pgTable(
@@ -50,6 +58,8 @@ export const skillVersions = pgTable(
     // What the author said changed. Nullable: versions written before this
     // column existed have none, and a save may legitimately carry no note.
     message: text('message'),
+    // NULL = a version written before "Applies to" existed; restoring it gives [].
+    paths: text('paths').array(),
     createdAt: now(),
   },
   (t) => ({ pk: primaryKey({ columns: [t.skillId, t.version] }) }),

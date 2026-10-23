@@ -13,7 +13,7 @@ import React from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Button, Dropdown, EmptyState, ErrorState, Icon, Skeleton } from "@devdigest/ui";
-import type { Skill } from "@devdigest/shared";
+import type { ScopedSkill } from "@devdigest/shared/contracts/skill-scope.js";
 import { AppShell } from "@/components/app-shell";
 import { ConfirmModal } from "@/components/confirm-modal";
 import { useDeleteSkill, useSkills, useUpdateSkill } from "@/lib/hooks/skills";
@@ -41,7 +41,7 @@ export function SkillsListView() {
   // The skill awaiting confirmation. One piece of state rather than a boolean
   // plus an id, so there is no state where the modal is open and asking about
   // nothing — and the name in the question always matches the row you pressed.
-  const [pendingDelete, setPendingDelete] = React.useState<Skill | null>(null);
+  const [pendingDelete, setPendingDelete] = React.useState<ScopedSkill | null>(null);
 
   const list = filterSkills(skills ?? [], query);
   const open = (id: string) => router.push(skillHref(id, DEFAULT_TAB));

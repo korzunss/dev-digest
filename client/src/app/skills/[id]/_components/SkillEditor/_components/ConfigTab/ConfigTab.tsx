@@ -7,17 +7,20 @@ import React from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Badge, Button, FormField, Icon, SelectInput, TextInput, Textarea, Toggle } from "@devdigest/ui";
-import type { Skill, SkillType } from "@devdigest/shared";
+import type { SkillType } from "@devdigest/shared";
+import type { ScopedSkill } from "@devdigest/shared/contracts/skill-scope.js";
+import { ApiError } from "../../../../../../../lib/api";
 import { useDeleteSkill, useUpdateSkill } from "../../../../../../../lib/hooks/skills";
 import { ConfirmModal } from "@/components/confirm-modal";
 import { useToast } from "../../../../../../../lib/toast";
+import { pathsToText, textToPaths } from "../../../../../../../lib/skills/applies-to";
 import { formatTokenEstimate } from "../../../../../../../lib/estimate-tokens";
 import { needsVetting } from "../../../../../_components/SkillCard";
-import { BODY_ROWS, DESCRIPTION_ROWS, TYPE_VALUES } from "./constants";
-import { fileBaseName, isDirty } from "./helpers";
+import { BODY_ROWS, DESCRIPTION_ROWS, PATHS_ROWS, TYPE_VALUES } from "./constants";
+import { fileBaseName, isDirty, isPathsDirty } from "./helpers";
 import { s } from "./styles";
 
-export function ConfigTab({ skill }: { skill: Skill }) {
+export function ConfigTab({ skill }: { skill: ScopedSkill }) {
   const t = useTranslations("skills");
   const toast = useToast();
   const router = useRouter();
@@ -30,6 +33,7 @@ export function ConfigTab({ skill }: { skill: Skill }) {
   const [type, setType] = React.useState<SkillType>(skill.type);
   const [body, setBody] = React.useState(skill.body);
   const [enabled, setEnabled] = React.useState(skill.enabled);
+  const [pathsText, setPathsText] = React.useState(pathsToText(skill.paths));
   const [message, setMessage] = React.useState("");
 
   /**
@@ -49,9 +53,17 @@ export function ConfigTab({ skill }: { skill: Skill }) {
   React.useEffect(() => setType(skill.type), [skill.type]);
   React.useEffect(() => setEnabled(skill.enabled), [skill.enabled]);
   React.useEffect(() => setBody(skill.body), [skill.body]);
+  // A list is compared by value: a refetch hands back a new array with the same globs.
+  const storedPathsText = pathsToText(skill.paths);
+  React.useEffect(() => setPathsText(storedPathsText), [storedPathsText]);
 
   const unvetted = needsVetting(skill);
-  const dirty = isDirty(body, skill.body);
+  // A save snapshots a new version when the body OR Applies to changed.
+  const dirty = isDirty(body, skill.body) || isPathsDirty(pathsText, skill.paths);
+  const bodyDirty = isDirty(body, skill.body);
+  // The server answers 422 with the offending glob; show it next to the field.
+  const pathsError =
+    update.error instanceof ApiError && update.error.status === 422 ? update.error.message : null;
   const typeOptions = TYPE_VALUES.map((v) => ({ value: v, label: t(`config.typeOptions.${v}`) }));
 
   /** Cancel = back to what is stored, including the unsaved note. */
@@ -60,6 +72,7 @@ export function ConfigTab({ skill }: { skill: Skill }) {
     setDescription(skill.description);
     setType(skill.type);
     setBody(skill.body);
+    setPathsText(storedPathsText);
     setEnabled(skill.enabled);
     setMessage("");
   };
@@ -74,6 +87,7 @@ export function ConfigTab({ skill }: { skill: Skill }) {
           type,
           body,
           enabled,
+          paths: textToPaths(pathsText),
           // Only send a note when there is one — an empty string would store a
           // blank message on the version instead of leaving it absent.
           ...(message.trim() === "" ? {} : { message: message.trim() }),
@@ -114,6 +128,22 @@ export function ConfigTab({ skill }: { skill: Skill }) {
         <SelectInput value={type} onChange={(v) => setType(v as SkillType)} options={typeOptions} />
       </FormField>
 
+      <FormField label={t("config.appliesTo")} hint={t("config.appliesToHint")}>
+        <div>
+          <Textarea
+            value={pathsText}
+            onChange={setPathsText}
+            rows={PATHS_ROWS}
+            placeholder={t("config.appliesToPlaceholder")}
+          />
+          {pathsError && (
+            <div role="alert" style={s.pathsError}>
+              {pathsError}
+            </div>
+          )}
+        </div>
+      </FormField>
+
       <FormField label={t("config.body")} hint={t("config.bodyHint")}>
         <div>
           <div style={s.bodyBar}>
@@ -123,7 +153,7 @@ export function ConfigTab({ skill }: { skill: Skill }) {
             </span>
             {/* Shown only while the local body differs from the saved one —
                 it is the signal that a save would create a new version. */}
-            {dirty && (
+            {bodyDirty && (
               <span title={t("config.unsavedTitle")}>
                 <Badge color="var(--warn)" bg="var(--warn-bg)">
                   {t("config.unsaved")}

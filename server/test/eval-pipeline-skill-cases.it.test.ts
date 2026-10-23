@@ -177,6 +177,19 @@ d('eval pipeline: skill cases and drafts (Testcontainers pg)', () => {
     expect(after[0].last_result).toMatchObject({ skill_version: 1 });
   });
 
+  it('flags a case whose files fall outside the skill Applies to, read at list time (AC-42)', async () => {
+    const id = await insertSkill(pg.handle.db, workspaceId, { name: 'Scoped Cases Skill', body: 'SKILLCASES-MARK scoped' });
+    const created = await save('scoped-case', undefined, {}, id);
+    expect(created.json().outside_applies_to).toBe(false);
+    const list = async () => (await app.inject({ method: 'GET', url: `/skills/${id}/eval-cases` })).json();
+
+    await app.inject({ method: 'PUT', url: `/skills/${id}`, payload: { paths: ['**/*.cs'] } });
+    expect((await list())[0].outside_applies_to).toBe(true);
+
+    await app.inject({ method: 'PUT', url: `/skills/${id}`, payload: { paths: ['src/**'] } });
+    expect((await list())[0].outside_applies_to).toBe(false);
+  });
+
   it('lets PUT /eval-cases/:id edit a skill case with an owner-scoped name check (AC-26)', async () => {
     const a = (await save('rename-a')).json();
     await save('rename-b');

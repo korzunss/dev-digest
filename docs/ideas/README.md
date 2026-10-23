@@ -69,3 +69,4 @@ why, in one or two lines.
 | [08-sdd-repeat-flags](08-sdd-repeat-flags.md) | open | go (Opt3) | — |
 | [09-sdd-repeat-flags-after-42](09-sdd-repeat-flags-after-42.md) | open | go (Opt1) | — |
 | [10-sdd-f1-repeat-after-43](10-sdd-f1-repeat-after-43.md) | open | go (Opt1, = 09 Opt1 + size normaliser for single-run stages) | — |
+| [11-stack-scoped-review-guidance](11-stack-scoped-review-guidance.md) | chosen | go (Opt1) + Opt4 | — |

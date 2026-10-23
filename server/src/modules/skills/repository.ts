@@ -3,7 +3,7 @@ import type { Db } from '../../db/client.js';
 import * as t from '../../db/schema.js';
 import type { SkillSource, SkillType } from '@devdigest/shared';
 import { INITIAL_SKILL_VERSION } from './constants.js';
-import { isBodyChange } from './helpers.js';
+import { isVersionedChange } from './helpers.js';
 
 /**
  * Skills data-access. Owns `skills` and `skill_versions`; the `agent_skills`
@@ -31,6 +31,8 @@ export interface InsertSkill {
   body: string;
   enabled: boolean;
   evidenceFiles?: string[] | null;
+  /** Normalised "Applies to" globs; empty = every file. */
+  paths?: string[];
 }
 
 export interface UpdateSkill {
@@ -39,7 +41,9 @@ export interface UpdateSkill {
   type?: SkillType;
   body?: string;
   enabled?: boolean;
-  /** Note recorded on the version a body change creates. Ignored otherwise. */
+  /** Normalised "Applies to" globs; a change versions the skill like a body change. */
+  paths?: string[];
+  /** Note recorded on the version a body or paths change creates. Ignored otherwise. */
   message?: string;
 }
 
@@ -53,6 +57,16 @@ export class SkillsRepository {
       .from(t.skills)
       .where(eq(t.skills.workspaceId, workspaceId))
       .orderBy(asc(t.skills.name));
+  }
+
+  /** One skill by exact name, or undefined. */
+  async findByName(workspaceId: string, name: string): Promise<SkillRow | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(t.skills)
+      .where(and(eq(t.skills.workspaceId, workspaceId), eq(t.skills.name, name)))
+      .limit(1);
+    return row;
   }
 
   async getById(workspaceId: string, id: string): Promise<SkillRow | undefined> {
@@ -99,6 +113,7 @@ export class SkillsRepository {
         enabled: values.enabled,
         version: INITIAL_SKILL_VERSION,
         evidenceFiles: values.evidenceFiles ?? null,
+        paths: values.paths ?? [],
       })
       .returning();
     await this.snapshotVersion(row!, INITIAL_SKILL_VERSION);
@@ -106,8 +121,8 @@ export class SkillsRepository {
   }
 
   /**
-   * Update a skill. A changed body bumps the version and snapshots the new body
-   * into `skill_versions`; a rename or a toggle does not.
+   * Update a skill. A changed body or changed "Applies to" globs bump the
+   * version and snapshot both into `skill_versions`; a rename or a toggle does not.
    */
   async update(
     workspaceId: string,
@@ -117,7 +132,7 @@ export class SkillsRepository {
     const existing = await this.getById(workspaceId, id);
     if (!existing) return undefined;
 
-    const bodyChanged = isBodyChange(existing, patch);
+    const bodyChanged = isVersionedChange(existing, patch);
     const nextVersion = bodyChanged ? existing.version + 1 : existing.version;
 
     const [row] = await this.db
@@ -128,6 +143,7 @@ export class SkillsRepository {
         ...(patch.type !== undefined ? { type: patch.type } : {}),
         ...(patch.body !== undefined ? { body: patch.body } : {}),
         ...(patch.enabled !== undefined ? { enabled: patch.enabled } : {}),
+        ...(patch.paths !== undefined ? { paths: patch.paths } : {}),
         ...(bodyChanged ? { version: nextVersion } : {}),
       })
       .where(and(eq(t.skills.workspaceId, workspaceId), eq(t.skills.id, id)))
@@ -144,7 +160,13 @@ export class SkillsRepository {
   ): Promise<void> {
     await this.db
       .insert(t.skillVersions)
-      .values({ skillId: row.id, version, body: row.body, message: message ?? null })
+      .values({
+        skillId: row.id,
+        version,
+        body: row.body,
+        paths: row.paths,
+        message: message ?? null,
+      })
       .onConflictDoNothing();
   }
 

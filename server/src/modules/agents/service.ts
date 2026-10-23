@@ -13,6 +13,7 @@ import type {
   ModelInfo,
   Provider,
   ReviewStrategy,
+  SkillType,
 } from '@devdigest/shared';
 import { AgentsRepository } from './repository.js';
 import { NotFoundError, ValidationError } from '../../platform/errors.js';
@@ -28,6 +29,15 @@ import { buildVersionDiff, canonicalJson, recordedSkillIds, toAgentDto, toAgentV
 
 // Re-exported for backwards compatibility; implementation lives in ./helpers.
 export { toAgentDto } from './helpers.js';
+
+/** A skill the built-in sync creates when the workspace lacks it (already-normalised globs). */
+export interface BuiltinSkillDef {
+  name: string;
+  description: string;
+  type: SkillType;
+  body: string;
+  paths: string[];
+}
 
 export interface CreateAgentInput {
   name: string;
@@ -261,9 +271,22 @@ export class AgentsService {
   async syncBuiltin(
     workspaceId: string,
     agentId: string,
-    input: { systemPrompt: string; detachSkillNames: readonly string[]; dryRun?: boolean },
+    input: {
+      systemPrompt: string;
+      detachSkillNames: readonly string[];
+      /** Skill to append last when no link carries its name. `id` is null in a dry run of a skill not yet created. */
+      attachSkill?: { id: string | null; name: string };
+      dryRun?: boolean;
+    },
   ): Promise<
-    { detached: string[]; changed: boolean; fromVersion: number; toVersion: number } | undefined
+    | {
+        detached: string[];
+        attached: string | null;
+        changed: boolean;
+        fromVersion: number;
+        toVersion: number;
+      }
+    | undefined
   > {
     return this.repo.transaction(async (repo) => {
       // Row lock: a concurrent sync/edit waits here, so `version` below is current.
@@ -272,16 +295,19 @@ export class AgentsService {
       const links = await repo.linkedSkills(agentId);
       const drop = new Set(input.detachSkillNames);
       const detached = links.filter((l) => drop.has(l.skill.name)).map((l) => l.skill.name);
+      const wanted = input.attachSkill;
+      const attaches = !!wanted && !links.some((l) => l.skill.name === wanted.name);
+      const attached = attaches ? wanted.name : null;
       const promptChanged = agent.systemPrompt !== input.systemPrompt;
-      const changed = detached.length > 0 || promptChanged;
+      const changed = detached.length > 0 || attaches || promptChanged;
       const v = agent.version;
-      if (!changed) return { detached, changed, fromVersion: v, toVersion: v };
-      if (input.dryRun) return { detached, changed, fromVersion: v, toVersion: v + 1 };
-      if (detached.length > 0) {
-        await repo.setSkills(
-          agentId,
-          links.filter((l) => !drop.has(l.skill.name)).map((l) => l.skill.id),
-        );
+      if (!changed) return { detached, attached, changed, fromVersion: v, toVersion: v };
+      if (input.dryRun) return { detached, attached, changed, fromVersion: v, toVersion: v + 1 };
+      if (detached.length > 0 || attaches) {
+        const keep = links.filter((l) => !drop.has(l.skill.name)).map((l) => l.skill.id);
+        // A real run always has the id (`ensureBuiltinSkill` created the skill); a null id attaches nothing.
+        if (attaches && wanted.id) keep.push(wanted.id);
+        await repo.setSkills(agentId, keep);
       }
       const row = await repo.update(
         workspaceId,
@@ -291,8 +317,37 @@ export class AgentsService {
       );
       // Throw, don't return: a vanished row must roll back the detach above.
       if (!row) throw new NotFoundError(`agent ${agentId} vanished during sync`);
-      return { detached, changed, fromVersion: v, toVersion: row.version };
+      return { detached, attached, changed, fromVersion: v, toVersion: row.version };
     });
+  }
+
+  /**
+   * Make sure a built-in skill exists in the workspace, by name. An existing
+   * skill with that name is returned untouched — whatever its body, paths or
+   * `enabled` — because the user may have edited it. A dry run creates nothing.
+   * Not part of the per-agent transaction: a crash after the insert leaves an
+   * unattached skill that the next sync attaches.
+   */
+  async ensureBuiltinSkill(
+    workspaceId: string,
+    def: BuiltinSkillDef,
+    opts: { dryRun?: boolean } = {},
+  ): Promise<{ id: string | null; status: 'created' | 'would-create' | 'existing' }> {
+    const repo = this.container.skillsRepo;
+    const existing = await repo.findByName(workspaceId, def.name);
+    if (existing) return { id: existing.id, status: 'existing' };
+    if (opts.dryRun) return { id: null, status: 'would-create' };
+    const row = await repo.insert({
+      workspaceId,
+      name: def.name,
+      description: def.description,
+      type: def.type,
+      source: 'manual',
+      body: def.body,
+      enabled: true,
+      paths: def.paths,
+    });
+    return { id: row.id, status: 'created' };
   }
 
   /**

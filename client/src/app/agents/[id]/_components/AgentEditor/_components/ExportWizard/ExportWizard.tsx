@@ -8,6 +8,7 @@ import { Button, ExportWizardSteps, Modal } from "@devdigest/ui";
 import type { Agent } from "@devdigest/shared";
 import { ApiError } from "@/lib/api";
 import { useCiInstall, useCiInstallations, useCiPreview, useValidateCiWorkflow } from "@/lib/hooks/ci";
+import { useAgentSkills, useSkills } from "@/lib/hooks/skills";
 import { useActiveRepo } from "@/lib/repo-context";
 import { ConfigureStep } from "./ConfigureStep";
 import { InstallStep } from "./InstallStep";
@@ -40,6 +41,11 @@ export function ExportWizard({ agent, request, onClose }: { agent: Agent; reques
   const installations = useCiInstallations(agent.id);
   const validate = useValidateCiWorkflow(agent.id);
   const install = useCiInstall(agent.id);
+  const attached = useAgentSkills(agent.id);
+  const allSkills = useSkills();
+  // Derived from query data: Applies to is ignored by the CI runner (AC-43).
+  const attachedIds = new Set((attached.data ?? []).map((l) => l.skill_id));
+  const hasScopedSkill = (allSkills.data ?? []).some((sk) => attachedIds.has(sk.id) && (sk.paths?.length ?? 0) > 0);
   const files = preview.data?.files ?? [];
   const providerBlocked = agent.provider !== "openrouter";
   // AC-10: known from the agent's installations, so the note shows before any preview is fetched.
@@ -123,6 +129,11 @@ export function ExportWizard({ agent, request, onClose }: { agent: Agent; reques
         </div>
       }
     >
+      {hasScopedSkill && (
+        <div role="status" style={s.notice("warn")}>
+          {t("exportWizard.scopedSkillsNote")}
+        </div>
+      )}
       <div style={s.stepper}>
         <ExportWizardSteps step={state.step} labels={STEP_KEYS.map((k) => t(`exportWizard.steps.${k}`))} />
       </div>

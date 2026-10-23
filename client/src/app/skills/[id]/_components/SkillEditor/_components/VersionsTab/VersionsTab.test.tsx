@@ -1,7 +1,8 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
-import type { Skill, SkillVersion } from "@devdigest/shared";
+import type { Skill } from "@devdigest/shared";
+import type { ScopedSkillVersion as SkillVersion } from "@devdigest/shared/contracts/skill-scope.js";
 import skillMessages from "../../../../../../../../messages/en/skills.json";
 import commonMessages from "../../../../../../../../messages/en/common.json";
 import { currentVersion } from "./helpers";
@@ -31,6 +32,8 @@ const v = (version: number, message: string | null): SkillVersion => ({
   body: `# body v${version}`,
   message,
   created_at: "2026-05-30T10:00:00.000Z",
+  // v3 is scoped, v2 unscoped, v1 predates the feature (null).
+  paths: version === 3 ? ["**/*.ts"] : version === 2 ? [] : null,
 });
 
 const HISTORY = [v(3, "Tightened the scope rule"), v(2, "Added a Tests dimension"), v(1, null)];
@@ -81,6 +84,13 @@ describe("VersionsTab", () => {
     renderTab();
     expect(screen.getByText("Tightened the scope rule")).toBeInTheDocument();
     expect(screen.getByText("Added a Tests dimension")).toBeInTheDocument();
+  });
+
+  it("shows each version's Applies to, All files for an empty or missing list", () => {
+    useVersionDiff.mockReturnValue(idleDiff);
+    renderTab();
+    expect(screen.getByText("**/*.ts")).toBeInTheDocument();
+    expect(screen.getAllByText(skillMessages.appliesTo.all)).toHaveLength(2);
   });
 
   it("falls back for a version written before notes existed", () => {

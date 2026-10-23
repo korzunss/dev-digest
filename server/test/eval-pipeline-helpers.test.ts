@@ -199,7 +199,7 @@ describe('pool', () => {
 });
 
 describe('skill helpers', () => {
-  const skill = { id: 'sk1', name: 'My Skill', version: 3, enabled: true, rendered: '### Skill: My Skill\n\nBODY' };
+  const skill = { id: 'sk1', name: 'My Skill', version: 3, enabled: true, rendered: '### Skill: My Skill\n\nBODY', paths: [] as string[] };
 
   it('builds a skill snapshot with the fixed harness prompt and the skill as the only skill', () => {
     const snap = skillSnapshot(skill, { provider: 'openai', model: 'gpt-4.1' });

@@ -127,5 +127,8 @@ export const s = {
   footer: { display: "flex", gap: 10 } satisfies CSSProperties,
   tabBody: { paddingTop: 18 } satisfies CSSProperties,
   emptyNote: { fontSize: 13, color: "var(--text-muted)", padding: 16 } satisfies CSSProperties,
+  groupRow: { padding: "8px 0", borderBottom: "1px solid var(--border)", fontSize: 13 } satisfies CSSProperties,
+  groupHead: { display: "flex", gap: 8, alignItems: "center" } satisfies CSSProperties,
+  groupLine: { display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 } satisfies CSSProperties,
   noToolCalls: { fontSize: 13, color: "var(--text-muted)" } satisfies CSSProperties,
 } as const;

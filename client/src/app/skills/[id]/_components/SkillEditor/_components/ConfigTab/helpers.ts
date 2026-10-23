@@ -1,3 +1,5 @@
+import { textToPaths } from "../../../../../../../lib/skills/applies-to";
+
 /** Fallback shown on the file chip before a new skill has been named. */
 const UNNAMED = "skill";
 
@@ -15,4 +17,9 @@ export function fileBaseName(name: string): string {
 /** Whether the local body differs from the saved one — what `unsaved` means. */
 export function isDirty(local: string, saved: string): boolean {
   return local !== saved;
+}
+
+/** Whether the Applies to text differs from the stored globs (blank lines ignored). */
+export function isPathsDirty(text: string, saved: readonly string[]): boolean {
+  return textToPaths(text).join("\n") !== saved.join("\n");
 }

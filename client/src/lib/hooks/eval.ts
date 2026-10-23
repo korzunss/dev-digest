@@ -50,6 +50,7 @@ import type {
   EvalSuiteRun,
   EvalSuiteRunDetail,
 } from "@devdigest/shared";
+import type { EvalSkillSuiteCase } from "@devdigest/shared/contracts/skill-scope.js";
 
 /** Poll interval while a suite run is in progress server-side. */
 const RUN_POLL_MS = 2000;
@@ -201,7 +202,7 @@ export function useStartEvalRun() {
 export function useSkillEvalCases(skillId: string | null | undefined) {
   return useQuery({
     queryKey: skillCasesKey(skillId),
-    queryFn: () => api.get<EvalSuiteCase[]>(`/skills/${skillId}/eval-cases`),
+    queryFn: () => api.get<EvalSkillSuiteCase[]>(`/skills/${skillId}/eval-cases`),
     enabled: !!skillId,
   });
 }
@@ -210,7 +211,7 @@ export function useSaveSkillEvalCase() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ skillId, body }: { skillId: string; body: EvalCaseSaveBody }) =>
-      api.post<EvalSuiteCase>(`/skills/${skillId}/eval-cases`, body),
+      api.post<EvalSkillSuiteCase>(`/skills/${skillId}/eval-cases`, body),
     onSuccess: (_case, { skillId }) => qc.invalidateQueries({ queryKey: skillCasesKey(skillId) }),
   });
 }

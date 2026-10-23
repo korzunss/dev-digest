@@ -5,7 +5,8 @@
 import React from "react";
 import { useTranslations } from "next-intl";
 import { Badge } from "@devdigest/ui";
-import type { RunTrace, FindingRecord } from "@devdigest/shared";
+import type { FindingRecord } from "@devdigest/shared";
+import type { RunTraceWithGroups } from "@devdigest/shared/contracts/skill-scope.js";
 import { formatCostUsd } from "@/lib/format-cost";
 import { PROMPT_COLORS } from "../../constants";
 import { formatSeconds, formatTokens } from "../../helpers";
@@ -14,9 +15,10 @@ import { TraceSection } from "../TraceSection";
 import { ToolCallRow } from "../ToolCallRow";
 import { PromptBlock } from "../PromptBlock";
 import { FindingsSection } from "../FindingsSection";
+import { PromptGroups } from "../PromptGroups";
 import { Row, Stat } from "../atoms";
 
-export function TraceBody({ trace, findings }: { trace: RunTrace; findings: FindingRecord[] }) {
+export function TraceBody({ trace, findings }: { trace: RunTraceWithGroups; findings: FindingRecord[] }) {
   const t = useTranslations("runs");
   const stats = trace.stats;
   // Nullish on traces written before skips were recorded: renders nothing.
@@ -121,6 +123,10 @@ export function TraceBody({ trace, findings }: { trace: RunTrace; findings: Find
           <PromptBlock label={t("trace.prompt.callers")} text={trace.prompt_assembly.callers} color={PROMPT_COLORS.callers} />
         )}
         <PromptBlock label={t("trace.prompt.user")} text={trace.prompt_assembly.user} color={PROMPT_COLORS.user} />
+      </TraceSection>
+
+      <TraceSection icon="FileText" title={t("trace.groups.title")}>
+        <PromptGroups trace={trace} />
       </TraceSection>
 
       <TraceSection

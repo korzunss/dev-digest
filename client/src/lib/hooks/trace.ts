@@ -7,7 +7,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api";
-import type { RunTrace } from "@devdigest/shared";
+import type { RunTraceWithGroups } from "@devdigest/shared/contracts/skill-scope.js";
 
 /** How often a still-missing trace is re-requested while the drawer waits for it. */
 export const TRACE_POLL_MS = 2000;
@@ -25,7 +25,7 @@ export function useRunTrace(
   const pollUntil = opts?.pollUntil ?? null;
   return useQuery({
     queryKey: ["run-trace", runId],
-    queryFn: () => api.get<RunTrace>(`/runs/${runId}/trace`),
+    queryFn: () => api.get<RunTraceWithGroups>(`/runs/${runId}/trace`),
     enabled: !!runId && enabled,
     retry: false,
     refetchInterval: (query) =>

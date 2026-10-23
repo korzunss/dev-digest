@@ -6,6 +6,7 @@ import { parseUnifiedDiff } from '../src/adapters/git/diff-parser.js';
 import { EVAL_SKILL_HARNESS_PROMPT } from '../src/modules/eval/constants.js';
 import { skillSnapshot } from '../src/modules/eval/pipeline-helpers.js';
 import { runCase, type CaseRunnerDeps } from '../src/modules/eval/pipeline-runner.js';
+import { createPathMatcher } from '../src/modules/_shared/skill-paths.js';
 
 const DIFF = [
   'diff --git a/src/a.ts b/src/a.ts',
@@ -26,7 +27,7 @@ const deps: CaseRunnerDeps = {
   now: () => new Date('2026-01-01T00:00:00Z'),
 };
 
-const skill = { id: 'sk1', name: 'Null Checks', version: 5, enabled: true, rendered: '### Skill: Null Checks\n\nSKILL-ONLY-BODY' };
+const skill = { id: 'sk1', name: 'Null Checks', version: 5, enabled: true, rendered: '### Skill: Null Checks\n\nSKILL-ONLY-BODY', paths: [] as string[] };
 const review: Review = {
   verdict: 'comment',
   summary: 's',
@@ -52,6 +53,15 @@ describe('skill case run (real reviewPullRequest, mock LLM)', () => {
     expect(req).not.toContain('## PR intent');
     expect(r).toMatchObject({ status: 'passed', model: 'gpt-4.1', skill_version: 5 });
     expect(r.agent_version).toBeUndefined();
+  });
+
+  it('injects the skill under test even when its Applies to does not match the case diff (AC-41)', async () => {
+    const llm = new MockLLMProvider('openai', { structured: review });
+    const scopedSkill = { ...skill, paths: ['**/*.cs'] };
+    const snap = skillSnapshot(scopedSkill, { provider: 'openai', model: 'gpt-4.1' });
+    await runCase(snap, llm, { diff: DIFF }, [must], { ...deps, matchesPath: createPathMatcher() });
+    const req = JSON.stringify(llm.calls.filter((c) => c.method === 'completeStructured')[0]!.req);
+    expect(req).toContain('SKILL-ONLY-BODY');
   });
 
   it('scores in code: no extra model call (AC-62 #8)', async () => {
