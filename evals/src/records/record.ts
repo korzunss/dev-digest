@@ -82,6 +82,7 @@ export function record(label: string, data: RecordData): void {
       subagents: result.subagents,
       skills: result.skillsInvoked,
       reads: result.filesRead,
+      reads_missing: result.filesReadMissing,
       write_attempts: result.writeAttempts,
       files_changed: result.filesChanged,
       sdk_debug_log: result.debugLog,

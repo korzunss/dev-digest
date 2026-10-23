@@ -25,6 +25,8 @@ export interface Result {
   /** Skills activated via the Skill tool (workflow mode); name may be "plugin:skill". */
   skillsInvoked: string[];
   filesRead: string[];
+  /** Read paths dropped from `filesRead` because no such file exists in the session's tree (workflow runs). */
+  filesReadMissing?: string[];
   numTurns: number;
   isError: boolean;
   /**

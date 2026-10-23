@@ -11,7 +11,7 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, realpathSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdtempSync, realpathSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { REPO_ROOT } from "../artifacts/paths.js";
@@ -57,6 +57,25 @@ function pruneStale(): void {
   git(["worktree", "prune"]);
 }
 
+/**
+ * Does a Read path name a file that exists in the session's tree? A sandbox path or a REAL-repo
+ * path counts when the same repo-relative file exists in the worktree; anything else (a root the
+ * model guessed, e.g. `/server/…` or `/Users/x/projects/<memory-slug>/…`) does not, even though
+ * it may contain the expected substring.
+ */
+export function readHits(
+  path: string,
+  prefixes: string[],
+  repoRoot: string,
+  dir: string,
+  exists: (p: string) => boolean = existsSync,
+): boolean {
+  for (const root of [...prefixes, `${repoRoot}/`]) {
+    if (path.startsWith(root)) return exists(join(dir, path.slice(root.length)));
+  }
+  return false;
+}
+
 export interface Sandbox {
   /** Worktree root — the session's cwd. */
   dir: string;
@@ -64,6 +83,8 @@ export interface Sandbox {
   changedFiles(): string[];
   /** Rewrite sandbox paths in a string back to REPO_ROOT, so traces read like a normal run. */
   relocate(path: string): string;
+  /** True when a Read path names a file that exists in the worktree (see `readHits`). */
+  holds(path: string): boolean;
   /** Remove the worktree; also throws if the REAL repo gained a change during the session. */
   dispose(): void;
 }
@@ -81,6 +102,7 @@ export function createSandbox(): Sandbox {
     dir,
     changedFiles: () => status(dir).map((l) => l.slice(3)),
     relocate: (path) => prefixes.reduce((s, p) => s.split(p).join(`${REPO_ROOT}/`), path),
+    holds: (path) => readHits(path, prefixes, REPO_ROOT, dir),
     dispose: () => {
       try {
         git(["worktree", "remove", "--force", dir]);
