@@ -503,6 +503,12 @@ tree looks right in exactly the case the index is wrong.
 
 ## Recurring Errors & Fixes
 
+### 2026-10-23 — `expectFilesRead` passed on a read of a non-existent file under a guessed root
+**Symptom:** `server task follows the protocol…` looked flaky locally (passes on 2026-10-12, 10-20, 10-23), but 3 of its 4 passes read `server/insights/gotchas.md` at `/Users/sergey/.projects/www-ai-dev-digest/…` or `/Users/sergey/projects/www-ai-dev-digest/…`, which do not exist. A same-tree rerun (`fda3b034` vs `80802f29`, `git diff` empty) went 0/15.
+**Cause:** the trace recorded every `Read` input path and `case.ts` matched it by substring, so a failed read of an invented path satisfied the expectation. Real state on local `claude-haiku-4-5`: ~1 pass in ~30; CI (DeepSeek V4 Flash) passes it.
+**Rule:** `workflowTask` counts only reads of files that exist in the worktree (`readHits` in `evals/src/runtime/sandbox.ts`, also for `stopWhen`); dropped ones are in the record's `trace.reads_missing`. Before calling a workflow case a regression, check its pass history in `results/records.jsonl` for reads outside the repo root, and compare on the CI model.
+**Evidence:** `evals/src/runtime/sandbox.test.ts` · `evals/src/tasks.ts` `workflowTask` · `evals/docs/backlog.md` §6
+
 ### 2026-10-23 — a workflow eval session guesses the repo root from the auto-memory dir name and reads non-existent paths
 **Symptom:** `client UI-string task…` passed 3/5. Failing sessions read `/Users/sergey/projects/www-ai-dev-digest/client/insights/gotchas.md`, `/client/insights/gotchas.md` or `~/.claude/projects/-Users-sergey--projects-www-ai-dev-digest/client/AGENTS.md`; one answered "give me the correct path to the project", naming its temp worktree (`/private/var/folders/…/devdigest-eval-…`).
 **Cause:** `workflowTask` runs the session in a throwaway worktree, but the SDK still injects the user's auto-memory, keyed to the real repo path; the model reconciles the two by inventing a root. Separately, on a read-only question it opens the package `AGENTS.md` and skips the gotchas file.

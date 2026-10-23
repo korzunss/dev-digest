@@ -78,11 +78,18 @@ single run.
   non-existent `server/src/modules/checkout/*` (does not `git apply --check`);
   `agents/security-reviewer/fixtures/repos-routes-rename.diff` has a hunk header 4 lines off.
 
-## 6. Workflow tier: `server task follows the protocol…` fails 0/5 on `main`
+## 6. Workflow tier: `server task follows the protocol…` is a known fail on local Haiku
 
-- **Since 2026-10-23.** At `80802f29` (`main`, no changes) `eval:repeat workflow -t "server task follows" -n 5`
-  → 0/5; the same with auto-memory off and with the read-only protocol sentence (0/5 each). The
-  session reads `server/src/adapters/secrets/local.ts` and `repo-intel/README.md` but never
-  `server/insights/gotchas.md`. Earlier full runs that day passed it (`fda3b034`, 2 runs). Find
-  what changed (model, case prompt, the always-loaded docs) before editing the harness; measure
-  with `eval:repeat -n 5` before/after. Until then the workflow tier in CI is red on this case.
+- **Not a regression.** Local runs (`subscription`, `claude-haiku-4-5`) since 2026-10-12: ~1 real
+  pass in ~30 (`results/records.jsonl`). The other "passes", including two on 2026-10-23
+  (`fda3b034`, whose tree equals `80802f29`), read `server/insights/gotchas.md` under a guessed
+  root (`/Users/<you>/projects/<memory-slug>/…`) that does not exist; the substring check counted
+  it. Fixed: `workflowTask` keeps only reads of files that exist in the worktree
+  (`readHits`, `src/runtime/sandbox.ts`); the rest go to the trace's `reads_missing`.
+- **CI is green on it.** The workflow tier in CI runs `openrouter` + `deepseek/deepseek-v4-flash`
+  (`.github/workflows/harness-evals-workflow.yml`), the reference model for this tier. On
+  Haiku the session answers the read-only `server/` question from the code and skips the gotchas
+  file; neither auto-memory off nor the read-only protocol sentence changed it (0/5 each).
+- **Open, not approved:** a harness change that makes Haiku follow the protocol here (e.g. the
+  "First step" line placement in `server/AGENTS.md`), measured with `eval:repeat -n 5`
+  before/after; or run the local workflow tier on the CI model.

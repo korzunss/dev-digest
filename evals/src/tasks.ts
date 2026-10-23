@@ -61,9 +61,13 @@ export async function workflowTask(prompt: string, opts: RunOptions = {}): Promi
   const box = createSandbox();
   let result: Result | undefined;
   try {
+    // A guessed root can contain an expected substring (`…/server/insights/gotchas.md` under a
+    // non-existent dir) and used to pass a case — only reads of existing files count, early stop included.
+    const stopWhen = opts.stopWhen;
     result = await runClaude(prompt, {
       allowedTools: WORKFLOW_ALLOWED_TOOLS,
       ...opts,
+      ...(stopWhen ? { stopWhen: (p) => stopWhen({ ...p, filesRead: p.filesRead.filter(box.holds) }) } : {}),
       cwd: box.dir,
       disallowedTools: WORKFLOW_DISALLOWED_TOOLS,
       blockTools: WORKFLOW_BLOCKED_TOOLS,
@@ -71,7 +75,8 @@ export async function workflowTask(prompt: string, opts: RunOptions = {}): Promi
     });
     result = {
       ...result,
-      filesRead: result.filesRead.map(box.relocate),
+      filesRead: result.filesRead.filter(box.holds).map(box.relocate),
+      filesReadMissing: result.filesRead.filter((p) => !box.holds(p)),
       // A path already under REPO_ROOT (not the worktree) means the session aimed at the real
       // repo by absolute path — flag it, since relocate() would otherwise make both look alike.
       writeAttempts: result.writeAttempts.map((w) =>

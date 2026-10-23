@@ -110,6 +110,11 @@ OPENROUTER_API_KEY=sk-or-... \
 pnpm eval:skills
 ```
 
+> **Workflow tier, local vs CI:** CI runs it on `deepseek/deepseek-v4-flash` (OpenRouter); a
+> local default run uses `claude-haiku-4-5`. On Haiku `server task follows the protocol…` is a
+> known fail (`docs/backlog.md` §6) — compare against CI with
+> `EVAL_BACKEND=openrouter EVAL_MODEL=deepseek/deepseek-v4-flash`.
+
 > **Gotcha:** always set `EVAL_MODEL` together with `EVAL_BACKEND=openrouter` — the default
 > `claude-haiku-4-5` is an Anthropic ID and OpenRouter won't find it. Use an OpenRouter slug.
 
