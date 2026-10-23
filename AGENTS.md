@@ -74,7 +74,9 @@ and the full table → `evals/README.md` (*Which change → which run*).
   (`grep '^### '`). Open a full `INSIGHTS.md` entry only when a gotcha item or a
   heading bears on the task. Name the entries that bear on the task (or say none
   do). They are accumulated session knowledge — treat them as high-confidence
-  guidance unless the code says otherwise.
+  guidance unless the code says otherwise. This holds for read-only tasks too
+  (a question, "show which files to change", "don't edit"): read the gotchas
+  file first, even when the package's `AGENTS.md` is already open.
 - **When wrapping up**, run the `engineering-insights` skill: re-read that file,
   and append only what is genuinely new and non-obvious; the skill then brings
   the package's `insights/gotchas.md` in step. If the session produced

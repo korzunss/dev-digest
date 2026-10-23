@@ -503,6 +503,12 @@ tree looks right in exactly the case the index is wrong.
 
 ## Recurring Errors & Fixes
 
+### 2026-10-23 — a workflow eval session guesses the repo root from the auto-memory dir name and reads non-existent paths
+**Symptom:** `client UI-string task…` passed 3/5. Failing sessions read `/Users/sergey/projects/www-ai-dev-digest/client/insights/gotchas.md`, `/client/insights/gotchas.md` or `~/.claude/projects/-Users-sergey--projects-www-ai-dev-digest/client/AGENTS.md`; one answered "give me the correct path to the project", naming its temp worktree (`/private/var/folders/…/devdigest-eval-…`).
+**Cause:** `workflowTask` runs the session in a throwaway worktree, but the SDK still injects the user's auto-memory, keyed to the real repo path; the model reconciles the two by inventing a root. Separately, on a read-only question it opens the package `AGENTS.md` and skips the gotchas file.
+**Rule:** eval sessions run with `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1` (set in `evals/src/runtime/env.ts`; memory also differs per machine and is absent in CI). The root session protocol says read-only tasks read the gotchas file first too. Measured on `client UI-string`, 5 runs each: none 3/5 · protocol only 3/5 · memory off 4/5 · both 5/5 (gotchas read first in all 5). It did not fix `server task follows…` (0/5 on `main` too, `evals/docs/backlog.md` §6).
+**Evidence:** `evals/results/repeat-{before,after,nomem,nomem-proto}.json` (local) · `evals/src/tasks.ts` `workflowTask` · `evals/src/runtime/env.ts`
+
 ### 2026-10-19 — `sdd.sh handback-check` logs "unknown" for a full report whose table is headed `| Step |`
 **Symptom:** the G1 implementer report had a complete step table, Done-when outputs and a Handoff, but `handback-check --log` wrote `handback: unknown G1`.
 **Cause:** the check is a literal `grep -qF '| Step / gap |'` (`sdd.sh` `cmd_handback_check`). The implementer template doesn't fix that header, so `| Step |` fails it.

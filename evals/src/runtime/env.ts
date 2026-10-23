@@ -25,6 +25,11 @@ const BACKEND = process.env.EVAL_BACKEND ?? "subscription";
  */
 export function subscriptionEnv(): Record<string, string> {
   const env = { ...process.env } as Record<string, string>;
+  // No auto-memory: the user's memory is keyed to the real repo path, while a workflow session
+  // runs in a temp worktree, so the model guessed repo roots from the memory dir's name and read
+  // non-existent paths (`client UI-string` case, 3/5 → 4/5 with it off). It also differs per
+  // machine and is absent in CI, so evals would not measure the same harness.
+  env.CLAUDE_CODE_DISABLE_AUTO_MEMORY = "1";
 
   if (BACKEND === "openrouter") {
     const key = process.env.OPENROUTER_API_KEY;
