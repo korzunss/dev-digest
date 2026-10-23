@@ -77,3 +77,12 @@ single run.
 - Fixture hygiene: `agents/architecture-reviewer/fixtures/checkout-service.diff` targets
   non-existent `server/src/modules/checkout/*` (does not `git apply --check`);
   `agents/security-reviewer/fixtures/repos-routes-rename.diff` has a hunk header 4 lines off.
+
+## 6. Workflow tier: `server task follows the protocol…` fails 0/5 on `main`
+
+- **Since 2026-10-23.** At `80802f29` (`main`, no changes) `eval:repeat workflow -t "server task follows" -n 5`
+  → 0/5; the same with auto-memory off and with the read-only protocol sentence (0/5 each). The
+  session reads `server/src/adapters/secrets/local.ts` and `repo-intel/README.md` but never
+  `server/insights/gotchas.md`. Earlier full runs that day passed it (`fda3b034`, 2 runs). Find
+  what changed (model, case prompt, the always-loaded docs) before editing the harness; measure
+  with `eval:repeat -n 5` before/after. Until then the workflow tier in CI is red on this case.
