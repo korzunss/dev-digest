@@ -102,4 +102,4 @@ migrated.
 | [014 — Export to CI](014-export-to-ci.md) | implemented | shared, reviewer-core (consumed, unchanged), server, client, agent-runner (new) |
 | [015 — Agent Performance dashboard + agent Stats tab](015-agent-performance.md) | implemented | shared, server, client |
 | [016 — Agent Stats tab breakdown panels](016-agent-stats-breakdown.md) | implemented | shared, server, client |
-| [017 — Stack-scoped review guidance](017-stack-scoped-review-guidance.md) | approved | shared, reviewer-core, server, client |
+| [017 — Stack-scoped review guidance](017-stack-scoped-review-guidance.md) | implemented | shared, reviewer-core, server, client |

@@ -1,5 +1,5 @@
 # Development Plan: Stack-scoped review guidance
-Status: in-progress
+Status: done
 Save as: docs/plans/44-stack-scoped-review-guidance.md
 Spec: specs/017-stack-scoped-review-guidance.md
 Execution: multi-agent

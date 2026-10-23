@@ -1,6 +1,6 @@
 # Spec: Stack-scoped review guidance
 Spec ID: SPEC-17
-Status: approved
+Status: implemented
 Supersedes: none
 
 Idea brief: [docs/ideas/11-stack-scoped-review-guidance.md](../docs/ideas/11-stack-scoped-review-guidance.md) (Opt1 + Opt4; pass-1 answers B1–B8 recorded there under `## Choice recorded`).
@@ -204,3 +204,4 @@ None. Q1 was answered as AC-29a and Q2 as AC-36a [user: answers to Q1 and Q2, 20
 - 2026-10-22 · Goals, Acceptance criteria (new AC-18a, AC-30a; AC-35, AC-36a), Edge cases, NFR (runner behaviour and bundle), Inputs, Untrusted inputs, Module interactions · GAP1 stacked runner PR rebuilds dist/; GAP2 Agent Stats skill usage means injected; GAP3 inherited context docs follow the injected skill; GAP4 built-in skill node-typescript-review, source manual · plan 44 GAP1–GAP4 · user
 - 2026-10-22 · Status · re-approved after plan 44 GAP1–GAP4 (Open questions empty) · user approval · user
 - 2026-10-23 · Acceptance criteria (AC-35 text) · the built-in skill holds only general JS/TS pitfalls, no DevDigest-specific stack (Fastify, Drizzle, `@devdigest/shared`, testcontainers), because its globs match every JS/TS repo · plan 44 G5 review · user
+- 2026-10-23 · Status · implemented (plan 44 done: verification complete with the user's sign-offs D7, R3, R4, D41, DC2) · plan 44 · main session
