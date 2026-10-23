@@ -64,6 +64,12 @@ _Nothing yet._
 
 ## Recurring Errors & Fixes
 
+### 2026-10-23 — a new seeded row pushes a list card below the CI viewport; `find text … click` then silently does nothing
+**Symptom:** flow 09 failed twice on GitHub CI at `wait --url /skills/` (`Wait timed out after 30000ms`) right after `find text secret-leakage-gate click`, while the preceding `wait --text secret-leakage-gate` passed. Locally all 12 flows passed on `next dev`, on `next build && next start`, and with agent-browser 0.38.1 and 0.39.2 (the version CI installs).
+**Cause:** plan 44 seeded one more skill (`node-typescript-review`), which shifted the skills grid; the CI failure screenshot (`e2e-failure` artifact, viewport ~1280×577) shows the target card in the third row, below the fold. `wait --text` passes on DOM presence; the click on the off-viewport card did not trigger its `onClick`. The local runs have a viewport where the card stays reachable, so the failure never reproduced.
+**Rule:** a flow that clicks one item of a seeded list narrows the list first (type its name into the page's search box with `find placeholder "<placeholder>" fill "<name>"`), so the step doesn't depend on seed count or viewport. When a seed change adds rows to a list a flow clicks into, check that flow before pushing. On a CI-only failure, download the `e2e-failure` artifact before guessing: the screenshot shows the viewport.
+**Evidence:** `e2e/specs/09-skills.flow.json` (the "filter the rail" step) · PR #44: red at `31479039`/`4773ab6a` → green at `4f32aa7a` · `server/src/db/seed-skills.ts` `NODE_TYPESCRIPT_SKILL`
+
 ### 2026-09-17 — flows 02/04/05 fail locally but pass in CI
 
 **Symptom:** the suite is green in CI and red on a developer machine, failing on

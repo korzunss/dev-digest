@@ -59,6 +59,12 @@ write-up here. That keeps `AGENTS.md` short without losing the reasoning.
 
 ## What Works
 
+### 2026-10-23 — a stacked runner-bundle PR: merge it into the feature branch first, then merge the feature PR with a merge commit
+**Symptom:** plan 44 put the `agent-runner/dist/index.js` rebuild in its own PR (#45, base = the feature branch), assuming both PRs would be green. The feature PR #44 stayed red on `agent-runner / tests`: its last step, `git diff --exit-code -- dist/index.js`, rebuilt the bundle from the changed reviewer-core/shared code and compared it with the stale committed one.
+**Cause:** the freshness check (2026-10-15 entry) runs on every PR touching `reviewer-core/**` or `server/src/vendor/shared/**`, so the feature PR cannot be green without the rebuilt bundle on its own branch.
+**Rule:** when a plan keeps the runner rebuild in a separate PR, base that PR on the feature branch and merge it **into the feature branch first**. The feature PR then carries the bundle as its own commit and turns green. Merge the feature PR into `main` with a merge commit or rebase, not squash, so the runner commit stays separate. Any later commit on the feature branch that touches `reviewer-core/` or `shared` needs another rebuild. Don't write "both PRs stay green" into a spec or plan.
+**Evidence:** `.github/workflows/agent-runner.yml` (last step) · PR #44 red at `31479039` → `agent-runner` green after #45 merged (`4773ab6a`) · `docs/plans/44-stack-scoped-review-guidance.md` GAP1, DC2
+
 ### 2026-10-12 — commit one finished plan while another plan's edits sit in the same package
 **Symptom:** plan 34 was signed off while plan 35 had already edited three `client/` files (the vendored contract copy, `TurnIntoEvalCase.tsx`, one line of a plan-34 test). Staging only plan 34's files would be denied by the test gate, and the plan-34 test no longer typechecked without plan 35's contract.
 **Cause:** `.claude/hooks/test-gate.sh` denies a commit when a touched package still has untracked files or unstaged edits (the tests would see a different tree than the commit), so a package cannot be committed in parts.
