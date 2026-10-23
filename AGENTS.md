@@ -207,3 +207,5 @@ and the full table → `evals/README.md` (*Which change → which run*).
   `reviewer-core/docs/pipeline.md`, `e2e/docs/flows.md`
 - Approved Development Plans → `docs/plans/README.md`
 - Idea briefs → `docs/ideas/README.md`
+- Local-only notes (gitignored, may be absent): `docs/_local/` — e.g. `backlog.md`,
+  known bugs and deferred work incl. unfixed security items. Never commit or quote them in a PR.

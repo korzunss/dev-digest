@@ -33,3 +33,6 @@ server/reports/
 
 # /pr-self-review local gate state (per developer)
 .pr-self-review.json
+
+# local-only docs (security-sensitive backlogs, private notes) — never pushed
+docs/_local/
