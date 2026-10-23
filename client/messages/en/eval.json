@@ -331,6 +331,7 @@
     "disabledNote": "This skill is disabled. Its own suite still runs, but agents will not use it.",
     "progress": "Running {done} / {total}",
     "ranOn": "ran on v{version}",
+    "outsideAppliesTo": "Outside Applies to",
     "confirmTitle": "Run all evals?",
     "confirmBody": "{count, plural, one {# case} other {# cases}} will run on the model you pick. This calls the model and costs money.",
     "confirmRun": "Run",

@@ -6,6 +6,7 @@ import type {
   Provider,
   UnifiedDiff,
 } from '@devdigest/shared';
+import type { PathMatcher, ScopedSkillInput } from '@devdigest/reviewer-core';
 import type { reviewPullRequest } from '@devdigest/reviewer-core';
 import type { EvalPipelineRepository, SuiteCaseRow } from './repository/pipeline.repo.js';
 
@@ -38,6 +39,8 @@ export interface EvalAgentSkill {
   version: number;
   enabled: boolean;
   rendered: string;
+  /** Applies to globs; empty = every file. */
+  paths: string[];
 }
 
 export interface EvalAgentsPort {
@@ -108,6 +111,12 @@ export interface EvalAgentSnapshot {
   skills: EvalSkillRef[];
   /** Rendered skill bodies, in attach order. */
   rendered: string[];
+  /**
+   * The same skills with their Applies to globs, set for an agent snapshot so a
+   * case routes skills like a live review (AC-40). A skill-case snapshot leaves
+   * it unset: the skill under test is always injected (AC-41).
+   */
+  scoped?: ScopedSkillInput[];
 }
 
 /** A skill as the eval pipeline needs it. */
@@ -117,6 +126,8 @@ export interface EvalSkill {
   version: number;
   enabled: boolean;
   rendered: string;
+  /** Applies to globs; empty = every file. */
+  paths: string[];
 }
 
 export interface EvalSkillsPort {
@@ -144,6 +155,8 @@ export interface EvalSkillSuiteServiceDeps {
   >;
   countTokens?: (s: string) => number;
   estimateCost?: (model: string, tokensIn: number, tokensOut: number) => number | null;
+  /** Glob matcher for Applies to; absent = every skill counts as unscoped. */
+  matchesPath?: PathMatcher;
   now: () => Date;
 }
 
@@ -164,5 +177,7 @@ export interface EvalPipelineServiceDeps {
   >;
   countTokens?: (s: string) => number;
   estimateCost?: (model: string, tokensIn: number, tokensOut: number) => number | null;
+  /** Glob matcher for Applies to; absent = every skill counts as unscoped. */
+  matchesPath?: PathMatcher;
   now: () => Date;
 }

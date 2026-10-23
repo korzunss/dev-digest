@@ -9,7 +9,7 @@ import { describe, it, expect, afterEach, vi } from "vitest";
 import { render, screen, cleanup, fireEvent, within } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import type { Skill } from "@devdigest/shared";
+import type { ScopedSkill } from "@devdigest/shared/contracts/skill-scope.js";
 import messages from "../../../../../../messages/en/skills.json";
 import evalMessages from "../../../../../../messages/en/eval.json";
 import common from "../../../../../../messages/en/common.json";
@@ -70,7 +70,7 @@ vi.mock("next/navigation", () => ({
 import { SkillEditor } from "./SkillEditor";
 import { DEFAULT_TAB, TABS, VALID_TABS } from "./constants";
 
-const SKILL: Skill = {
+const SKILL: ScopedSkill = {
   id: "sk1",
   name: "secret-leakage-gate",
   description: "Flag hardcoded credentials before they reach main.",
@@ -79,6 +79,7 @@ const SKILL: Skill = {
   body: "# Rule\n\nNo **sk_live** keys.",
   enabled: true,
   version: 3,
+  paths: [],
   evidence_files: null,
   agent_count: 2,
   pull_rate: 0.4,
@@ -87,7 +88,7 @@ const SKILL: Skill = {
 
 afterEach(cleanup);
 
-function renderEditor(tab: string, onTab = vi.fn(), skill: Skill = SKILL) {
+function renderEditor(tab: string, onTab = vi.fn(), skill: ScopedSkill = SKILL) {
   render(
     <NextIntlClientProvider locale="en" messages={{ skills: messages, eval: evalMessages, common, agentPerformance: perfMessages }}>
       <QueryClientProvider client={new QueryClient()}>

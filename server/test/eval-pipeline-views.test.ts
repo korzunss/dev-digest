@@ -202,7 +202,7 @@ describe('EvalPipelineService run on evals (plan 35)', () => {
   });
 
   function make(opts: { skill?: Partial<EvalSkill>; using: string[]; agents: EvalAgent[]; cases: Record<string, number>; noKey?: string[] }) {
-    const skill: EvalSkill = { id: 'sk', name: 'S', version: 1, enabled: true, rendered: 'B', ...opts.skill };
+    const skill: EvalSkill = { id: 'sk', name: 'S', version: 1, enabled: true, rendered: 'B', paths: [], ...opts.skill };
     const deps = {
       repo: {
         countCases: async (_ws: string, o: { agentId: string }) => opts.cases[o.agentId] ?? 0,

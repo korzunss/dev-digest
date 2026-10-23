@@ -225,6 +225,13 @@
       "when": 1792069567750,
       "tag": "0031_dry_vision",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1792678688292,
+      "tag": "0032_sudden_wolfsbane",
+      "breakpoints": true
     }
   ]
 }

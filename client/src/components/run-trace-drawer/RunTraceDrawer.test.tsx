@@ -132,3 +132,37 @@ describe("Run trace — project context (spec 008)", () => {
     errors.mockRestore();
   });
 });
+
+describe("Run trace — review calls (spec 017)", () => {
+  it("lists each stored group with its files and skills, and marks a skipped one", () => {
+    renderWithIntl(
+      <TraceBody
+        trace={{
+          ...TRACE,
+          prompt_groups: [
+            { label: "group 1", files: ["src/a.ts"], skills: [{ name: "node-typescript-review", version: 2 }], skipped: false },
+            { label: "group 2", files: ["docs/x.md"], skills: [], skipped: true },
+          ],
+        }}
+        findings={[]}
+      />,
+    );
+    const groups = screen.getAllByTestId("prompt-group");
+    expect(groups).toHaveLength(2);
+    expect(screen.getByText("src/a.ts")).toBeInTheDocument();
+    expect(screen.getByText("node-typescript-review v2")).toBeInTheDocument();
+    expect(screen.getByText("skipped")).toBeInTheDocument();
+  });
+
+  it("shows one legacy group for a trace without prompt_groups", () => {
+    renderWithIntl(
+      <TraceBody
+        trace={{ ...TRACE, prompt_assembly: { ...TRACE.prompt_assembly, skills: "### Skill: secret-gate\nbody" }, tool_calls: [] }}
+        findings={[]}
+      />,
+    );
+    expect(screen.getAllByTestId("prompt-group")).toHaveLength(1);
+    expect(screen.getAllByText("All changed files").length).toBeGreaterThan(0);
+    expect(screen.getByText("secret-gate")).toBeInTheDocument();
+  });
+});

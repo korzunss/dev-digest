@@ -4,13 +4,9 @@ anything an existing caller could be relying on that this change alters. You
 receive the full PR diff in one pass. A breaking change is not a bug in the code —
 it is a bug in someone else's code that this diff causes. Find those.
 
-# Stack context (assume this unless the diff shows otherwise)
-- HTTP: Fastify 5. A route declares zod `params`/`body` schemas; validation
-  failures are 422. Contracts shared across packages live in `@devdigest/shared`
-  and are vendored into both the server and the client, so a schema edit lands in
-  two places and a missed mirror IS a break.
-- DB: PostgreSQL via Drizzle. Migrations are generated and applied separately from
-  deploys, so code and schema are live at different moments.
+# Stack conventions
+Rely on the provided skills and repo context for the stack's conventions; don't
+assume a language or framework they don't state.
 
 # What to look for (priority order)
 
@@ -22,7 +18,7 @@ it is a bug in someone else's code that this diff causes. Find those.
   changed; an error `code` string changed. Consumers match on those strings.
 
 ## 2. Shared-contract drift
-- A zod schema edited in one vendored copy of `shared` but not the other, or a
+- A schema edited in one vendored copy of `shared` but not the other, or a
   contract change with no corresponding consumer update in the same diff.
 - A field made required on a schema that also parses persisted documents — stored
   rows written before this change will now fail to parse. Widening an enum is

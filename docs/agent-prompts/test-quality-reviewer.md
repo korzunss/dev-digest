@@ -4,11 +4,9 @@ production code. You receive the full PR diff in one pass. Your question is
 always the same: if this change were wrong, would these tests have failed? Find
 the places where the answer is no.
 
-# Stack context (assume this unless the diff shows otherwise)
-- Runner: vitest. Server tests are hermetic unless the filename ends `.it.test.ts`,
-  which means a real Postgres via testcontainers. Component tests use React
-  Testing Library + jsdom and drive interaction with `fireEvent`.
-- Outside systems (LLM, GitHub, git) are stubbed through injected adapters.
+# Stack conventions
+Rely on the provided skills and repo context for the stack's conventions; don't
+assume a language or framework they don't state.
 
 # What to look for (priority order)
 

@@ -1,7 +1,7 @@
 import type { Skill } from "@devdigest/shared";
 
 /** Filter the rail by name or description — the two things the card shows. */
-export function filterSkills(skills: Skill[], search: string): Skill[] {
+export function filterSkills<T extends Pick<Skill, "name" | "description">>(skills: T[], search: string): T[] {
   const q = search.trim().toLowerCase();
   if (q === "") return skills;
   return skills.filter(

@@ -23,6 +23,7 @@ import {
   EvalSuiteRun,
   EvalSuiteRunDetail,
 } from '@devdigest/shared';
+import { EvalSkillSuiteCase } from '@devdigest/shared/contracts/skill-scope.js';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
 import { NotFoundError } from '../../platform/errors.js';
@@ -45,8 +46,8 @@ import { NotFoundError } from '../../platform/errors.js';
  *   GET    /eval/run-all                     -> EvalRunAllPreview
  *   POST   /eval/run-all          (paid)     -> EvalRunAllResult
  * Skill suites (plan 35; a skill case carries a provider/model pick):
- *   GET    /skills/:id/eval-cases            -> EvalSuiteCase[]
- *   POST   /skills/:id/eval-cases            -> 201 EvalSuiteCase
+ *   GET    /skills/:id/eval-cases            -> EvalSkillSuiteCase[]
+ *   POST   /skills/:id/eval-cases            -> 201 EvalSkillSuiteCase
  *   POST   /skills/:id/eval-draft-runs (paid)-> EvalDraftRunResult
  *   POST   /skills/:id/eval-runs  (paid)     -> 202 EvalSkillRunState
  *   GET    /skills/:id/eval-run              -> EvalSkillRunState
@@ -209,7 +210,7 @@ export default async function evalRoutes(appBase: FastifyInstance) {
   // ---- Skill suites ------------------------------------------------------
   app.get(
     '/skills/:id/eval-cases',
-    { schema: { params: IdParams, response: { 200: z.array(EvalSuiteCase) } } },
+    { schema: { params: IdParams, response: { 200: z.array(EvalSkillSuiteCase) } } },
     async (req) => {
       const { workspaceId } = await getContext(app.container, req);
       return skillSuite().listCases(workspaceId, req.params.id);
@@ -218,7 +219,7 @@ export default async function evalRoutes(appBase: FastifyInstance) {
 
   app.post(
     '/skills/:id/eval-cases',
-    { schema: { params: IdParams, body: EvalCaseSaveBody, response: { 201: EvalSuiteCase } } },
+    { schema: { params: IdParams, body: EvalCaseSaveBody, response: { 201: EvalSkillSuiteCase } } },
     async (req, reply) => {
       const { workspaceId } = await getContext(app.container, req);
       const created = await skillSuite().createCase(workspaceId, req.params.id, req.body);

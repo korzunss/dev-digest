@@ -78,8 +78,8 @@ export class EvalPipelineService {
   constructor(private readonly deps: EvalPipelineServiceDeps) {}
 
   private get runner(): CaseRunnerDeps {
-    const { review, parseDiff, callOptions, countTokens, estimateCost, now } = this.deps;
-    return { review, parseDiff, callOptions, countTokens, estimateCost, now };
+    const { review, parseDiff, callOptions, countTokens, estimateCost, matchesPath, now } = this.deps;
+    return { review, parseDiff, callOptions, countTokens, estimateCost, matchesPath, now };
   }
 
   // ===========================================================================
@@ -104,6 +104,7 @@ export class EvalPipelineService {
       version: agent.version,
       skills: skills.map((s) => ({ id: s.id, name: s.name, version: s.version })),
       rendered: skills.map((s) => s.rendered),
+      scoped: skills.map((s) => ({ id: s.id, name: s.name, version: s.version, body: s.rendered, paths: s.paths })),
     };
   }
 

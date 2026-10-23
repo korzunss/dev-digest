@@ -63,6 +63,7 @@ import {
   REVIEW_ROUTING,
 } from '../modules/reviews/constants.js';
 import { renderSkillBlock } from '../modules/skills/helpers.js';
+import { createPathMatcher } from '../modules/_shared/skill-paths.js';
 import { parseUnifiedDiff } from '../adapters/git/diff-parser.js';
 import { resolveFeatureModel } from '../modules/settings/feature-models.js';
 import { type DepGraph, DepCruiseGraph } from '../adapters/depgraph/index.js';
@@ -306,6 +307,7 @@ export class Container {
             version: l.skill.version,
             enabled: l.skill.enabled,
             rendered: renderSkillBlock(l.skill.name, l.skill.body),
+            paths: l.skill.paths,
           })),
         existingSkillIds: (workspaceId, ids) => skillsRepo.idsInWorkspace(workspaceId, ids),
         versionConfig: async (agentId, version) =>
@@ -325,6 +327,7 @@ export class Container {
       llm: (id) => this.llm(id),
       review: reviewPullRequest,
       parseDiff: parseUnifiedDiff,
+      matchesPath: createPathMatcher(),
       callOptions: {
         callDeadlineMs: EVAL_CASE_CALL_DEADLINE_MS,
         maxOutputTokens: REVIEW_MAX_OUTPUT_TOKENS,
@@ -358,6 +361,7 @@ export class Container {
               version: row.version,
               enabled: row.enabled,
               rendered: renderSkillBlock(row.name, row.body),
+              paths: row.paths,
             }
           : undefined;
       },
@@ -382,6 +386,7 @@ export class Container {
       llm: (id) => this.llm(id),
       review: reviewPullRequest,
       parseDiff: parseUnifiedDiff,
+      matchesPath: createPathMatcher(),
       callOptions: {
         callDeadlineMs: EVAL_CASE_CALL_DEADLINE_MS,
         maxOutputTokens: REVIEW_MAX_OUTPUT_TOKENS,

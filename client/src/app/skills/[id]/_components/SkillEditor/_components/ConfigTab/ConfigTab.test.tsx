@@ -10,18 +10,22 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { render, screen, cleanup, fireEvent, within } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
-import type { Skill } from "@devdigest/shared";
+import type { ScopedSkill } from "@devdigest/shared/contracts/skill-scope.js";
+import { ApiError } from "../../../../../../../lib/api";
 import messages from "../../../../../../../../messages/en/skills.json";
 import common from "../../../../../../../../messages/en/common.json";
 import { ToastProvider } from "../../../../../../../lib/toast";
 
 const updateMutate = vi.fn();
+// The 422 the server answers for a rejected glob; null = no error.
+let updateError: Error | null = null;
 const deleteMutate = vi.fn();
 const routerPush = vi.fn();
 
 vi.mock("../../../../../../../lib/hooks/skills", () => ({
   useUpdateSkill: () => ({
     mutate: updateMutate,
+    error: updateError,
     isPending: false,
     isSuccess: false,
     data: undefined,
@@ -34,9 +38,9 @@ vi.mock("next/navigation", () => ({
 }));
 
 import { ConfigTab } from "./ConfigTab";
-import { fileBaseName, isDirty } from "./helpers";
+import { fileBaseName, isDirty, isPathsDirty } from "./helpers";
 
-const SKILL: Skill = {
+const SKILL: ScopedSkill = {
   id: "sk1",
   name: "secret-leakage-gate",
   description: "Flag hardcoded credentials before they reach main.",
@@ -45,6 +49,7 @@ const SKILL: Skill = {
   body: "# Rule\nNo sk_live keys.",
   enabled: true,
   version: 3,
+  paths: [],
   evidence_files: null,
   agent_count: null,
   pull_rate: null,
@@ -54,11 +59,12 @@ const SKILL: Skill = {
 afterEach(() => {
   cleanup();
   updateMutate.mockReset();
+  updateError = null;
   deleteMutate.mockReset();
   routerPush.mockReset();
 });
 
-function renderTab(skill: Skill = SKILL) {
+function renderTab(skill: ScopedSkill = SKILL) {
   return render(
     <NextIntlClientProvider locale="en" messages={{ skills: messages, common }}>
       <ToastProvider>
@@ -145,6 +151,31 @@ describe("ConfigTab", () => {
 
     const [input] = updateMutate.mock.calls[0]!;
     expect("message" in input.patch).toBe(false);
+  });
+
+  it("saves two globs, one per line, and omits blank lines", () => {
+    renderTab();
+    const applies = screen.getByPlaceholderText(messages.config.appliesToPlaceholder);
+    expect(applies).toHaveValue("");
+    fireEvent.change(applies, { target: { value: "**/*.ts\n\n  **/*.tsx \n" } });
+    fireEvent.click(screen.getByText("Save skill"));
+
+    const [input] = updateMutate.mock.calls[0]!;
+    expect(input.patch.paths).toEqual(["**/*.ts", "**/*.tsx"]);
+  });
+
+  it("treats a changed Applies to as a new version, like a changed body", () => {
+    const { container } = renderTab({ ...SKILL, paths: ["**/*.ts"] });
+    expect(container.textContent).not.toContain("Saving snapshots the body as");
+    fireEvent.change(screen.getByDisplayValue("**/*.ts"), { target: { value: "**/*.py" } });
+    expect(container.textContent).toContain("Saving snapshots the body as");
+    expect(isPathsDirty("**/*.ts\n", ["**/*.ts"])).toBe(false);
+  });
+
+  it("shows the server's 422 message next to the field", () => {
+    updateError = new ApiError('Applies to: "[" — not a valid glob', 422);
+    renderTab();
+    expect(screen.getByRole("alert")).toHaveTextContent('Applies to: "[" — not a valid glob');
   });
 
   it("warns that an imported body is untrusted", () => {

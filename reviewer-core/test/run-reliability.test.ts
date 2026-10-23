@@ -227,3 +227,38 @@ describe('reviewPullRequest reliability', () => {
     });
   });
 });
+
+describe('skipped groups (stack-scoped single-pass)', () => {
+  const sk = (id: string, glob: string) => ({ id, name: id, version: 1, body: `BODY-${id}`, paths: [glob] });
+  const matchEnd = (path: string, globs: string[]) => globs.some((g) => path.endsWith(g));
+  const groupInput = (llm: LLMProvider) => ({
+    ...base,
+    llm,
+    diff: diffOf(['a.cs', 'b.ts']),
+    scopedSkills: [sk('cs', '.cs'), sk('ts', '.ts')],
+    matchesPath: matchEnd,
+  });
+  const failing = (needle: string) =>
+    ({
+      id: 'openrouter',
+      completeStructured: async (req: StructuredRequest<unknown>) => {
+        const content = req.messages[req.messages.length - 1].content;
+        if (content.includes(needle)) throw new LlmOutputInvalidError('m', 'Review', 3);
+        return { data: review, model: req.model, tokensIn: 1, tokensOut: 1, costUsd: null, raw: '{}', attempts: 1 } as StructuredResult<unknown>;
+      },
+    }) as unknown as LLMProvider;
+
+  it('G1 one group failing yields a partial review listing its files', async () => {
+    const msgs: string[] = [];
+    const out = await reviewPullRequest({ ...groupInput(failing('a.cs')), onEvent: (e) => msgs.push(e.msg) });
+    expect(out.skipped).toEqual([{ label: 'group 1', reason: 'LlmOutputInvalidError' }]);
+    expect(out.calls.map((c) => c.ok)).toEqual([false, true]);
+    expect(out.review.summary.startsWith('Partial review: 1 of 2 files not reviewed')).toBe(true);
+    expect(out.review.verdict).toBe('comment');
+    expect(msgs.some((m) => m.includes('files not reviewed: a.cs'))).toBe(true);
+  });
+
+  it('G2 every group failing throws ReviewChunksSkippedError', async () => {
+    await expect(reviewPullRequest(groupInput(failing('diff --git')))).rejects.toBeInstanceOf(ReviewChunksSkippedError);
+  });
+});

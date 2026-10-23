@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   renderSkillBlock,
   defaultEnabledFor,
-  isBodyChange,
+  isVersionedChange,
   toSkillDto,
   toSkillVersionDto,
 } from '../src/modules/skills/helpers.js';
@@ -25,6 +25,7 @@ const ROW: SkillRow = {
   enabled: true,
   version: 3,
   evidenceFiles: null,
+  paths: [],
   createdAt: new Date('2026-09-21T10:00:00.000Z'),
 };
 
@@ -40,6 +41,7 @@ describe('toSkillDto', () => {
       enabled: true,
       version: 3,
       evidence_files: null,
+      paths: [],
     });
   });
 
@@ -62,12 +64,14 @@ describe('toSkillVersionDto', () => {
       skillId: 'sk1',
       version: 2,
       body: 'older body',
+      paths: null,
       createdAt: new Date('2026-09-20T08:30:00.000Z'),
     };
     expect(toSkillVersionDto(row)).toEqual({
       skill_id: 'sk1',
       version: 2,
       body: 'older body',
+      paths: null,
       created_at: '2026-09-20T08:30:00.000Z',
     });
   });
@@ -88,19 +92,30 @@ describe('defaultEnabledFor', () => {
   );
 });
 
-describe('isBodyChange', () => {
-  it('is true only when the body actually differs', () => {
-    expect(isBodyChange({ body: 'a' }, { body: 'b' })).toBe(true);
+describe('isVersionedChange', () => {
+  const cur = { body: 'a', paths: ['src/**', 'lib/**'] };
+
+  it('is true when the body differs', () => {
+    expect(isVersionedChange(cur, { body: 'b' })).toBe(true);
   });
 
   it('is false when the body is resubmitted unchanged', () => {
     // The editor posts the whole form, so an untouched body arrives on every
     // save — versioning on "field present" would inflate the history.
-    expect(isBodyChange({ body: 'a' }, { body: 'a' })).toBe(false);
+    expect(isVersionedChange(cur, { body: 'a', paths: ['src/**', 'lib/**'] })).toBe(false);
+  });
+
+  it('is true for a paths-only change', () => {
+    expect(isVersionedChange(cur, { paths: ['src/**'] })).toBe(true);
+    expect(isVersionedChange(cur, { paths: ['src/**', 'lib/**', 'x/**'] })).toBe(true);
+  });
+
+  it('is true when the same globs are reordered', () => {
+    expect(isVersionedChange(cur, { paths: ['lib/**', 'src/**'] })).toBe(true);
   });
 
   it('is false for a rename or a toggle', () => {
-    expect(isBodyChange({ body: 'a' }, {})).toBe(false);
+    expect(isVersionedChange(cur, {})).toBe(false);
   });
 });
 

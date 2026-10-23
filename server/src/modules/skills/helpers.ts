@@ -1,5 +1,9 @@
 import { unzipSync } from 'fflate';
-import type { Skill, SkillSource, SkillType, SkillVersion } from '@devdigest/shared';
+import type { SkillSource, SkillType } from '@devdigest/shared';
+import type {
+  ScopedSkill,
+  ScopedSkillVersion,
+} from '@devdigest/shared/contracts/skill-scope.js';
 import type { SkillRow, SkillVersionRow } from '../../db/rows.js';
 import { ValidationError } from '../../platform/errors.js';
 import {
@@ -15,8 +19,8 @@ import {
  * an imported skill may be on, and when a save creates a new version. No I/O.
  */
 
-/** Map a persisted skill row to the public `Skill` DTO. */
-export function toSkillDto(row: SkillRow): Skill {
+/** Map a persisted skill row to the public `ScopedSkill` DTO. */
+export function toSkillDto(row: SkillRow): ScopedSkill {
   return {
     id: row.id,
     name: row.name,
@@ -27,16 +31,18 @@ export function toSkillDto(row: SkillRow): Skill {
     enabled: row.enabled,
     version: row.version,
     evidence_files: row.evidenceFiles ?? null,
+    paths: row.paths,
   };
 }
 
 /** Map a `skill_versions` row to the public `SkillVersion` DTO. */
-export function toSkillVersionDto(row: SkillVersionRow): SkillVersion {
+export function toSkillVersionDto(row: SkillVersionRow): ScopedSkillVersion {
   return {
     skill_id: row.skillId,
     version: row.version,
     body: row.body,
     message: row.message,
+    paths: row.paths ?? null,
     created_at: row.createdAt.toISOString(),
   };
 }
@@ -57,12 +63,21 @@ export function defaultEnabledFor(source: SkillSource): boolean {
 }
 
 /**
- * True when a patch changes the body — the only change that creates a new
- * immutable version. A rename or a toggle does not: a version IS a body,
- * because the body is what ends up in the prompt.
+ * True when a patch changes what a version records — the body, or the "Applies
+ * to" globs (compared element-wise, so a reorder counts: the order is the
+ * author's). Either creates a new immutable version. A rename or a toggle does
+ * not: a version IS the text that reaches the prompt plus where it applies.
  */
-export function isBodyChange(existing: Pick<SkillRow, 'body'>, patch: { body?: string }): boolean {
-  return patch.body !== undefined && patch.body !== existing.body;
+export function isVersionedChange(
+  existing: Pick<SkillRow, 'body' | 'paths'>,
+  patch: { body?: string; paths?: string[] },
+): boolean {
+  const bodyChanged = patch.body !== undefined && patch.body !== existing.body;
+  const pathsChanged =
+    patch.paths !== undefined &&
+    (patch.paths.length !== existing.paths.length ||
+      patch.paths.some((g, i) => g !== existing.paths[i]));
+  return bodyChanged || pathsChanged;
 }
 
 /**

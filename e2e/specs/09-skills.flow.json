@@ -7,6 +7,7 @@
     { "cmd": ["wait", "--load", "networkidle"], "label": "skills fetch settles" },
     { "cmd": ["wait", "--text", "secret-leakage-gate"], "label": "seeded skill is in the rail" },
 
+    { "cmd": ["find", "placeholder", "Search skills…", "fill", "secret-leakage-gate"], "label": "filter the rail so the card is in view" },
     { "cmd": ["find", "text", "secret-leakage-gate", "click"], "label": "open the skill" },
     { "cmd": ["wait", "--url", "/skills/"], "label": "selection is a route, not a query param" },
     { "cmd": ["wait", "--load", "networkidle"], "label": "skill fetch settles" },

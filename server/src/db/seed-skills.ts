@@ -158,3 +158,48 @@ export const SEED_AGENT_SKILLS: Record<string, string[]> = {
   'Test Quality Reviewer': ['test-coverage-nudge', 'pr-quality-rubric'],
   'API Contract Reviewer': ['contract-change-gate', 'phantom-api-gate'],
 };
+
+/**
+ * JS/TS conventions that used to sit in four built-in reviewer prompts. They
+ * moved here so that a Python or C# PR never sees them: the skill applies only
+ * to JS/TS files (plan 44). Created with the seed for a new workspace, and by
+ * `agents:sync-builtin` for an existing one. Security Reviewer stays unscoped.
+ */
+export interface NodeTypescriptSkill extends SeedSkill {
+  paths: string[];
+}
+
+export const NODE_TYPESCRIPT_SKILL: NodeTypescriptSkill = {
+  name: 'node-typescript-review',
+  description: 'General Node.js / TypeScript pitfalls for JS/TS files.',
+  type: 'convention',
+  paths: ['**/*.ts', '**/*.tsx', '**/*.js', '**/*.jsx', '**/*.mjs', '**/*.cjs'],
+  body: `# Node.js / TypeScript review pitfalls
+
+Apply these to the JS/TS files in the diff. They are language-level pitfalls only;
+the project's own frameworks and conventions come from its repo rules.
+
+## Correctness
+
+- Truthiness traps: \`[]\`, \`0\`, \`''\` treated as "absent"; \`??\` vs \`||\` confusion;
+  checking an array for falsy to detect "not found" (an empty array is truthy).
+- Async bugs: a missing \`await\`, an unhandled rejection, \`forEach\` with an async
+  callback, a promise used before it resolves.
+
+## Performance
+
+- A query or remote call executed inside a loop, \`.map\`, or per-item (N+1) should
+  be batched into one call.
+- Independent \`await\`s in a loop should run with bounded concurrency; unbounded
+  fan-out can exhaust a database connection pool, sockets, or API rate limits.
+- Event loop: synchronous CPU-heavy work on the request path blocks it; buffering
+  a whole streamed response in memory instead of streaming it.`,
+};
+
+/** Seeded agents that get `node-typescript-review`, appended after their other skills. */
+export const NODE_TS_SKILL_AGENTS: readonly string[] = [
+  'General Reviewer',
+  'Test Quality Reviewer',
+  'API Contract Reviewer',
+  'Performance Reviewer',
+];

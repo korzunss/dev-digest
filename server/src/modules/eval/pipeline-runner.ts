@@ -1,6 +1,7 @@
 import type { EvalCaseResult, EvalExpectation, LLMProvider, UnifiedDiff } from '@devdigest/shared';
 import { describeJobError } from './replay.js';
 import { scoreCase } from './pipeline-scoring.js';
+import type { PathMatcher } from '@devdigest/reviewer-core';
 import type { EvalAgentSnapshot, ReviewFn, ReviewParams } from './types.js';
 
 export interface CaseRunnerDeps {
@@ -12,6 +13,7 @@ export interface CaseRunnerDeps {
   >;
   countTokens?: (s: string) => number;
   estimateCost?: (model: string, tokensIn: number, tokensOut: number) => number | null;
+  matchesPath?: PathMatcher;
   now: () => Date;
 }
 
@@ -49,7 +51,13 @@ export async function runCase(
       diff,
       llm,
       strategy: snapshot.strategy,
-      ...(snapshot.rendered.length > 0 ? { skills: snapshot.rendered } : {}),
+      // An agent case routes skills by Applies to like a live review; a skill
+      // case injects the skill under test whatever its globs say.
+      ...(snapshot.scoped && snapshot.scoped.length > 0
+        ? { scopedSkills: snapshot.scoped, ...(deps.matchesPath ? { matchesPath: deps.matchesPath } : {}) }
+        : snapshot.rendered.length > 0
+          ? { skills: snapshot.rendered }
+          : {}),
       ...(deps.countTokens ? { countTokens: deps.countTokens } : {}),
       ...(deps.estimateCost ? { estimateCost: deps.estimateCost } : {}),
       ...deps.callOptions,

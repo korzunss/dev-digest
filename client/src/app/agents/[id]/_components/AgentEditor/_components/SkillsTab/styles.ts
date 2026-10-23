@@ -56,7 +56,15 @@ export const s = {
     color: enabled ? "var(--text-muted)" : "var(--border)",
     cursor: enabled ? "grab" : "default",
   }),
-  name: { fontSize: 13, fontWeight: 600, flex: 1, minWidth: 0 } satisfies CSSProperties,
+  nameCol: { display: "flex", flexDirection: "column", gap: 2, flex: 1, minWidth: 0 } satisfies CSSProperties,
+  name: { fontSize: 13, fontWeight: 600, minWidth: 0 } satisfies CSSProperties,
+  appliesTo: {
+    fontSize: 11.5,
+    color: "var(--text-muted)",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  } satisfies CSSProperties,
   muted: { fontSize: 12, color: "var(--text-muted)" } satisfies CSSProperties,
   footer: {
     display: "flex",

@@ -51,6 +51,7 @@
     "title": "Export to CI",
     "subtitle": "Run {agentName} automatically on pull requests",
     "thisAgent": "this agent",
+    "scopedSkillsNote": "An attached skill is limited to certain files with Applies to. CI ignores that: every attached skill applies to every file there.",
     "back": "Back",
     "continue": "Continue",
     "install": "Install",

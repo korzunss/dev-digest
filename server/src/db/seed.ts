@@ -10,7 +10,12 @@ import {
   API_CONTRACT_REVIEWER_PROMPT,
 } from './seed-prompts.js';
 import { buildAgentSnapshotConfig } from './agent-snapshot.js';
-import { SEED_SKILLS, SEED_AGENT_SKILLS } from './seed-skills.js';
+import {
+  NODE_TS_SKILL_AGENTS,
+  NODE_TYPESCRIPT_SKILL,
+  SEED_SKILLS,
+  SEED_AGENT_SKILLS,
+} from './seed-skills.js';
 import { SEED_CONVENTIONS, seedConventionFingerprint } from './seed-conventions.js';
 
 /** Default provider/model for the built-in reviewer agents. */
@@ -41,6 +46,7 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
     .select()
     .from(t.workspaces)
     .where(eq(t.workspaces.name, DEFAULT_WORKSPACE_NAME));
+  const workspaceCreated = !ws;
   if (!ws) {
     [ws] = await db
       .insert(t.workspaces)
@@ -306,6 +312,45 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
       .map((name, i) => ({ agentId: agent.id, skillId: skillIdByName.get(name), order: i }))
       .filter((v): v is { agentId: string; skillId: string; order: number } => !!v.skillId);
     if (values.length > 0) await db.insert(t.agentSkills).values(values);
+  }
+
+  // ---- node-typescript-review: only a workspace created in THIS run ----
+  // An existing workspace gets it through `agents:sync-builtin`, never by a
+  // re-seed (plan 44, AC-38): someone may have deleted or detached it on purpose.
+  if (workspaceCreated) {
+    const sk = NODE_TYPESCRIPT_SKILL;
+    const [row] = await db
+      .insert(t.skills)
+      .values({
+        workspaceId,
+        name: sk.name,
+        description: sk.description,
+        type: sk.type,
+        source: 'manual',
+        body: sk.body,
+        paths: sk.paths,
+        enabled: true,
+        version: 1,
+      })
+      .returning();
+    await db.insert(t.skillVersions).values({
+      skillId: row!.id,
+      version: 1,
+      body: sk.body,
+      paths: sk.paths,
+    });
+    for (const agentName of NODE_TS_SKILL_AGENTS) {
+      const [agent] = await db
+        .select()
+        .from(t.agents)
+        .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.name, agentName)));
+      if (!agent) continue;
+      const links = await db
+        .select({ agentId: t.agentSkills.agentId })
+        .from(t.agentSkills)
+        .where(eq(t.agentSkills.agentId, agent.id));
+      await db.insert(t.agentSkills).values({ agentId: agent.id, skillId: row!.id, order: links.length });
+    }
   }
 
   // ---- version snapshot for each seeded agent (its current version) ----

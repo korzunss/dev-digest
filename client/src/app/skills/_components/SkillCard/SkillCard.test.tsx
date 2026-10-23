@@ -1,14 +1,14 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
-import type { Skill } from "@devdigest/shared";
+import type { ScopedSkill } from "@devdigest/shared/contracts/skill-scope.js";
 import messages from "../../../../../messages/en/skills.json";
 import { SkillCard } from "./SkillCard";
 import { formatCount, formatRate, needsVetting } from "./helpers";
 
 afterEach(cleanup);
 
-const SKILL: Skill = {
+const SKILL: ScopedSkill = {
   id: "sk1",
   name: "secret-leakage-gate",
   description: "Flag hardcoded credentials before they reach main.",
@@ -17,6 +17,7 @@ const SKILL: Skill = {
   body: "# Rule\nNo sk_live keys.",
   enabled: true,
   version: 1,
+  paths: [],
   evidence_files: null,
   // The rail's rollups. Nullish is the normal state for a skill no run has
   // touched yet, which is exactly the case the footer must not misreport.
@@ -122,5 +123,18 @@ describe("SkillCard", () => {
     const source = screen.getByText("Manual");
     expect(source).toBeInTheDocument();
     expect(container.querySelectorAll("svg").length).toBeGreaterThan(1);
+  });
+
+  it("says All files for an unscoped skill and lists the globs for a scoped one", () => {
+    const { rerender } = renderWithIntl(<SkillCard skill={SKILL} />);
+    expect(screen.getByText("All files")).toBeInTheDocument();
+
+    rerender(
+      <NextIntlClientProvider locale="en" messages={{ skills: messages }}>
+        <SkillCard skill={{ ...SKILL, paths: ["**/*.ts", "**/*.tsx"] }} />
+      </NextIntlClientProvider>,
+    );
+    expect(screen.getByText("Applies to: **/*.ts, **/*.tsx")).toBeInTheDocument();
+    expect(screen.queryByText("All files")).not.toBeInTheDocument();
   });
 });

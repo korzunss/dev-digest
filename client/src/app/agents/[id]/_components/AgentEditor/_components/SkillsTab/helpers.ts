@@ -1,4 +1,5 @@
-import type { AgentSkillLink, Skill } from "@devdigest/shared";
+import type { AgentSkillLink } from "@devdigest/shared";
+import type { ScopedSkill as Skill } from "@devdigest/shared/contracts/skill-scope.js";
 
 /** The ids attached to an agent, in stored order. */
 export function attachedIds(links: AgentSkillLink[] | undefined): string[] {

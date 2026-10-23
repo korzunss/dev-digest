@@ -57,6 +57,14 @@ Sections with no content are omitted. Everything repo- or author-derived is wrap
 in `<untrusted source="…">…</untrusted>` so the model can tell instructions
 (system) from data (user).
 
+**Repo rules depth.** The `## Repo context` block carries the repo's own rules,
+read from `AGENTS.md` and `insights/gotchas.md` at the base SHA. They are read
+only from the repo root and up to two directory levels below it (a file in
+`a/b/c/` is not read), at most 40 files per PR, 12,000 characters per file, and
+8,000 characters per review call
+(`server/src/modules/reviews/constants.ts`). Put a rule that must reach every
+review in the root file.
+
 ## Skills — the part of the prompt you don't write
 
 `## Skills / rules` is assembled from the skills attached to the agent in the

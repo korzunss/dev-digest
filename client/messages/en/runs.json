@@ -103,6 +103,14 @@
       "search": "Search in this block…",
       "noMatches": "No matches for “{q}”."
     },
+    "groups": {
+      "title": "Review calls",
+      "allFiles": "All changed files",
+      "noSkills": "no skills",
+      "skipped": "skipped",
+      "files": "Files",
+      "skills": "Skills"
+    },
     "tools": {
       "args": "args",
       "result": "result",

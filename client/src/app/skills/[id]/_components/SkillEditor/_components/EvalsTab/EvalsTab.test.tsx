@@ -79,6 +79,48 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("skill EvalsTab", () => {
+  // The single-case run answers a plain case (no `outside_applies_to`); the badge must come from the refetched list.
+  it("refetches the case list after a single-case run so the outside-Applies-to badge stays correct", async () => {
+    const flagged = { ...mkCase("c3", "outside-case", "2026-10-13T09:00:00Z"), outside_applies_to: true };
+    let listCalls = 0;
+    get.mockImplementation(async (p: string) => {
+      if (p === "/skills/s1/eval-cases") {
+        listCalls++;
+        return [flagged];
+      }
+      if (p === "/skills/s1/eval-run") return state();
+      return [];
+    });
+    // The run response carries no outside_applies_to, as the server's does.
+    const { outside_applies_to: _omit, ...plain } = flagged;
+    post.mockResolvedValue({ ...plain, last_result: CASES[0]!.last_result });
+    render(
+      <NextIntlClientProvider locale="en" messages={{ eval: evalMessages, common, shell }}>
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <EvalsTab skill={SKILL} />
+        </QueryClientProvider>
+      </NextIntlClientProvider>,
+    );
+    await screen.findByText("outside-case");
+    expect(screen.getAllByText("Outside Applies to")).toHaveLength(1);
+    const before = listCalls;
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Run" })[0] as HTMLElement);
+    await screen.findByText(evalMessages.modal.runConfirmTitle);
+    fireEvent.click(confirmButton());
+
+    await waitFor(() => expect(post).toHaveBeenCalledWith("/eval-cases/c3/runs", { provider: "openai", model: "gpt-x" }));
+    await waitFor(() => expect(listCalls).toBeGreaterThan(before));
+    expect(await screen.findByText("Outside Applies to")).toBeInTheDocument();
+  });
+
+  it("flags a case whose files fall outside the skill's Applies to", async () => {
+    const outside = { ...mkCase("c3", "outside-case", "2026-10-13T09:00:00Z"), outside_applies_to: true };
+    setup([outside, mkCase("c1", "older-case", "2026-10-10T09:00:00Z")], state());
+    await screen.findByText("outside-case");
+    expect(screen.getAllByText("Outside Applies to")).toHaveLength(1);
+  });
+
   it("lists cases newest first with the passing count, and starts the suite on the default model after a confirm", async () => {
     post.mockResolvedValue(state({ progress: { done: 0, total: 2 } }));
     setup(CASES, state());

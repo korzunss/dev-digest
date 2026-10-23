@@ -20,7 +20,8 @@ export function CaseRow({
   onEdit,
   onDelete,
 }: {
-  c: EvalSuiteCase;
+  /** A skill case also carries `outside_applies_to` (AC-42). */
+  c: EvalSuiteCase & { outside_applies_to?: boolean };
   /** This case (or the whole suite) is running. */
   busy: boolean;
   onRun: () => void;
@@ -55,6 +56,7 @@ export function CaseRow({
           {r?.skill_version != null && ` · ${skillT("ranOn", { version: r.skill_version })}`}
         </div>
       </div>
+      {c.outside_applies_to && <Badge color="var(--warn)">{skillT("outsideAppliesTo")}</Badge>}
       <Badge mono>{badge ?? t("emptyBadge")}</Badge>
       <div style={s.rowActions}>
         <Button kind="ghost" size="sm" icon="Play" style={s.actionBtn} aria-label={t("run")} title={t("run")} disabled={busy} onClick={onRun} />
