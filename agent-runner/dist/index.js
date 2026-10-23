@@ -1,4 +1,4 @@
-// devdigest-agent-runner v0.1.0 sha256:257484b39502a395bd336cb9e5b94b7622462cd704a993d8829a0069bc1ac553
+// devdigest-agent-runner v0.1.0 sha256:4068ec0640acfbc97491b259dfafd67e2eb5a6af437ce0d96c7efc460191b5c9
 import { createRequire as __cr } from 'node:module'; const require = __cr(import.meta.url);
 var __create = Object.create;
 var __defProp = Object.defineProperty;
@@ -24360,6 +24360,32 @@ function sliceDiff(diff, path) {
 +++ b/${path}`;
 }
 
+// ../reviewer-core/src/review/skill-routing.ts
+init_define_DEPS();
+function skillsForFile(skills, path, match) {
+  const out = [];
+  skills.forEach((s, i) => {
+    if (s.paths.length === 0 || match(path, s.paths)) out.push(i);
+  });
+  return out;
+}
+function groupBySkillSet(paths, skills, match) {
+  const groups = /* @__PURE__ */ new Map();
+  for (const path of paths) {
+    const skillIdx = skillsForFile(skills, path, match);
+    const key = skillIdx.join(",");
+    const g = groups.get(key);
+    if (g) g.paths.push(path);
+    else groups.set(key, { paths: [path], skillIdx });
+  }
+  return [...groups.values()];
+}
+function specsForCall(specs, injectedIds) {
+  if (!specs) return void 0;
+  const ids = injectedIds instanceof Set ? injectedIds : new Set(injectedIds);
+  return specs.filter((d) => !d.viaSkillIds || d.viaSkillIds.some((id) => ids.has(id)));
+}
+
 // ../reviewer-core/src/review/repo-rules.ts
 init_define_DEPS();
 var DEFAULT_REPO_RULES_MAX_CHARS = 8e3;
@@ -24801,6 +24827,7 @@ async function reviewPullRequest(input) {
   );
   const emit = (kind, msg, data) => input.onEvent?.({ kind, msg, data });
   const allPaths = input.diff.files.map((f) => f.path);
+  const deletedPaths = input.diff.deletedPaths ?? [];
   const hasRepoContext = input.repoRules !== void 0 || input.changedFiles !== void 0;
   const memoryFor = (chunkPaths) => {
     if (!hasRepoContext) return input.memory;
@@ -24812,10 +24839,20 @@ async function reviewPullRequest(input) {
     ];
     return items.length > 0 ? items : void 0;
   };
+  const scoped = input.scopedSkills;
+  const match = input.matchesPath ?? (() => true);
+  const skillBodies = (idx) => scoped ? idx.map((i) => scoped[i].body) : input.skills;
+  const skillIdsOf = (idx) => scoped ? idx.map((i) => scoped[i].id) : [];
+  const specsFor = (idx) => scoped ? specsForCall(input.specs, skillIdsOf(idx)) : input.specs;
+  const unscopedIdx = scoped ? scoped.flatMap((s, i) => s.paths.length === 0 ? [i] : []) : [];
+  const wholeSkillIdx = (() => {
+    if (!scoped) return [];
+    const set = new Set(unscopedIdx);
+    for (const p of [...allPaths, ...deletedPaths]) for (const i of skillsForFile(scoped, p, match)) set.add(i);
+    return [...set].sort((a, b) => a - b);
+  })();
   const promptParts = {
     system: input.systemPrompt,
-    skills: input.skills,
-    specs: input.specs,
     callers: input.callers,
     repoMap: input.repoMap,
     prDescription: input.prDescription,
@@ -24825,14 +24862,71 @@ async function reviewPullRequest(input) {
   const assembleOpts = input.countTokens ? { countTokens: input.countTokens } : void 0;
   const reviewSchema = input.intent ? ScopedReview : Review;
   let assembly = assemblePrompt(
-    { ...promptParts, memory: memoryFor(allPaths), diff: input.diff.raw },
+    {
+      ...promptParts,
+      skills: skillBodies(wholeSkillIdx),
+      specs: specsFor(wholeSkillIdx),
+      memory: memoryFor(allPaths),
+      diff: input.diff.raw
+    },
     assembleOpts
   ).assembly;
-  const chunks = mode === "map-reduce" ? input.diff.files.map((f) => ({
-    label: f.path,
-    paths: [f.path],
-    diffText: sliceDiff(input.diff, f.path)
-  })) : [{ label: "all files", paths: allPaths, diffText: input.diff.raw }];
+  const tokensOf = (s) => input.countTokens?.(s) ?? Math.ceil(s.length / 4);
+  const fileByPath = new Map(input.diff.files.map((f) => [f.path, f]));
+  const unitTolerance = [];
+  const unitDiffs = [];
+  let groupSummaryLine;
+  const noSkillGroups = [];
+  let chunks;
+  if (mode === "map-reduce") {
+    chunks = input.diff.files.map((f, i) => {
+      unitTolerance.push(0);
+      return {
+        label: f.path,
+        paths: [f.path],
+        diffText: sliceDiff(input.diff, f.path),
+        skillIdx: scoped ? skillsForFile(scoped, f.path, match) : [],
+        unit: i
+      };
+    });
+  } else {
+    const groups = scoped ? groupBySkillSet([...allPaths, ...deletedPaths], scoped, match).map((g) => ({ paths: g.paths.filter((p) => fileByPath.has(p)), skillIdx: g.skillIdx })).filter((g) => g.paths.length > 0) : [];
+    if (groups.length <= 1) {
+      unitTolerance.push(0);
+      chunks = [
+        {
+          label: "all files",
+          paths: allPaths,
+          diffText: input.diff.raw,
+          skillIdx: groups[0]?.skillIdx ?? unscopedIdx,
+          unit: 0
+        }
+      ];
+      if (scoped && scoped.length > 0 && chunks[0].skillIdx.length === 0) noSkillGroups.push("all files");
+    } else {
+      chunks = [];
+      groups.forEach((g, gi) => {
+        const label = `group ${gi + 1}`;
+        const text = g.paths.map((p) => sliceDiff(input.diff, p)).join("\n");
+        unitDiffs.push({ raw: text, files: g.paths.map((p) => fileByPath.get(p)) });
+        if (tokensOf(text) > maxSinglePass && g.paths.length > 1) {
+          unitTolerance.push(
+            input.maxSkippedChunkFraction != null ? Math.max(1, Math.floor(g.paths.length * input.maxSkippedChunkFraction)) : 0
+          );
+          for (const p of g.paths) {
+            chunks.push({ label: p, paths: [p], diffText: sliceDiff(input.diff, p), skillIdx: g.skillIdx, unit: gi });
+          }
+        } else {
+          unitTolerance.push(0);
+          chunks.push({ label, paths: g.paths, diffText: text, skillIdx: g.skillIdx, unit: gi });
+        }
+        if (scoped && scoped.length > 0 && g.skillIdx.length === 0) noSkillGroups.push(label);
+      });
+      const names = (idx) => idx.length > 0 ? idx.map((i) => scoped[i].name).join(", ") : "no skills";
+      groupSummaryLine = `Grouped ${allPaths.length} files into ${groups.length} review calls by skill set: ${groups.map((g, gi) => `group ${gi + 1}: ${g.paths.length} files \xB7 ${names(g.skillIdx)}`).join("; ")}`;
+    }
+  }
+  const multiGroup = mode === "single-pass" && unitDiffs.length > 1;
   const k = (n) => Math.round(n / 1e3);
   if (reason === "size-guard") {
     emit(
@@ -24848,36 +24942,55 @@ async function reviewPullRequest(input) {
   );
   emit(
     "info",
-    mode === "map-reduce" ? `Large diff \u2192 map-reduce over ${input.diff.files.length} files` : `Reviewing ${input.diff.files.length} changed file(s) in one pass`
+    mode === "map-reduce" ? `Large diff \u2192 map-reduce over ${input.diff.files.length} files` : multiGroup ? groupSummaryLine : `Reviewing ${input.diff.files.length} changed file(s) in one pass`
   );
+  for (const label of noSkillGroups) {
+    emit("info", `${label}: no skill matches its files \u2014 reviewed with no skills section`);
+  }
   const partials = [];
+  const partialUnits = [];
   const usage = { tokensIn: 0, tokensOut: 0, costUsd: 0, costSource: void 0 };
   const raws = [];
   const skipped = [];
   const allowed = mode === "map-reduce" && input.maxSkippedChunkFraction != null ? Math.max(1, Math.floor(chunks.length * input.maxSkippedChunkFraction)) : 0;
+  const unitSkips = /* @__PURE__ */ new Map();
+  const failedUnits = /* @__PURE__ */ new Map();
   for (const chunk of chunks) {
+    if (failedUnits.has(chunk.unit)) {
+      chunk.skipped = true;
+      skipped.push({ label: chunk.label, reason: failedUnits.get(chunk.unit) });
+      continue;
+    }
     input.checkCancelled?.();
     emit(
       "tool",
-      mode === "map-reduce" ? `map: reviewing ${chunk.label}` : `Reviewing ${chunk.label} in one pass`,
+      mode === "map-reduce" ? `map: reviewing ${chunk.label}` : multiGroup ? `Reviewing ${chunk.label} (${chunk.paths.length} file(s))` : `Reviewing ${chunk.label} in one pass`,
       { file: chunk.label }
     );
     const a = assemblePrompt(
-      { ...promptParts, memory: memoryFor(chunk.paths), diff: chunk.diffText },
+      {
+        ...promptParts,
+        skills: skillBodies(chunk.skillIdx),
+        specs: specsFor(chunk.skillIdx),
+        memory: memoryFor(chunk.paths),
+        diff: chunk.diffText
+      },
       assembleOpts
     );
-    if (mode === "single-pass") assembly = a.assembly;
+    if (mode === "single-pass" && chunks.length === 1) assembly = a.assembly;
     const startedAt = Date.now();
+    chunk.attempted = true;
     const out = await reviewChunk(input, {
       label: chunk.label,
       messages: a.messages,
       schema: reviewSchema,
       maxRetries,
-      canSkip: allowed > 0,
+      canSkip: allowed > 0 || multiGroup,
       emit
     });
     if (!out.ok) {
       const { err, usage: u } = out;
+      chunk.skipped = true;
       skipped.push({ label: chunk.label, reason: err.name });
       if (u) {
         addUsage(usage, {
@@ -24892,6 +25005,13 @@ async function reviewPullRequest(input) {
         );
       }
       const how = err instanceof LlmOutputTruncatedError ? " after retry" : "";
+      if (multiGroup) {
+        emit("error", `${chunk.label}: skipped \u2014 ${err.name}${how} (files not reviewed: ${chunk.paths.join(", ")})`);
+        const n = (unitSkips.get(chunk.unit) ?? 0) + 1;
+        unitSkips.set(chunk.unit, n);
+        if (n > (unitTolerance[chunk.unit] ?? 0)) failedUnits.set(chunk.unit, err.name);
+        continue;
+      }
       emit("error", `${chunk.label}: skipped \u2014 ${err.name}${how} (${skipped.length}/${allowed} allowed)`);
       if (skipped.length > allowed) {
         emit(
@@ -24915,30 +25035,45 @@ async function reviewPullRequest(input) {
     });
     raws.push(res.raw);
     partials.push(res.data);
+    partialUnits.push(chunk.unit);
     emit(
       "result",
       `${chunk.label}: ${res.data.findings.length} candidate finding(s) \xB7 ${res.tokensOut} output tokens \xB7 ${Math.round((Date.now() - startedAt) / 1e3)} s${res.servedBy ? ` \xB7 served by ${res.servedBy}` : ""}`
     );
   }
+  const skippedChunks = chunks.filter((c) => c.skipped);
+  const totalFiles = new Set(chunks.flatMap((c) => c.paths)).size;
+  const reviewedFiles = new Set(chunks.filter((c) => !c.skipped).flatMap((c) => c.paths)).size;
+  const skippedFiles = totalFiles - reviewedFiles;
   if (partials.length === 0) {
     throw new ReviewChunksSkippedError(skipped.length, chunks.length, "no file could be reviewed");
   }
   const merged = reduceReviews(partials);
   const paths = (() => {
-    const shown = skipped.slice(0, 10).map((x) => x.label).join(", ");
-    return skipped.length > 10 ? `${shown}, +${skipped.length - 10} more` : shown;
+    const all = skippedChunks.flatMap((c) => c.paths);
+    const shown = all.slice(0, 10).join(", ");
+    return all.length > 10 ? `${shown}, +${all.length - 10} more` : shown;
   })();
-  if (skipped.length > 0) {
-    emit(
-      "result",
-      `Reviewed ${chunks.length - skipped.length}/${chunks.length} files \u2014 ${skipped.length} skipped: ${paths}`
-    );
+  if (skippedChunks.length > 0) {
+    emit("result", `Reviewed ${reviewedFiles}/${totalFiles} files \u2014 ${skippedFiles} skipped: ${paths}`);
   }
   emit(
     "result",
     `Reduced to ${merged.findings.length} finding(s); model verdict=${merged.verdict}, score=${merged.score}`
   );
-  const ground = groundFindings(merged.findings, input.diff);
+  let ground;
+  if (multiGroup) {
+    const kept = [];
+    const dropped = [];
+    partials.forEach((p, i) => {
+      const g = groundFindings(p.findings, unitDiffs[partialUnits[i]]);
+      kept.push(...g.kept);
+      dropped.push(...g.dropped);
+    });
+    ground = { kept, dropped };
+  } else {
+    ground = groundFindings(merged.findings, input.diff);
+  }
   const grounding = groundingSummary(ground);
   for (const d of ground.dropped) {
     emit("info", `grounding dropped "${d.finding.title}": ${d.reason}`);
@@ -24946,28 +25081,27 @@ async function reviewPullRequest(input) {
   emit("result", `Citation grounding: ${grounding}`);
   let finalFindings = ground.kept;
   if (input.intent) {
-    const scoped = applyScopeFilter(ground.kept);
-    for (const d of scoped.dropped) {
+    const scopedOut = applyScopeFilter(ground.kept);
+    for (const d of scopedOut.dropped) {
       emit("info", `scope-filtered "${d.finding.title}": ${d.reason}`);
     }
-    finalFindings = scoped.kept;
+    finalFindings = scopedOut.kept;
   }
-  const skippedLabels = new Set(skipped.map((x) => x.label));
-  const reviewedFiles = new Set(chunks.filter((c) => !skippedLabels.has(c.label)).flatMap((c) => c.paths)).size;
-  const baseSummary = mode === "map-reduce" ? summarizeFindings(finalFindings, { files: reviewedFiles, chunks: chunks.length - skipped.length }) : merged.summary;
+  const baseSummary = mode === "map-reduce" || chunks.length > 1 ? summarizeFindings(finalFindings, { files: reviewedFiles, chunks: chunks.length - skippedChunks.length }) : merged.summary;
   return {
     review: {
       ...merged,
       findings: finalFindings,
       score: scoreFromFindings(finalFindings),
-      verdict: verdictFromFindings(finalFindings, { partial: skipped.length > 0 }),
-      summary: skipped.length > 0 ? `Partial review: ${skipped.length} of ${chunks.length} files not reviewed (model output cap / invalid output): ${paths}.${baseSummary ? ` ${baseSummary}` : ""}` : baseSummary
+      verdict: verdictFromFindings(finalFindings, { partial: skippedChunks.length > 0 }),
+      summary: skippedChunks.length > 0 ? `Partial review: ${skippedFiles} of ${totalFiles} files not reviewed (model output cap / invalid output): ${paths}.${baseSummary ? ` ${baseSummary}` : ""}` : baseSummary
     },
     grounding,
     dropped: ground.dropped,
     mode,
     assembly,
     chunks: chunks.map((c) => ({ label: c.label })),
+    calls: chunks.filter((c) => c.attempted).map((c) => ({ label: c.label, paths: c.paths, skillIds: skillIdsOf(c.skillIdx), ok: !c.skipped })),
     tokensIn: usage.tokensIn,
     tokensOut: usage.tokensOut,
     costUsd: usage.costUsd,
@@ -25228,6 +25362,8 @@ init_define_DEPS();
 init_define_DEPS();
 function parseUnifiedDiff(raw) {
   const files = [];
+  const deletedPaths = [];
+  let oldPath = "";
   const lines = raw.split("\n");
   let current = null;
   let hunk = null;
@@ -25238,8 +25374,12 @@ function parseUnifiedDiff(raw) {
   };
   const flushFile = () => {
     flushHunk();
-    if (current) files.push(current);
+    if (current) {
+      files.push(current);
+      if (!current.path && oldPath) deletedPaths.push(oldPath);
+    }
     current = null;
+    oldPath = "";
   };
   for (const line of lines) {
     if (line.startsWith("diff --git")) {
@@ -25253,7 +25393,13 @@ function parseUnifiedDiff(raw) {
       current.path = p === "/dev/null" ? current.path : p;
       continue;
     }
-    if (line.startsWith("--- ")) continue;
+    if (line.startsWith("--- ")) {
+      if (current && !hunk) {
+        const p = line.slice(4).replace(/^a\//, "").trim();
+        oldPath = p === "/dev/null" ? "" : p;
+      }
+      continue;
+    }
     const hh = line.match(/^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/);
     if (hh) {
       flushHunk();
@@ -25283,7 +25429,7 @@ function parseUnifiedDiff(raw) {
     }
   }
   flushFile();
-  return { raw, files: files.filter((f) => f.path) };
+  return { raw, files: files.filter((f) => f.path), deletedPaths };
 }
 
 // src/core.ts
